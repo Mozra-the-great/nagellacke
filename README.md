@@ -6,7 +6,7 @@ Daten werden in einer JSON-Datei auf dem Server gespeichert und überleben jeden
 ## Installation (ein Befehl)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/DEIN_USER/nagellacke/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
 > Benötigt Debian/Ubuntu LXC, läuft als root. Installiert automatisch Node.js 20.
