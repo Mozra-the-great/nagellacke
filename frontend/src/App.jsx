@@ -140,6 +140,115 @@ function PolishForm({ form, setForm, customCats, onSubmit, submitLabel, onCancel
   );
 }
 
+function LogPanel() {
+  const [open, setOpen]       = useState(false);
+  const [logs, setLogs]       = useState("");
+  const [loading, setLoading] = useState(false);
+  const [lines, setLines]     = useState(100);
+  const [live, setLive]       = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const logRef    = useRef(null);
+  const timerRef  = useRef(null);
+
+  const fetchLogs = useCallback((n) => {
+    const count = n ?? lines;
+    setLoading(true);
+    fetch(`/api/logs?lines=${count}`)
+      .then(r => r.json())
+      .then(d => {
+        setLogs(d.logs || "");
+        setHasError(!!d.error);
+        setLoading(false);
+        setTimeout(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, 30);
+      })
+      .catch(() => { setHasError(true); setLoading(false); });
+  }, [lines]);
+
+  useEffect(() => {
+    if (open) fetchLogs();
+  }, [open]);
+
+  useEffect(() => {
+    clearInterval(timerRef.current);
+    if (live && open) timerRef.current = setInterval(() => fetchLogs(), 3000);
+    return () => clearInterval(timerRef.current);
+  }, [live, open, fetchLogs]);
+
+  const handleLines = (n) => { setLines(n); fetchLogs(n); };
+
+  const btnBase = {
+    background: "transparent", border: "1px solid rgba(255,255,255,0.15)",
+    color: "rgba(255,255,255,0.35)", padding: "3px 12px", borderRadius: "14px",
+    cursor: "pointer", fontFamily: "'Jost',sans-serif", fontSize: "10px",
+    letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s",
+  };
+  const btnActive = { ...btnBase, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)", borderColor: "rgba(255,255,255,0.3)" };
+
+  if (!open) return (
+    <div style={{ textAlign: "center", paddingBottom: "12px" }}>
+      <button style={btnBase}
+        onMouseEnter={e => Object.assign(e.target.style, { color: "rgba(255,255,255,0.65)", borderColor: "rgba(255,255,255,0.3)" })}
+        onMouseLeave={e => Object.assign(e.target.style, { color: "rgba(255,255,255,0.35)", borderColor: "rgba(255,255,255,0.15)" })}
+        onClick={() => setOpen(true)}>
+        ≡ System Logs
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: "900px", margin: "0 auto 40px", padding: "0 18px" }}>
+      <div style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", overflow: "hidden" }}>
+
+        {/* Toolbar */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", flexShrink: 0 }}>
+            ≡ System Logs
+            {loading && <span style={{ marginLeft: "8px", opacity: 0.5 }}>⟳</span>}
+          </span>
+
+          <div style={{ display: "flex", gap: "6px", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
+            {/* Lines selector */}
+            {[50, 100, 200].map(n => (
+              <button key={n} style={lines === n ? btnActive : btnBase} onClick={() => handleLines(n)}>{n}</button>
+            ))}
+
+            {/* Live toggle */}
+            <button style={live ? { ...btnActive, borderColor: "rgba(100,255,150,0.4)", color: "rgba(100,255,150,0.8)" } : btnBase}
+              onClick={() => setLive(v => !v)}>
+              {live ? "● Live" : "○ Live"}
+            </button>
+
+            {/* Refresh */}
+            <button style={btnBase} onClick={() => fetchLogs()}
+              onMouseEnter={e => Object.assign(e.target.style, { color: "rgba(255,255,255,0.7)", borderColor: "rgba(255,255,255,0.35)" })}
+              onMouseLeave={e => Object.assign(e.target.style, { color: "rgba(255,255,255,0.35)", borderColor: "rgba(255,255,255,0.15)" })}>
+              ↺ Refresh
+            </button>
+
+            {/* Close */}
+            <button style={{ ...btnBase, borderColor: "rgba(255,80,80,0.25)", color: "rgba(255,100,100,0.5)" }}
+              onClick={() => { setOpen(false); setLive(false); }}
+              onMouseEnter={e => Object.assign(e.target.style, { color: "rgba(255,120,120,0.9)", borderColor: "rgba(255,80,80,0.55)" })}
+              onMouseLeave={e => Object.assign(e.target.style, { color: "rgba(255,100,100,0.5)", borderColor: "rgba(255,80,80,0.25)" })}>
+              ✕ Schließen
+            </button>
+          </div>
+        </div>
+
+        {/* Log output */}
+        <pre ref={logRef} style={{
+          margin: 0, padding: "14px 18px", maxHeight: "420px", overflowY: "auto",
+          fontFamily: "'Courier New', 'Consolas', monospace", fontSize: "11px",
+          lineHeight: "1.6", color: hasError ? "rgba(255,140,140,0.8)" : "rgba(180,220,180,0.85)",
+          whiteSpace: "pre-wrap", wordBreak: "break-all",
+        }}>
+          {logs || (loading ? "Lade…" : "Keine Logs verfügbar")}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function UpdatePanel() {
   const [version, setVersion]           = useState(null);
   const [status, setStatus]             = useState("idle");
@@ -590,6 +699,7 @@ export default function App() {
         Catrice · High Shine Gel Collection
       </div>
 
+      <LogPanel />
       <UpdatePanel />
     </div>
   );

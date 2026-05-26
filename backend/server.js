@@ -177,6 +177,21 @@ app.post("/api/update/apply", (req, res) => {
   }
 });
 
+// API: fetch systemd journal logs
+app.get("/api/logs", (req, res) => {
+  const lines = Math.min(parseInt(req.query.lines) || 100, 500);
+  try {
+    const output = execSync(
+      `journalctl -u nagellacke -n ${lines} --no-pager --output=short-iso`,
+      { stdio: "pipe", timeout: 6000 }
+    ).toString();
+    res.json({ logs: output, lines });
+  } catch (e) {
+    const msg = e.stderr ? e.stderr.toString().trim() : e.message;
+    res.json({ logs: msg || "journalctl nicht verfügbar", lines, error: true });
+  }
+});
+
 // Fallback: serve index.html for client-side routing
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
