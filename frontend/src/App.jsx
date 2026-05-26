@@ -1,11 +1,36 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 
-const BUILT_IN_FILTERS = [
-  { id: "all",     label: "Alle",            icon: "◈" },
-  { id: "shimmer", label: "Shimmer",         icon: "✨" },
-  { id: "classic", label: "Classic",         icon: "●" },
-  { id: "coat",    label: "Top / Base Coat", icon: "◻" },
-  { id: "empty",   label: "Leer / Weg",      icon: "○" },
+const FINISH_OPTIONS = [
+  { value: "Classic",     label: "Classic",      icon: "●" },
+  { value: "Shimmer",     label: "Shimmer",      icon: "✨" },
+  { value: "Glitter",     label: "Glitter",      icon: "✦" },
+  { value: "Metallic",    label: "Metallic",     icon: "◉" },
+  { value: "Chrome",      label: "Chrome",       icon: "◎" },
+  { value: "Matte",       label: "Matte",        icon: "◼" },
+  { value: "Satin",       label: "Satin",        icon: "◈" },
+  { value: "Duochrome",   label: "Duochrome",    icon: "◑" },
+  { value: "Holographic", label: "Holographic",  icon: "◇" },
+  { value: "Jelly",       label: "Jelly",        icon: "○" },
+  { value: "Neon",        label: "Neon",         icon: "◆" },
+  { value: "Magnetic",    label: "Magnetic",     icon: "⬡" },
+  { value: "Gel Look",    label: "Gel Look",     icon: "◐" },
+  { value: "Top Coat",    label: "Top Coat",     icon: "▽" },
+  { value: "Base Coat",   label: "Base Coat",    icon: "△" },
+];
+
+// Finishes that use the shimmer/glitter SVG gradient on the bottle
+const SHIMMER_FINISHES = new Set(["Shimmer", "Glitter", "Metallic", "Chrome", "Holographic", "Duochrome"]);
+
+const BRAND_SUGGESTIONS = [
+  "Alessandro", "Barry M", "Butter London", "Catrice", "Chanel",
+  "China Glaze", "CND", "Color Street", "Dance Legend", "Deborah Lippmann",
+  "Depend", "Dior", "E.Mi", "Essie", "Flormar", "Gelish",
+  "Golden Rose", "IBD", "Inglot", "IsaDora", "Kiko Milano",
+  "Kiara Sky", "Kure Bazaar", "L.A. Colors", "Lancôme",
+  "MAC", "Manucurist", "Maybelline", "Models Own",
+  "Nailberry", "Nails Inc.", "NYX", "OPI", "Orly",
+  "Pastel", "Revlon", "Rimmel", "Sally Hansen",
+  "The Body Shop", "Wet n Wild", "YSL", "Zoya",
 ];
 
 const STATUS_OPTIONS = [
@@ -14,10 +39,11 @@ const STATUS_OPTIONS = [
   { value: "gone",  label: "✕ Nicht mehr da",  color: "rgba(255,100,100,0.7)" },
 ];
 
-function NailBottle({ color, shimmer, selected, status, brand }) {
+function NailBottle({ color, finish, selected, status, brand }) {
   const uid = useMemo(() => color.replace("#", "") + Math.random().toString(36).slice(2, 7), []);
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === "empty" || status === "gone";
+  const shimmer = SHIMMER_FINISHES.has(finish || "Classic");
   const brandLabel = (brand || "").toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? "3" : "4";
   return (
@@ -63,7 +89,7 @@ function NailBottle({ color, shimmer, selected, status, brand }) {
   );
 }
 
-const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", shimmer: false, count: 1, categories: [], status: "ok" };
+const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", finish: "Classic", count: 1, categories: [], status: "ok" };
 
 function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabel, onCancel, success }) {
   const toggleCat = (catId) => setForm(f => ({
@@ -74,7 +100,7 @@ function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabe
     <div style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: "24px", padding: "26px 26px 22px" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
         <div style={{ textAlign: "center" }}>
-          <NailBottle color={form.color} shimmer={form.shimmer} selected={false} status={form.status} brand={form.brand} />
+          <NailBottle color={form.color} finish={form.finish} selected={false} status={form.status} brand={form.brand} />
           {form.name && (
             <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "13px", color: "rgba(255,255,255,0.65)", marginTop: "8px", maxWidth: "100px" }}>
               {form.brand && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "9px", letterSpacing: "2px", color: "rgba(255,255,255,0.22)", textTransform: "uppercase" }}>{form.brand}</div>}
@@ -94,7 +120,7 @@ function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabe
           <input className="form-input" list="brand-suggestions" placeholder="z.B. Catrice, OPI…"
             value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
           <datalist id="brand-suggestions">
-            {(allBrands || []).map(b => <option key={b} value={b} />)}
+            {[...new Set([...(allBrands || []), ...BRAND_SUGGESTIONS])].sort().map(b => <option key={b} value={b} />)}
           </datalist>
         </div>
         <div>
@@ -102,19 +128,24 @@ function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabe
           <input className="form-input" placeholder="z.B. 029" value={form.num} onChange={e => setForm(f => ({ ...f, num: e.target.value }))} />
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px", gap: "12px", marginBottom: "12px" }}>
+      <div style={{ marginBottom: "12px" }}>
+        <label className="form-label">Finish / Effekt</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {FINISH_OPTIONS.map(f => (
+            <button key={f.value} className={`cat-chip ${form.finish === f.value ? "on" : ""}`}
+              onClick={() => setForm(frm => ({ ...frm, finish: f.value }))}>
+              {f.icon} {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: "12px", marginBottom: "12px" }}>
         <div>
           <label className="form-label">Farbe</label>
           <div style={{ display: "flex", alignItems: "center", gap: "9px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: "10px", padding: "8px 12px", height: "42px" }}>
             <div style={{ width: 22, height: 22, borderRadius: "5px", background: form.color, boxShadow: `0 0 8px ${form.color}88`, flexShrink: 0 }} />
             <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: "100%", height: "22px" }} />
           </div>
-        </div>
-        <div>
-          <label className="form-label">Effekt</label>
-          <button className={`toggle-btn ${form.shimmer ? "on" : ""}`} onClick={() => setForm(f => ({ ...f, shimmer: !f.shimmer }))}>
-            {form.shimmer ? "✨ Shimmer" : "● Classic"}
-          </button>
         </div>
         <div>
           <label className="form-label">Anzahl</label>
@@ -135,7 +166,6 @@ function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabe
       <div style={{ marginBottom: "18px" }}>
         <label className="form-label">Kategorien</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
-          <button className={`cat-chip ${form.categories.includes("coat") ? "on" : ""}`} onClick={() => toggleCat("coat")}>◻ Top / Base Coat</button>
           {customCats.map(c => (
             <button key={c.id} className={`cat-chip ${form.categories.includes(c.id) ? "on" : ""}`} onClick={() => toggleCat(c.id)}>◆ {c.label}</button>
           ))}
@@ -195,9 +225,11 @@ function StatsPage({ polishes, customCats }) {
   const empty        = polishes.filter(p => p.status === "empty").length;
   const gone         = polishes.filter(p => p.status === "gone").length;
 
-  const shimmerCount = polishes.filter(p => p.shimmer && !(p.categories || []).includes("coat")).length;
-  const coatCount    = polishes.filter(p => (p.categories || []).includes("coat")).length;
-  const classicCount = polishes.filter(p => !p.shimmer && !(p.categories || []).includes("coat")).length;
+  const finishCounts = useMemo(() => {
+    const map = {};
+    polishes.forEach(p => { const f = p.finish || "Classic"; map[f] = (map[f] || 0) + 1; });
+    return FINISH_OPTIONS.filter(f => map[f.value]).map(f => ({ ...f, count: map[f.value] || 0 }));
+  }, [polishes]);
 
   const byBrand = useMemo(() => {
     const map = {};
@@ -262,14 +294,10 @@ function StatsPage({ polishes, customCats }) {
           <StatCard>
             <CardLabel>Finish</CardLabel>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {[
-                { label: "● Classic",         value: classicCount, color: "rgba(200,200,255,0.55)" },
-                { label: "✨ Shimmer",         value: shimmerCount, color: "rgba(255,230,100,0.55)" },
-                { label: "◻ Top / Base Coat", value: coatCount,    color: "rgba(180,230,255,0.55)" },
-              ].map(({ label, value, color }) => (
+              {finishCounts.map(({ icon, label, value, count }) => (
                 <div key={label}>
-                  <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "3px" }}>{label}</div>
-                  <Bar value={value} max={total} color={color} />
+                  <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "3px" }}>{icon} {label}</div>
+                  <Bar value={count} max={total} color="rgba(200,200,255,0.55)" />
                 </div>
               ))}
             </div>
@@ -606,24 +634,32 @@ export default function App() {
   const updatePolishes = (newPolishes) => { setPolishes(newPolishes); saveToBackend(newPolishes, customCats); };
   const updateCats = (newCats) => { setCustomCats(newCats); saveToBackend(polishes, newCats); };
 
-  const allFilters = [...BUILT_IN_FILTERS, ...customCats.map(c => ({ id: c.id, label: c.label, icon: "◆", custom: true }))];
-
   const allBrands = useMemo(() => {
     const brands = [...new Set(polishes.map(p => p.brand).filter(Boolean))];
     return brands.sort((a, b) => a.localeCompare(b));
   }, [polishes]);
+
+  // Only finishes actually used in the collection, ordered by FINISH_OPTIONS
+  const usedFinishes = useMemo(() => {
+    const inUse = new Set(polishes.map(p => p.finish || "Classic"));
+    return FINISH_OPTIONS.filter(f => inUse.has(f.value));
+  }, [polishes]);
+
+  // Only custom categories actually assigned to at least one polish
+  const usedCustomCats = useMemo(() => {
+    const inUse = new Set(polishes.flatMap(p => p.categories || []));
+    return customCats.filter(c => inUse.has(c.id));
+  }, [polishes, customCats]);
 
   const filtered = useMemo(() => polishes.filter(p => {
     const q = search.toLowerCase();
     if (q && !p.name.toLowerCase().includes(q) && !(p.num || "").includes(q) && !(p.brand || "").toLowerCase().includes(q)) return false;
     if (activeBrand && (p.brand || "") !== activeBrand) return false;
     if (activeFilter === "all") return true;
-    if (activeFilter === "shimmer") return !!p.shimmer;
-    if (activeFilter === "classic") return !p.shimmer && !(p.categories || []).includes("coat") && p.status === "ok";
-    if (activeFilter === "coat") return (p.categories || []).includes("coat");
     if (activeFilter === "empty") return p.status === "empty" || p.status === "gone";
+    if (FINISH_OPTIONS.some(f => f.value === activeFilter)) return (p.finish || "Classic") === activeFilter;
     return (p.categories || []).includes(activeFilter);
-  }), [polishes, customCats, search, activeFilter, activeBrand]);
+  }), [polishes, search, activeFilter, activeBrand]);
 
   const sel = selected !== null ? polishes[selected] : null;
 
@@ -631,7 +667,7 @@ export default function App() {
     if (!form.name.trim()) return;
     const newPolishes = [...polishes, {
       name: form.name.trim(), brand: form.brand.trim() || undefined,
-      color: form.color, shimmer: form.shimmer,
+      color: form.color, finish: form.finish,
       categories: form.categories, status: form.status,
       ...(form.num.trim() && { num: form.num.trim() }),
       ...(parseInt(form.count) > 1 && { count: parseInt(form.count) }),
@@ -645,7 +681,7 @@ export default function App() {
   const openEdit = (idx) => {
     const p = polishes[idx];
     setEditIdx(idx);
-    setEditForm({ num: p.num || "", name: p.name, brand: p.brand || "", color: p.color, shimmer: !!p.shimmer, count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok" });
+    setEditForm({ num: p.num || "", name: p.name, brand: p.brand || "", color: p.color, finish: p.finish || "Classic", count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok" });
     setConfirmDelete(false);
     setEditSuccess(false);
   };
@@ -654,7 +690,7 @@ export default function App() {
     if (!editForm.name.trim()) return;
     const newPolishes = polishes.map((p, i) => i !== editIdx ? p : {
       ...p, name: editForm.name.trim(), brand: editForm.brand.trim() || undefined,
-      color: editForm.color, shimmer: editForm.shimmer,
+      color: editForm.color, finish: editForm.finish,
       categories: editForm.categories, status: editForm.status,
       ...(editForm.num.trim() ? { num: editForm.num.trim() } : { num: undefined }),
       count: parseInt(editForm.count) > 1 ? parseInt(editForm.count) : undefined,
@@ -677,11 +713,7 @@ export default function App() {
     setNewCatInput(""); setShowCatInput(false);
   };
 
-  const getPolishLabel = (p) => {
-    if ((p.categories || []).includes("coat")) return "Top / Base Coat";
-    if (p.shimmer) return "Shimmer";
-    return "Classic";
-  };
+  const getPolishLabel = (p) => p.finish || "Classic";
 
   const statusObj = (p) => STATUS_OPTIONS.find(s => s.value === (p.status || "ok")) || STATUS_OPTIONS[0];
 
@@ -777,10 +809,17 @@ export default function App() {
 
         {/* Filters */}
         <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "14px", flexWrap: "wrap", padding: "0 12px" }}>
-          {allFilters.map(f => (
-            <button key={f.id} className={`filter-btn ${f.custom ? "custom-cat" : ""} ${activeFilter === f.id ? "active" : ""}`} onClick={() => setActiveFilter(f.id)}>
+          <button className={`filter-btn ${activeFilter === "all" ? "active" : ""}`} onClick={() => setActiveFilter("all")}>◈ Alle</button>
+          {usedFinishes.map(f => (
+            <button key={f.value} className={`filter-btn ${activeFilter === f.value ? "active" : ""}`} onClick={() => setActiveFilter(f.value)}>
               {f.icon} {f.label}
             </button>
+          ))}
+          {polishes.some(p => p.status === "empty" || p.status === "gone") && (
+            <button className={`filter-btn ${activeFilter === "empty" ? "active" : ""}`} onClick={() => setActiveFilter("empty")}>○ Leer / Weg</button>
+          )}
+          {usedCustomCats.map(c => (
+            <button key={c.id} className={`filter-btn custom-cat ${activeFilter === c.id ? "active" : ""}`} onClick={() => setActiveFilter(c.id)}>◆ {c.label}</button>
           ))}
           {showCatInput ? (
             <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
@@ -854,7 +893,7 @@ export default function App() {
         <div className="slide-up" style={{ margin: "24px auto", maxWidth: "520px", padding: "0 16px" }}>
           <div style={{ background: `linear-gradient(135deg,${sel.color}20 0%,${sel.color}07 100%)`, border: `1px solid ${sel.color}40`, borderRadius: "20px", padding: "22px 26px", position: "relative" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "22px" }}>
-              <NailBottle color={sel.color} shimmer={sel.shimmer} selected={true} status={sel.status} brand={sel.brand} />
+              <NailBottle color={sel.color} finish={sel.finish} selected={true} status={sel.status} brand={sel.brand} />
               <div style={{ flex: 1 }}>
                 {sel.brand && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", color: "rgba(255,255,255,0.28)", marginBottom: "2px", textTransform: "uppercase" }}>{sel.brand}</div>}
                 {sel.num && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", letterSpacing: "4px", color: "rgba(255,255,255,0.38)", marginBottom: "5px" }}>№ {sel.num}</div>}
@@ -902,13 +941,12 @@ export default function App() {
               onClick={() => { setShowAdd(false); setEditIdx(null); setEditForm(null); setSelected(selected === globalIdx ? null : globalIdx); }}>
               {p.count && <div className="count-badge">×{p.count}</div>}
               {p.status !== "ok" && <div className="status-dot" style={{ background: st.color }} />}
-              <NailBottle color={p.color} shimmer={p.shimmer} selected={selected === globalIdx} status={p.status} brand={p.brand} />
+              <NailBottle color={p.color} finish={p.finish} selected={selected === globalIdx} status={p.status} brand={p.brand} />
               <div style={{ textAlign: "center" }}>
                 {p.brand && allBrands.length > 1 && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "9px", letterSpacing: "2px", color: "rgba(255,255,255,0.2)", marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
                 {p.num && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", color: "rgba(255,255,255,0.28)", marginBottom: "3px" }}>{p.num}</div>}
                 <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" ? "rgba(255,255,255,0.38)" : "rgba(255,255,255,0.83)", maxWidth: "110px" }}>{p.name}</div>
-                {p.shimmer && <div style={{ fontSize: "10px", color: "rgba(255,220,100,0.55)", marginTop: "3px" }}>✨</div>}
-                {(p.categories || []).includes("coat") && <div style={{ fontSize: "10px", color: "rgba(180,220,255,0.55)", marginTop: "2px" }}>◻ Coat</div>}
+                {p.finish && p.finish !== "Classic" && <div style={{ fontSize: "10px", color: "rgba(255,220,100,0.55)", marginTop: "3px" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</div>}
               </div>
             </div>
           );

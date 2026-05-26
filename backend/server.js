@@ -15,21 +15,21 @@ const CURRENT_VERSION = pkg.version;
 // Default data if no file exists yet
 const DEFAULT_DATA = {
   polishes: [
-    { name: "High Shine Gel", sub: "Top Coat", brand: "Catrice", color: "#ddeeff", shimmer: true, categories: ["coat"], status: "ok" },
-    { num: "029", name: "Blue You A Kiss", brand: "Catrice", color: "#3a7bd5", categories: [], status: "ok" },
-    { num: "021", name: "Caught on The Red Carpet", brand: "Catrice", color: "#c0202a", categories: [], status: "ok" },
-    { num: "030", name: "Fairy Dust", brand: "Catrice", color: "#f9c8e0", shimmer: true, categories: [], status: "ok" },
-    { num: "020", name: "Solar Seduction", brand: "Catrice", color: "#f4a020", categories: [], status: "ok" },
-    { num: "006", name: "Party Animal", brand: "Catrice", color: "#7b1e2e", categories: [], status: "ok" },
-    { num: "010", name: "Party At First Pull", brand: "Catrice", color: "#e05080", count: 2, categories: [], status: "ok" },
-    { num: "038", name: "Cosmo Where is Wanda?", brand: "Catrice", color: "#d4257a", categories: [], status: "ok" },
-    { num: "026", name: "Midnight Dusk", brand: "Catrice", color: "#1b1340", categories: [], status: "ok" },
-    { num: "041", name: "Spill The Tea-I", brand: "Catrice", color: "#9e6b34", categories: [], status: "ok" },
-    { num: "040", name: "Ocean Whisper", brand: "Catrice", color: "#2a9db5", categories: [], status: "ok" },
-    { num: "036", name: "Silver Supernova", brand: "Catrice", color: "#a8b4c8", shimmer: true, categories: [], status: "ok" },
-    { num: "025", name: "Lilac Lullaby", brand: "Catrice", color: "#b98ed6", categories: [], status: "ok" },
-    { num: "044", name: "Sparkle Like It's Midnight", brand: "Catrice", color: "#0a0e2e", shimmer: true, categories: [], status: "ok" },
-    { num: "031", name: "Electric Turquoise", brand: "Catrice", color: "#00c9c8", categories: [], status: "ok" },
+    { name: "High Shine Gel", brand: "Catrice", color: "#ddeeff", finish: "Top Coat",  categories: [], status: "ok" },
+    { num: "029", name: "Blue You A Kiss",             brand: "Catrice", color: "#3a7bd5", finish: "Classic", categories: [], status: "ok" },
+    { num: "021", name: "Caught on The Red Carpet",    brand: "Catrice", color: "#c0202a", finish: "Classic", categories: [], status: "ok" },
+    { num: "030", name: "Fairy Dust",                  brand: "Catrice", color: "#f9c8e0", finish: "Shimmer", categories: [], status: "ok" },
+    { num: "020", name: "Solar Seduction",             brand: "Catrice", color: "#f4a020", finish: "Classic", categories: [], status: "ok" },
+    { num: "006", name: "Party Animal",                brand: "Catrice", color: "#7b1e2e", finish: "Classic", categories: [], status: "ok" },
+    { num: "010", name: "Party At First Pull",         brand: "Catrice", color: "#e05080", finish: "Classic", count: 2, categories: [], status: "ok" },
+    { num: "038", name: "Cosmo Where is Wanda?",       brand: "Catrice", color: "#d4257a", finish: "Classic", categories: [], status: "ok" },
+    { num: "026", name: "Midnight Dusk",               brand: "Catrice", color: "#1b1340", finish: "Classic", categories: [], status: "ok" },
+    { num: "041", name: "Spill The Tea-I",             brand: "Catrice", color: "#9e6b34", finish: "Classic", categories: [], status: "ok" },
+    { num: "040", name: "Ocean Whisper",               brand: "Catrice", color: "#2a9db5", finish: "Classic", categories: [], status: "ok" },
+    { num: "036", name: "Silver Supernova",            brand: "Catrice", color: "#a8b4c8", finish: "Shimmer", categories: [], status: "ok" },
+    { num: "025", name: "Lilac Lullaby",               brand: "Catrice", color: "#b98ed6", finish: "Classic", categories: [], status: "ok" },
+    { num: "044", name: "Sparkle Like It's Midnight",  brand: "Catrice", color: "#0a0e2e", finish: "Glitter", categories: [], status: "ok" },
+    { num: "031", name: "Electric Turquoise",          brand: "Catrice", color: "#00c9c8", finish: "Classic", categories: [], status: "ok" },
   ],
   customCats: [],
 };
@@ -43,11 +43,23 @@ function loadData() {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-      // Migrate: add brand="Catrice" to polishes that predate multi-brand support
+      // Migrate: add missing fields from older data formats
       let migrated = false;
       data.polishes = (data.polishes || []).map(p => {
-        if (!p.brand) { migrated = true; return { ...p, brand: "Catrice" }; }
-        return p;
+        let updated = { ...p };
+        if (!updated.brand) { updated.brand = "Catrice"; migrated = true; }
+        if (!updated.finish) {
+          if ((updated.categories || []).includes("coat")) {
+            updated.finish = "Top Coat";
+            updated.categories = updated.categories.filter(c => c !== "coat");
+          } else if (updated.shimmer) {
+            updated.finish = "Shimmer";
+          } else {
+            updated.finish = "Classic";
+          }
+          migrated = true;
+        }
+        return updated;
       });
       if (migrated) saveData(data);
       return data;
