@@ -14,10 +14,12 @@ const STATUS_OPTIONS = [
   { value: "gone",  label: "✕ Nicht mehr da",  color: "rgba(255,100,100,0.7)" },
 ];
 
-function NailBottle({ color, shimmer, selected, status }) {
+function NailBottle({ color, shimmer, selected, status, brand }) {
   const uid = useMemo(() => color.replace("#", "") + Math.random().toString(36).slice(2, 7), []);
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === "empty" || status === "gone";
+  const brandLabel = (brand || "").toUpperCase().slice(0, 9);
+  const brandFs = brandLabel.length > 6 ? "3" : "4";
   return (
     <svg width="64" height="130" viewBox="0 0 64 130" fill="none"
       style={{ filter: selected ? `drop-shadow(0 0 14px ${color}bb)` : "drop-shadow(0 4px 10px rgba(0,0,0,0.55))", transition: "filter 0.3s, opacity 0.3s", opacity: faded ? 0.38 : 1 }}>
@@ -54,16 +56,16 @@ function NailBottle({ color, shimmer, selected, status }) {
       <rect x="16" y="49" width="4" height="20" rx="2" fill="white" fillOpacity="0.24" />
       <rect x="10" y="108" width="44" height="16" rx="6" fill="black" fillOpacity="0.2" />
       <rect x="18" y="75" width="28" height="30" rx="2" fill="white" fillOpacity="0.11" />
-      <text x="32" y="87" textAnchor="middle" fontSize="4" fill="white" fillOpacity="0.65" fontFamily="serif" letterSpacing="0.5">CATRICE</text>
+      <text x="32" y="87" textAnchor="middle" fontSize={brandFs} fill="white" fillOpacity="0.65" fontFamily="serif" letterSpacing="0.3">{brandLabel}</text>
       <line x1="20" y1="90" x2="44" y2="90" stroke="white" strokeOpacity="0.25" strokeWidth="0.5" />
       <text x="32" y="98" textAnchor="middle" fontSize="3.5" fill="white" fillOpacity="0.45" fontFamily="sans-serif">nail lacquer</text>
     </svg>
   );
 }
 
-const EMPTY_FORM = { num: "", name: "", color: "#ff6699", shimmer: false, count: 1, categories: [], status: "ok" };
+const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", shimmer: false, count: 1, categories: [], status: "ok" };
 
-function PolishForm({ form, setForm, customCats, onSubmit, submitLabel, onCancel, success }) {
+function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabel, onCancel, success }) {
   const toggleCat = (catId) => setForm(f => ({
     ...f,
     categories: f.categories.includes(catId) ? f.categories.filter(c => c !== catId) : [...f.categories, catId],
@@ -72,19 +74,28 @@ function PolishForm({ form, setForm, customCats, onSubmit, submitLabel, onCancel
     <div style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: "24px", padding: "26px 26px 22px" }}>
       <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
         <div style={{ textAlign: "center" }}>
-          <NailBottle color={form.color} shimmer={form.shimmer} selected={false} status={form.status} />
+          <NailBottle color={form.color} shimmer={form.shimmer} selected={false} status={form.status} brand={form.brand} />
           {form.name && (
             <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "13px", color: "rgba(255,255,255,0.65)", marginTop: "8px", maxWidth: "100px" }}>
+              {form.brand && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "9px", letterSpacing: "2px", color: "rgba(255,255,255,0.22)", textTransform: "uppercase" }}>{form.brand}</div>}
               {form.num && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "2px", color: "rgba(255,255,255,0.28)" }}>{form.num}</div>}
               {form.name}
             </div>
           )}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr", gap: "12px", marginBottom: "12px" }}>
         <div>
           <label className="form-label">Name *</label>
           <input className="form-input" placeholder="z.B. Blue You A Kiss" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div>
+          <label className="form-label">Marke *</label>
+          <input className="form-input" list="brand-suggestions" placeholder="z.B. Catrice, OPI…"
+            value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
+          <datalist id="brand-suggestions">
+            {(allBrands || []).map(b => <option key={b} value={b} />)}
+          </datalist>
         </div>
         <div>
           <label className="form-label">Nummer</label>
@@ -392,6 +403,7 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [newCatInput, setNewCatInput]     = useState("");
   const [showCatInput, setShowCatInput]   = useState(false);
+  const [activeBrand, setActiveBrand]     = useState(null); // null = alle Marken
 
   // ── Load from backend on mount ──
   useEffect(() => {
@@ -423,23 +435,30 @@ export default function App() {
 
   const allFilters = [...BUILT_IN_FILTERS, ...customCats.map(c => ({ id: c.id, label: c.label, icon: "◆", custom: true }))];
 
+  const allBrands = useMemo(() => {
+    const brands = [...new Set(polishes.map(p => p.brand).filter(Boolean))];
+    return brands.sort((a, b) => a.localeCompare(b));
+  }, [polishes]);
+
   const filtered = useMemo(() => polishes.filter(p => {
     const q = search.toLowerCase();
-    if (q && !p.name.toLowerCase().includes(q) && !(p.num || "").includes(q)) return false;
+    if (q && !p.name.toLowerCase().includes(q) && !(p.num || "").includes(q) && !(p.brand || "").toLowerCase().includes(q)) return false;
+    if (activeBrand && (p.brand || "") !== activeBrand) return false;
     if (activeFilter === "all") return true;
     if (activeFilter === "shimmer") return !!p.shimmer;
     if (activeFilter === "classic") return !p.shimmer && !(p.categories || []).includes("coat") && p.status === "ok";
     if (activeFilter === "coat") return (p.categories || []).includes("coat");
     if (activeFilter === "empty") return p.status === "empty" || p.status === "gone";
     return (p.categories || []).includes(activeFilter);
-  }), [polishes, customCats, search, activeFilter]);
+  }), [polishes, customCats, search, activeFilter, activeBrand]);
 
   const sel = selected !== null ? polishes[selected] : null;
 
   const handleAdd = () => {
     if (!form.name.trim()) return;
     const newPolishes = [...polishes, {
-      name: form.name.trim(), color: form.color, shimmer: form.shimmer,
+      name: form.name.trim(), brand: form.brand.trim() || undefined,
+      color: form.color, shimmer: form.shimmer,
       categories: form.categories, status: form.status,
       ...(form.num.trim() && { num: form.num.trim() }),
       ...(parseInt(form.count) > 1 && { count: parseInt(form.count) }),
@@ -453,7 +472,7 @@ export default function App() {
   const openEdit = (idx) => {
     const p = polishes[idx];
     setEditIdx(idx);
-    setEditForm({ num: p.num || "", name: p.name, color: p.color, shimmer: !!p.shimmer, count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok" });
+    setEditForm({ num: p.num || "", name: p.name, brand: p.brand || "", color: p.color, shimmer: !!p.shimmer, count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok" });
     setConfirmDelete(false);
     setEditSuccess(false);
   };
@@ -461,7 +480,8 @@ export default function App() {
   const handleSave = () => {
     if (!editForm.name.trim()) return;
     const newPolishes = polishes.map((p, i) => i !== editIdx ? p : {
-      ...p, name: editForm.name.trim(), color: editForm.color, shimmer: editForm.shimmer,
+      ...p, name: editForm.name.trim(), brand: editForm.brand.trim() || undefined,
+      color: editForm.color, shimmer: editForm.shimmer,
       categories: editForm.categories, status: editForm.status,
       ...(editForm.num.trim() ? { num: editForm.num.trim() } : { num: undefined }),
       count: parseInt(editForm.count) > 1 ? parseInt(editForm.count) : undefined,
@@ -550,7 +570,7 @@ export default function App() {
       {/* ── Header ── */}
       <div style={{ textAlign: "center", padding: "48px 24px 28px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <div style={{ fontSize: "10px", letterSpacing: "6px", color: "rgba(255,255,255,0.28)", fontFamily: "'Jost',sans-serif", textTransform: "uppercase", marginBottom: "12px" }}>
-          meine kollektion · catrice
+          meine kollektion
         </div>
         <h1 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "clamp(34px,6vw,62px)", fontWeight: 300, letterSpacing: "4px", margin: 0, background: "linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.55) 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1.1 }}>
           Nail Lacquer
@@ -598,13 +618,26 @@ export default function App() {
             {showAdd ? "✕ Schließen" : "+ Neuer Lack"}
           </button>
         </div>
+
+        {/* ── Marken-Filter (nur wenn >1 Marke) ── */}
+        {allBrands.length > 1 && (
+          <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "8px", flexWrap: "wrap", padding: "0 12px" }}>
+            <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "2px", color: "rgba(255,255,255,0.2)", textTransform: "uppercase", alignSelf: "center", paddingRight: "4px" }}>Marke</span>
+            <button className={`filter-btn ${activeBrand === null ? "active" : ""}`} onClick={() => setActiveBrand(null)}>◈ Alle</button>
+            {allBrands.map(b => (
+              <button key={b} className={`filter-btn ${activeBrand === b ? "active" : ""}`} onClick={() => setActiveBrand(activeBrand === b ? null : b)}>
+                {b}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Add Form ── */}
       {showAdd && (
         <div className="slide-up" style={{ margin: "28px auto", maxWidth: "560px", padding: "0 16px" }}>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "21px", fontWeight: 300, letterSpacing: "3px", marginBottom: "16px", color: "rgba(255,255,255,0.72)", paddingLeft: "4px" }}>Neuen Lack hinzufügen</div>
-          <PolishForm form={form} setForm={setForm} customCats={customCats} onSubmit={handleAdd} submitLabel="+ Hinzufügen" success={addSuccess} />
+          <PolishForm form={form} setForm={setForm} customCats={customCats} allBrands={allBrands} onSubmit={handleAdd} submitLabel="+ Hinzufügen" success={addSuccess} />
         </div>
       )}
 
@@ -625,7 +658,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <PolishForm form={editForm} setForm={setEditForm} customCats={customCats}
+          <PolishForm form={editForm} setForm={setEditForm} customCats={customCats} allBrands={allBrands}
             onSubmit={handleSave} submitLabel="✓ Speichern"
             onCancel={() => { setEditIdx(null); setEditForm(null); setConfirmDelete(false); }} success={editSuccess} />
         </div>
@@ -636,8 +669,9 @@ export default function App() {
         <div className="slide-up" style={{ margin: "24px auto", maxWidth: "520px", padding: "0 16px" }}>
           <div style={{ background: `linear-gradient(135deg,${sel.color}20 0%,${sel.color}07 100%)`, border: `1px solid ${sel.color}40`, borderRadius: "20px", padding: "22px 26px", position: "relative" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "22px" }}>
-              <NailBottle color={sel.color} shimmer={sel.shimmer} selected={true} status={sel.status} />
+              <NailBottle color={sel.color} shimmer={sel.shimmer} selected={true} status={sel.status} brand={sel.brand} />
               <div style={{ flex: 1 }}>
+                {sel.brand && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", color: "rgba(255,255,255,0.28)", marginBottom: "2px", textTransform: "uppercase" }}>{sel.brand}</div>}
                 {sel.num && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", letterSpacing: "4px", color: "rgba(255,255,255,0.38)", marginBottom: "5px" }}>№ {sel.num}</div>}
                 <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "25px", fontWeight: 400, lineHeight: 1.2, marginBottom: "7px" }}>{sel.name}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: "9px", marginTop: "8px", flexWrap: "wrap" }}>
@@ -683,8 +717,9 @@ export default function App() {
               onClick={() => { setShowAdd(false); setEditIdx(null); setEditForm(null); setSelected(selected === globalIdx ? null : globalIdx); }}>
               {p.count && <div className="count-badge">×{p.count}</div>}
               {p.status !== "ok" && <div className="status-dot" style={{ background: st.color }} />}
-              <NailBottle color={p.color} shimmer={p.shimmer} selected={selected === globalIdx} status={p.status} />
+              <NailBottle color={p.color} shimmer={p.shimmer} selected={selected === globalIdx} status={p.status} brand={p.brand} />
               <div style={{ textAlign: "center" }}>
+                {p.brand && allBrands.length > 1 && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "9px", letterSpacing: "2px", color: "rgba(255,255,255,0.2)", marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
                 {p.num && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", color: "rgba(255,255,255,0.28)", marginBottom: "3px" }}>{p.num}</div>}
                 <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" ? "rgba(255,255,255,0.38)" : "rgba(255,255,255,0.83)", maxWidth: "110px" }}>{p.name}</div>
                 {p.shimmer && <div style={{ fontSize: "10px", color: "rgba(255,220,100,0.55)", marginTop: "3px" }}>✨</div>}
@@ -696,7 +731,7 @@ export default function App() {
       </div>
 
       <div style={{ textAlign: "center", padding: "0 0 16px", fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "4px", color: "rgba(255,255,255,0.1)", textTransform: "uppercase" }}>
-        Catrice · High Shine Gel Collection
+        Nail Lacquer Kollektion
       </div>
 
       <LogPanel />
