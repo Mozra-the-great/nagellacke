@@ -72,32 +72,45 @@ function getGithubRepo() {
   return null;
 }
 
-function fetchLatestRelease(owner, repo) {
+function githubGet(path) {
   return new Promise((resolve, reject) => {
     const req = https.get(
-      {
-        hostname: "api.github.com",
-        path: `/repos/${owner}/${repo}/releases/latest`,
-        headers: { "User-Agent": "nagellacke-app" },
-      },
+      { hostname: "api.github.com", path, headers: { "User-Agent": "nagellacke-app" } },
       (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
         res.on("end", () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(new Error("Ungültige API-Antwort von GitHub"));
-          }
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error("Ungültige API-Antwort von GitHub")); }
         });
       }
     );
     req.on("error", reject);
-    req.setTimeout(10000, () => {
-      req.destroy();
-      reject(new Error("GitHub API Timeout"));
-    });
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error("GitHub API Timeout")); });
   });
+}
+
+async function fetchLatestVersion(owner, repo) {
+  // Try releases API first, fall back to tags
+  try {
+    const release = await githubGet(`/repos/${owner}/${repo}/releases/latest`);
+    if (release.tag_name) return { version: release.tag_name, url: release.html_url || null };
+  } catch (e) { /* fall through to tags */ }
+
+  const tags = await githubGet(`/repos/${owner}/${repo}/tags`);
+  if (!Array.isArray(tags) || tags.length === 0) throw new Error("Keine Tags oder Releases auf GitHub gefunden");
+
+  const semver = tags
+    .map(t => t.name)
+    .filter(n => /^v?\d+\.\d+\.\d+$/.test(n))
+    .sort((a, b) => {
+      const parse = v => v.replace(/^v/, "").split(".").map(Number);
+      const [a1, b1, c1] = parse(a), [a2, b2, c2] = parse(b);
+      return (a2 - a1) || (b2 - b1) || (c2 - c1);
+    });
+
+  if (semver.length === 0) throw new Error("Keine gültigen Versions-Tags gefunden");
+  return { version: semver[0], url: `https://github.com/${owner}/${repo}/releases/tag/${semver[0]}` };
 }
 
 // -1 = v1 older than v2 (update available), 0 = equal, 1 = v1 newer
@@ -143,17 +156,13 @@ app.get("/api/update/check", async (req, res) => {
     return res.status(500).json({ error: "Kein GitHub-Remote konfiguriert" });
   }
   try {
-    const release = await fetchLatestRelease(repo.owner, repo.repo);
-    if (!release.tag_name) {
-      return res.status(404).json({ error: "Noch keine Releases auf GitHub vorhanden" });
-    }
-    const latestVersion = release.tag_name.replace(/^v/, "");
+    const latest = await fetchLatestVersion(repo.owner, repo.repo);
+    const latestVersion = latest.version.replace(/^v/, "");
     res.json({
       currentVersion: CURRENT_VERSION,
       latestVersion,
       updateAvailable: compareVersions(CURRENT_VERSION, latestVersion) < 0,
-      releaseUrl: release.html_url || null,
-      releaseNotes: release.body || "",
+      releaseUrl: latest.url,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
