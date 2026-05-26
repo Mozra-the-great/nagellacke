@@ -151,6 +151,178 @@ function PolishForm({ form, setForm, customCats, allBrands, onSubmit, submitLabe
   );
 }
 
+function hexToHue(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === min) return 0;
+  let h;
+  if (max === r)      h = ((g - b) / (max - min) + 6) % 6;
+  else if (max === g) h = (b - r) / (max - min) + 2;
+  else                h = (r - g) / (max - min) + 4;
+  return h * 60;
+}
+
+function Bar({ value, max, color }) {
+  const pct = max === 0 ? 0 : Math.round((value / max) * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ flex: 1, height: "6px", background: "rgba(255,255,255,0.07)", borderRadius: "3px", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: "3px", transition: "width 0.6s ease" }} />
+      </div>
+      <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", minWidth: "28px", textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
+function StatCard({ children, style }) {
+  return (
+    <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "20px", padding: "22px 24px", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function CardLabel({ children }) {
+  return <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "9px", letterSpacing: "3px", textTransform: "uppercase", color: "rgba(255,255,255,0.22)", marginBottom: "14px" }}>{children}</div>;
+}
+
+function StatsPage({ polishes, customCats }) {
+  const total        = polishes.length;
+  const totalBottles = polishes.reduce((a, p) => a + (p.count || 1), 0);
+  const available    = polishes.filter(p => (p.status || "ok") === "ok").length;
+  const empty        = polishes.filter(p => p.status === "empty").length;
+  const gone         = polishes.filter(p => p.status === "gone").length;
+
+  const shimmerCount = polishes.filter(p => p.shimmer && !(p.categories || []).includes("coat")).length;
+  const coatCount    = polishes.filter(p => (p.categories || []).includes("coat")).length;
+  const classicCount = polishes.filter(p => !p.shimmer && !(p.categories || []).includes("coat")).length;
+
+  const byBrand = useMemo(() => {
+    const map = {};
+    polishes.forEach(p => { const b = p.brand || "—"; map[b] = (map[b] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [polishes]);
+
+  const byCat = useMemo(() => {
+    const counts = customCats.map(c => ({
+      label: c.label,
+      count: polishes.filter(p => (p.categories || []).includes(c.id)).length,
+    })).filter(c => c.count > 0).sort((a, b) => b.count - a.count);
+    return counts;
+  }, [polishes, customCats]);
+
+  const colorPalette = useMemo(() => {
+    const unique = [...new Set(polishes.map(p => p.color))];
+    return unique.sort((a, b) => hexToHue(a) - hexToHue(b));
+  }, [polishes]);
+
+  const bigNum = { fontFamily: "'Cormorant Garamond',serif", fontSize: "42px", fontWeight: 300, lineHeight: 1, color: "rgba(255,255,255,0.9)" };
+  const bigLabel = { fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginTop: "6px" };
+
+  return (
+    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 18px 60px" }}>
+
+      {/* ── Zahlen-Übersicht ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: "14px", marginBottom: "20px" }}>
+        {[
+          { value: total,        label: "Lacke gesamt",   color: "rgba(255,255,255,0.9)" },
+          { value: totalBottles, label: "Flaschen",       color: "rgba(200,230,255,0.9)" },
+          { value: available,    label: "Verfügbar",      color: "rgba(150,255,180,0.85)" },
+          { value: empty + gone, label: "Leer / Weg",     color: "rgba(255,180,80,0.85)" },
+        ].map(({ value, label, color }) => (
+          <StatCard key={label}>
+            <div style={{ ...bigNum, color }}>{value}</div>
+            <div style={bigLabel}>{label}</div>
+          </StatCard>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
+
+        {/* ── Marken ── */}
+        <StatCard>
+          <CardLabel>Marken</CardLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {byBrand.map(([brand, count]) => (
+              <div key={brand}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                  <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "12px", color: "rgba(255,255,255,0.7)", letterSpacing: "1px" }}>{brand}</span>
+                </div>
+                <Bar value={count} max={total} color="rgba(180,180,255,0.55)" />
+              </div>
+            ))}
+            {byBrand.length === 0 && <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "12px", color: "rgba(255,255,255,0.2)" }}>Keine Marken eingetragen</span>}
+          </div>
+        </StatCard>
+
+        {/* ── Finish + Status ── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <StatCard>
+            <CardLabel>Finish</CardLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {[
+                { label: "● Classic",         value: classicCount, color: "rgba(200,200,255,0.55)" },
+                { label: "✨ Shimmer",         value: shimmerCount, color: "rgba(255,230,100,0.55)" },
+                { label: "◻ Top / Base Coat", value: coatCount,    color: "rgba(180,230,255,0.55)" },
+              ].map(({ label, value, color }) => (
+                <div key={label}>
+                  <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "3px" }}>{label}</div>
+                  <Bar value={value} max={total} color={color} />
+                </div>
+              ))}
+            </div>
+          </StatCard>
+
+          <StatCard>
+            <CardLabel>Status</CardLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {[
+                { label: "✓ Vorhanden",      value: available, color: "rgba(150,255,180,0.55)" },
+                { label: "○ Leer",           value: empty,     color: "rgba(255,200,80,0.55)"  },
+                { label: "✕ Nicht mehr da",  value: gone,      color: "rgba(255,100,100,0.55)" },
+              ].map(({ label, value, color }) => (
+                <div key={label}>
+                  <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "3px" }}>{label}</div>
+                  <Bar value={value} max={total} color={color} />
+                </div>
+              ))}
+            </div>
+          </StatCard>
+        </div>
+      </div>
+
+      {/* ── Kategorien ── */}
+      {byCat.length > 0 && (
+        <StatCard style={{ marginBottom: "20px" }}>
+          <CardLabel>Eigene Kategorien</CardLabel>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {byCat.map(({ label, count }) => (
+              <div key={label}>
+                <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.45)", marginBottom: "3px" }}>◆ {label}</div>
+                <Bar value={count} max={total} color="rgba(220,160,255,0.55)" />
+              </div>
+            ))}
+          </div>
+        </StatCard>
+      )}
+
+      {/* ── Farb-Palette ── */}
+      <StatCard>
+        <CardLabel>Farb-Palette · {colorPalette.length} Farben</CardLabel>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          {colorPalette.map(c => (
+            <div key={c} title={c} style={{ width: "28px", height: "28px", borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}66`, border: "1.5px solid rgba(255,255,255,0.12)", flexShrink: 0, transition: "transform 0.2s", cursor: "default" }}
+              onMouseEnter={e => e.target.style.transform = "scale(1.3)"}
+              onMouseLeave={e => e.target.style.transform = "scale(1)"} />
+          ))}
+        </div>
+      </StatCard>
+    </div>
+  );
+}
+
 function LogPanel() {
   const [open, setOpen]       = useState(false);
   const [logs, setLogs]       = useState("");
@@ -404,6 +576,7 @@ export default function App() {
   const [newCatInput, setNewCatInput]     = useState("");
   const [showCatInput, setShowCatInput]   = useState(false);
   const [activeBrand, setActiveBrand]     = useState(null); // null = alle Marken
+  const [view, setView]                   = useState("collection"); // collection | stats
 
   // ── Load from backend on mount ──
   useEffect(() => {
@@ -568,7 +741,13 @@ export default function App() {
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ textAlign: "center", padding: "48px 24px 28px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ textAlign: "center", padding: "48px 24px 28px", borderBottom: "1px solid rgba(255,255,255,0.05)", position: "relative" }}>
+        <button onClick={() => setView(v => v === "stats" ? "collection" : "stats")}
+          style={{ position: "absolute", top: "20px", right: "20px", background: view === "stats" ? "rgba(255,255,255,0.1)" : "transparent", border: "1px solid rgba(255,255,255,0.18)", color: view === "stats" ? "white" : "rgba(255,255,255,0.38)", padding: "7px 16px", borderRadius: "20px", cursor: "pointer", fontFamily: "'Jost',sans-serif", fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "white"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)"; e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+          onMouseLeave={e => { if (view !== "stats") { e.currentTarget.style.color = "rgba(255,255,255,0.38)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.18)"; e.currentTarget.style.background = "transparent"; } }}>
+          {view === "stats" ? "◈ Kollektion" : "◈ Statistiken"}
+        </button>
         <div style={{ fontSize: "10px", letterSpacing: "6px", color: "rgba(255,255,255,0.28)", fontFamily: "'Jost',sans-serif", textTransform: "uppercase", marginBottom: "12px" }}>
           meine kollektion
         </div>
@@ -632,6 +811,12 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* ── Stats Page ── */}
+      {view === "stats" && <StatsPage polishes={polishes} customCats={customCats} />}
+
+      {/* ── Collection View ── */}
+      {view === "collection" && <>
 
       {/* ── Add Form ── */}
       {showAdd && (
@@ -729,6 +914,8 @@ export default function App() {
           );
         })}
       </div>
+
+      </>}
 
       <div style={{ textAlign: "center", padding: "0 0 16px", fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "4px", color: "rgba(255,255,255,0.1)", textTransform: "uppercase" }}>
         Nail Lacquer Kollektion
