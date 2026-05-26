@@ -82,7 +82,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${INSTALL_DIR}/backend
 ExecStart=/usr/bin/node server.js
-Restart=on-failure
+Restart=always
 RestartSec=5
 Environment=PORT=${PORT}
 # Daten bleiben in: ${INSTALL_DIR}/backend/data/data.json

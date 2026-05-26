@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 
 const BUILT_IN_FILTERS = [
   { id: "all",     label: "Alle",            icon: "◈" },
@@ -135,6 +135,132 @@ function PolishForm({ form, setForm, customCats, onSubmit, submitLabel, onCancel
         <button className="add-btn" onClick={onSubmit} disabled={!form.name.trim()}>{submitLabel}</button>
         {onCancel && <button className="add-trigger" onClick={onCancel}>Abbrechen</button>}
         {success && <span className="success-msg">✓ Gespeichert!</span>}
+      </div>
+    </div>
+  );
+}
+
+function UpdatePanel() {
+  const [version, setVersion]           = useState(null);
+  const [status, setStatus]             = useState("idle");
+  // idle | checking | uptodate | available | updating | restarting | error
+  const [latestVersion, setLatestVersion] = useState(null);
+  const [errorMsg, setErrorMsg]         = useState("");
+  const reloadTimer                     = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/version")
+      .then(r => r.json())
+      .then(d => setVersion(d.version))
+      .catch(() => {});
+    return () => clearTimeout(reloadTimer.current);
+  }, []);
+
+  const check = () => {
+    setStatus("checking");
+    setErrorMsg("");
+    fetch("/api/update/check")
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
+        if (d.updateAvailable) {
+          setLatestVersion(d.latestVersion);
+          setStatus("available");
+        } else {
+          setStatus("uptodate");
+          setTimeout(() => setStatus("idle"), 3500);
+        }
+      })
+      .catch(e => { setErrorMsg(e.message); setStatus("error"); });
+  };
+
+  const applyUpdate = () => {
+    setStatus("updating");
+    fetch("/api/update/apply", { method: "POST" })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
+        setStatus("restarting");
+        reloadTimer.current = setTimeout(() => window.location.reload(), 12000);
+      })
+      .catch(e => { setErrorMsg(e.message); setStatus("error"); });
+  };
+
+  const btnStyle = {
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.18)",
+    color: "rgba(255,255,255,0.38)",
+    padding: "4px 14px",
+    borderRadius: "16px",
+    cursor: "pointer",
+    fontFamily: "'Jost',sans-serif",
+    fontSize: "10px",
+    letterSpacing: "2px",
+    textTransform: "uppercase",
+    transition: "all 0.2s",
+  };
+  const updateBtnStyle = {
+    ...btnStyle,
+    borderColor: "rgba(255,210,60,0.45)",
+    color: "rgba(255,210,60,0.75)",
+  };
+  const textStyle = {
+    fontFamily: "'Jost',sans-serif",
+    fontSize: "10px",
+    letterSpacing: "2px",
+    textTransform: "uppercase",
+  };
+
+  return (
+    <div style={{ textAlign: "center", padding: "0 0 36px" }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
+        {version && (
+          <span style={{ ...textStyle, color: "rgba(255,255,255,0.15)" }}>v{version}</span>
+        )}
+
+        {status === "idle" && (
+          <button style={btnStyle}
+            onMouseEnter={e => { e.target.style.color = "rgba(255,255,255,0.65)"; e.target.style.borderColor = "rgba(255,255,255,0.35)"; }}
+            onMouseLeave={e => { e.target.style.color = "rgba(255,255,255,0.38)"; e.target.style.borderColor = "rgba(255,255,255,0.18)"; }}
+            onClick={check}>
+            Updates prüfen
+          </button>
+        )}
+
+        {status === "checking" && (
+          <span style={{ ...textStyle, color: "rgba(255,255,255,0.25)" }}>Prüfe…</span>
+        )}
+
+        {status === "uptodate" && (
+          <span style={{ ...textStyle, color: "rgba(150,255,180,0.55)" }}>✓ Aktuell</span>
+        )}
+
+        {status === "available" && (
+          <>
+            <span style={{ ...textStyle, color: "rgba(255,210,60,0.75)" }}>↑ v{latestVersion} verfügbar</span>
+            <button style={updateBtnStyle}
+              onMouseEnter={e => { e.target.style.color = "rgba(255,210,60,1)"; e.target.style.borderColor = "rgba(255,210,60,0.75)"; e.target.style.background = "rgba(255,210,60,0.07)"; }}
+              onMouseLeave={e => { e.target.style.color = "rgba(255,210,60,0.75)"; e.target.style.borderColor = "rgba(255,210,60,0.45)"; e.target.style.background = "transparent"; }}
+              onClick={applyUpdate}>
+              Jetzt updaten
+            </button>
+          </>
+        )}
+
+        {status === "updating" && (
+          <span style={{ ...textStyle, color: "rgba(255,255,255,0.3)" }}>⟳ Installiere Update…</span>
+        )}
+
+        {status === "restarting" && (
+          <span style={{ ...textStyle, color: "rgba(150,255,180,0.6)" }}>✓ Update installiert · App startet neu…</span>
+        )}
+
+        {status === "error" && (
+          <>
+            <span style={{ ...textStyle, color: "rgba(255,120,120,0.7)" }}>✕ {errorMsg}</span>
+            <button style={btnStyle} onClick={() => setStatus("idle")}>Zurück</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -460,9 +586,11 @@ export default function App() {
         })}
       </div>
 
-      <div style={{ textAlign: "center", padding: "0 0 30px", fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "4px", color: "rgba(255,255,255,0.1)", textTransform: "uppercase" }}>
+      <div style={{ textAlign: "center", padding: "0 0 16px", fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "4px", color: "rgba(255,255,255,0.1)", textTransform: "uppercase" }}>
         Catrice · High Shine Gel Collection
       </div>
+
+      <UpdatePanel />
     </div>
   );
 }
