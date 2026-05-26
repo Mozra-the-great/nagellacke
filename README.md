@@ -18,7 +18,7 @@ Nach der Installation erreichbar unter **http://SERVER-IP:3000**
 ## Update einspielen
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/DEIN_USER/nagellacke/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
 Derselbe Befehl – zieht die neueste Version und baut das Frontend neu.  
