@@ -36,7 +36,8 @@ info "Installiere Abhängigkeiten (git, curl)…"
 apt-get install -y -qq git curl ca-certificates
 
 # ── 2. Node.js 20 ──
-if ! command -v node &>/dev/null || [[ $(node -e "process.exit(+process.version.slice(1).split('.')[0] < 18)") ]]; then
+NODE_MAJOR=$(node --version 2>/dev/null | grep -oP '(?<=v)\d+' || echo 0)
+if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt 18 ]]; then
   info "Installiere Node.js 20…"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
   apt-get install -y -qq nodejs
