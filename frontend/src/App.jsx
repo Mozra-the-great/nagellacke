@@ -852,8 +852,15 @@ function UpdatePanel({ t, apiKey }) {
     return () => clearInterval(pollRef.current);
   }, []);
 
+  const UPDATE_CACHE_TTL = 10 * 60 * 1000;
   const check = () => {
     setStatus("checking"); setErrorMsg("");
+    const cached = JSON.parse(localStorage.getItem("nagellacke_update_cache") || "null");
+    if (cached && Date.now() - cached.ts < UPDATE_CACHE_TTL) {
+      if (cached.updateAvailable) { setLatestVersion(cached.latestVersion); setStatus("available"); }
+      else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
+      return;
+    }
     fetch("/api/update/check", { headers: { "X-Api-Key": apiKey || "" } })
       .then(r => {
         if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
@@ -862,6 +869,7 @@ function UpdatePanel({ t, apiKey }) {
       .then(d => {
         if (!d) return;
         if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
+        localStorage.setItem("nagellacke_update_cache", JSON.stringify({ ts: Date.now(), updateAvailable: !!d.updateAvailable, latestVersion: d.latestVersion || null }));
         if (d.updateAvailable) { setLatestVersion(d.latestVersion); setStatus("available"); }
         else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
       })
@@ -942,11 +950,13 @@ export default function App() {
   const [batchSel, setBatchSel]           = useState(new Set());
   const undoTimer                         = useRef(null);
   const importRef                         = useRef(null);
+  const searchRef                         = useRef(null);
   const [apiKey, setApiKey]               = useState(() => localStorage.getItem("nagellacke_api_key") || "");
   const [showSettings, setShowSettings]   = useState(false);
   const [settingsInput, setSettingsInput] = useState("");
   const [theme, setTheme]                 = useState(() => localStorage.getItem("nagellacke_theme") || "darkLuxury");
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
     fetch("/api/data")
@@ -1039,9 +1049,32 @@ export default function App() {
 
   useEffect(() => { setBatchSel(new Set()); }, [activeFilter, activeBrand, sortBy]);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setSystemPrefersDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "/" || e.key === "f") { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === "Escape") { setSelected(null); setShowAdd(false); setEditIdx(null); setEditForm(null); setShowSettings(false); setShowThemePicker(false); }
+      if (e.key === "n" && !showAdd && editIdx === null && view === "collection") setShowAdd(true);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [showAdd, editIdx, view]);
+
   // ── CRUD ──
   const handleAdd = () => {
     if (!form.name.trim()) return;
+    const newHue = hexToHue(form.color);
+    const newFinish = form.finish || "Classic";
+    const dupe = polishes.find(p => { const d = Math.abs(hexToHue(p.color) - newHue); return Math.min(d, 360 - d) < 15 && (p.finish || "Classic") === newFinish; });
+    if (dupe && !window.confirm(`Ähnlicher Lack vorhanden:\n„${[dupe.brand, dupe.name].filter(Boolean).join(" · ")}" (gleicher Finish, ähnliche Farbe)\n\nTrotzdem hinzufügen?`)) return;
     const newPolishes = [...polishes, {
       name: form.name.trim(), brand: form.brand.trim() || undefined,
       color: form.color, finish: form.finish,
@@ -1169,7 +1202,8 @@ export default function App() {
     return { ok: "#1a6b2a", wish: "#4a3080", empty: "#7a5000", gone: "#8b1a1a" }[status || "ok"] || "#444444";
   };
 
-  const t = THEMES[theme] || THEMES.darkLuxury;
+  const effectiveTheme = theme === "system" ? (systemPrefersDark ? "darkLuxury" : "cleanWhite") : theme;
+  const t = THEMES[effectiveTheme] || THEMES.darkLuxury;
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: t.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1270,6 +1304,15 @@ export default function App() {
                   {th.icon} {th.name}{theme === th.id ? " ✓" : ""}
                 </button>
               ))}
+              <button
+                onClick={() => { setTheme("system"); localStorage.setItem("nagellacke_theme", "system"); setShowThemePicker(false); }}
+                style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", border: "none", borderRadius: "6px", cursor: "pointer", background: theme === "system" ? t.filterBgActive : "transparent", color: theme === "system" ? t.filterColorActive : t.textMuted, fontFamily: t.fontBody, fontSize: "12px", textAlign: "left", width: "100%", transition: "background 0.15s" }}>
+                <span style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#0a080f", border: "1px solid rgba(128,128,128,0.3)", display: "inline-block" }} />
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#f4f4f4", border: "1px solid rgba(128,128,128,0.3)", display: "inline-block" }} />
+                </span>
+                ◑ System{theme === "system" ? " ✓" : ""}
+              </button>
             </div>
           )}
         </div>
@@ -1304,7 +1347,7 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "12px", flexWrap: "wrap", alignItems: "center" }}>
           <div className="search-wrap">
             <span className="search-icon" aria-hidden="true">⌕</span>
-            <input className="search-input" aria-label="Kollektion durchsuchen" placeholder="Suchen…" value={search} onChange={e => setSearch(e.target.value)} />
+            <input ref={searchRef} className="search-input" aria-label="Kollektion durchsuchen" placeholder="Suchen… (/)" value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button aria-label="Suche löschen" onClick={() => setSearch("")} style={{ position: "absolute", right: "12px", background: "transparent", border: "none", color: t.textVeryMuted, cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>×</button>}
           </div>
           <select className="sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
@@ -1387,7 +1430,7 @@ export default function App() {
       {showAdd && (
         <div className="slide-up" style={{ margin: "16px auto 28px", maxWidth: "560px", padding: "0 16px" }}>
           <div style={{ fontFamily: t.fontDisplay, fontSize: "21px", fontWeight: 300, letterSpacing: "3px", marginBottom: "16px", color: t.textMuted, paddingLeft: "4px" }}>Neuen Lack hinzufügen</div>
-          <PolishForm t={t} form={form} setForm={setForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
+          <PolishForm key="add" t={t} form={form} setForm={setForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
             onSubmit={handleAdd} submitLabel="+ Hinzufügen" onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={addSuccess} />
         </div>
       )}
@@ -1409,7 +1452,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <PolishForm t={t} form={editForm} setForm={setEditForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
+          <PolishForm key={`edit-${editIdx}`} t={t} form={editForm} setForm={setEditForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
             onSubmit={handleSave} submitLabel="✓ Speichern"
             onCancel={() => { setEditIdx(null); setEditForm(null); setConfirmDelete(false); }}
             onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={editSuccess} />
