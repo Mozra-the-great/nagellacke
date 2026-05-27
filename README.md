@@ -1,7 +1,30 @@
-# 💅 Nagellack Kollektion
+# Nail Lacquer Kollektion
 
-Persönliche Nagellack-Verwaltung – gehostet auf eigenem Server.  
-Daten werden in einer JSON-Datei auf dem Server gespeichert und überleben jeden Neustart.
+Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
+
+![Version](https://img.shields.io/badge/version-1.6.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+---
+
+## Features
+
+- **Kollektion verwalten** — Lacke anlegen, bearbeiten, löschen mit Name, Marke, Nummer, Farbe, Finish und Status
+- **15 Finish-Typen** — Classic, Shimmer, Glitter, Metallic, Chrome, Matte, Satin, Duochrome, Holographic, Jelly, Neon, Magnetic, Gel Look, Top Coat, Base Coat
+- **4 Status-Werte** — Vorhanden, Wunschliste, Leer, Nicht mehr da
+- **Eigene Kategorien** — direkt im Bearbeitungsformular anlegen und löschen
+- **Notizen** — freies Textfeld pro Lack (Kaufdatum, Bewertung, …)
+- **Suche & Filter** — nach Name, Marke, Nummer, Finish, Kategorie, Status, Notizen
+- **Sortierung** — nach Eingabereihenfolge, Name, Marke oder Farbton
+- **Multi-Brand-Filter** — Marken-Schnellfilter bei mehr als einer Marke
+- **Stapelaktionen** — mehrere Lacke gleichzeitig auswählen, Status setzen oder löschen
+- **Undo** — Löschungen 5 Sekunden rückgängig machen
+- **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien und Farbpalette
+- **Export / Import** — vollständiges Backup als JSON
+- **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
+- **System-Logs** — journalctl-Ausgabe live in der App abrufbar
+- **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
+
+---
 
 ## Installation (ein Befehl)
 
@@ -9,42 +32,70 @@ Daten werden in einer JSON-Datei auf dem Server gespeichert und überleben jeden
 bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
-> Benötigt Debian/Ubuntu LXC, läuft als root. Installiert automatisch Node.js 20.
+Benötigt **Debian/Ubuntu** (z. B. LXC-Container in Proxmox). Installiert automatisch Node.js 20.
 
 Nach der Installation erreichbar unter **http://SERVER-IP:3000**
 
 ---
 
+## Erster Start — API-Schlüssel einrichten
+
+Beim ersten Start wird ein Schlüssel generiert und in der Konsole angezeigt:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  API-Schlüssel: a3f8c2d1...                         │
+│  (In der App unter Einstellungen ⚙ eingeben)        │
+└─────────────────────────────────────────────────────┘
+```
+
+Diesen Schlüssel in der App unter dem **⚙-Button** (Footer) eintragen. Er wird im Browser gespeichert.
+
+Schlüssel später abrufen:
+```bash
+cat /opt/nagellacke/backend/data/.api_key
+# oder
+journalctl -u nagellacke -n 100 | grep "API-Schlüssel"
+```
+
+---
+
 ## Update einspielen
 
+**Variante A — In der App:** Einstellungen → „Updates prüfen" → „Jetzt updaten"
+
+**Variante B — Manuell:**
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
-Derselbe Befehl – zieht die neueste Version und baut das Frontend neu.  
-**Deine Daten bleiben dabei erhalten.**
+Daten bleiben dabei **immer erhalten**.
 
 ---
 
 ## Datenspeicherung
 
 ```
-/opt/nagellacke/backend/data/data.json
+/opt/nagellacke/backend/data/data.json    ← Kollektion (Lacke + Kategorien)
+/opt/nagellacke/backend/data/.api_key     ← API-Schlüssel (nur root lesbar)
 ```
 
-- Alle Lacke, Kategorien und Status werden hier gespeichert
-- Bleibt nach Server-Neustart erhalten
-- Kann als Backup einfach kopiert werden
+Backup erstellen:
+```bash
+cp /opt/nagellacke/backend/data/data.json ~/backup-$(date +%F).json
+```
+
+Oder direkt in der App: Footer → **↓ Export**
 
 ---
 
 ## Nützliche Befehle
 
 ```bash
-systemctl status nagellacke     # Status
-systemctl restart nagellacke    # Neustart
-journalctl -u nagellacke -f     # Live-Logs
-cat /opt/nagellacke/backend/data/data.json   # Daten ansehen
+systemctl status nagellacke        # Dienst-Status
+systemctl restart nagellacke       # Neustart
+journalctl -u nagellacke -f        # Live-Logs
+cat /opt/nagellacke/backend/data/data.json   # Rohdaten
 ```
 
 ---
@@ -55,17 +106,30 @@ cat /opt/nagellacke/backend/data/data.json   # Daten ansehen
 # Terminal 1 – Backend
 cd backend && npm install && node server.js
 
-# Terminal 2 – Frontend (mit Hot Reload)
+# Terminal 2 – Frontend (Hot Reload)
 cd frontend && npm install && npm run dev
 ```
 
-Frontend läuft auf http://localhost:5173, API-Calls werden automatisch an :3000 weitergeleitet.
+Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an `:3000` weitergeleitet (Vite-Proxy).
 
 ---
 
-## Technik
+## Technik (Kurzfassung)
 
-- **Frontend:** React + Vite
-- **Backend:** Node.js + Express
-- **Speicher:** JSON-Datei (`data.json`)
-- **Service:** systemd
+| Schicht | Technologie | Begründung |
+|--------|------------|------------|
+| Frontend | React 18 + Vite | Reaktive UI, schneller Build |
+| Backend | Node.js + Express | Minimal, keine Abhängigkeiten |
+| Speicher | JSON-Datei | Kein Datenbankserver nötig |
+| Deployment | systemd | Autostart + Restart bei Absturz |
+| Auth | API-Key (Header) | Einfach, ausreichend für Heimnetz |
+
+Vollständige Architektur-Dokumentation: [ARCHITECTURE.md](ARCHITECTURE.md)
+
+---
+
+## Entwicklung
+
+Dieses Projekt wurde vollständig mit Hilfe von KI (Claude von Anthropic) entwickelt. Kein einzige Zeile Code wurde manuell geschrieben — alle Entscheidungen, Anforderungen und Reviews liefen über Konversationen mit dem Modell.
+
+Mehr dazu: [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md)
