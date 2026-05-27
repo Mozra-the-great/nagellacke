@@ -75,6 +75,7 @@ const THEMES = {
     batchBarBg: "rgba(12,8,22,0.97)", batchBarBorder: "rgba(255,255,255,0.1)",
     undoBg: "rgba(16,10,28,0.97)", undoBorder: "rgba(255,255,255,0.14)",
     sortOptionBg: "#16101f",
+    cardStyle: "bottle", gridCols: "repeat(auto-fill,minmax(130px,1fr))", filterLayout: "pills",
     previewColors: ["#0a080f", "#ff6699", "rgba(255,200,230,0.9)"],
   },
   candyPop: {
@@ -105,6 +106,7 @@ const THEMES = {
     batchBarBg: "rgba(255,230,245,0.97)", batchBarBorder: "rgba(220,130,210,0.4)",
     undoBg: "rgba(255,240,250,0.97)", undoBorder: "rgba(220,130,210,0.35)",
     sortOptionBg: "#fff0fa",
+    cardStyle: "blob", gridCols: "repeat(auto-fill,minmax(110px,1fr))", filterLayout: "pills",
     previewColors: ["#ffe0ef", "#e040ab", "#2a0040"],
   },
   vintageWarm: {
@@ -135,6 +137,7 @@ const THEMES = {
     batchBarBg: "rgba(247,241,230,0.97)", batchBarBorder: "rgba(139,69,19,0.2)",
     undoBg: "rgba(250,246,238,0.97)", undoBorder: "rgba(139,69,19,0.2)",
     sortOptionBg: "#f7f1e6",
+    cardStyle: "stripe", gridCols: "repeat(auto-fill,minmax(260px,1fr))", filterLayout: "underline",
     previewColors: ["#f7f1e6", "#8b4513", "#c8a040"],
   },
   neonNightclub: {
@@ -165,6 +168,7 @@ const THEMES = {
     batchBarBg: "rgba(3,0,12,0.97)", batchBarBorder: "rgba(255,0,230,0.3)",
     undoBg: "rgba(3,0,12,0.97)", undoBorder: "rgba(0,240,255,0.3)",
     sortOptionBg: "#06000f",
+    cardStyle: "bottle", gridCols: "repeat(auto-fill,minmax(120px,1fr))", filterLayout: "block",
     previewColors: ["#030009", "#ff00e6", "#00f0ff"],
   },
   cleanWhite: {
@@ -195,6 +199,7 @@ const THEMES = {
     batchBarBg: "rgba(244,244,244,0.97)", batchBarBorder: "rgba(17,17,17,0.1)",
     undoBg: "rgba(255,255,255,0.97)", undoBorder: "rgba(17,17,17,0.12)",
     sortOptionBg: "#ffffff",
+    cardStyle: "row", gridCols: "1fr", filterLayout: "pills",
     previewColors: ["#f4f4f4", "#111111", "#e8196c"],
   },
   forestGreen: {
@@ -225,6 +230,7 @@ const THEMES = {
     batchBarBg: "rgba(5,13,6,0.97)", batchBarBorder: "rgba(201,168,60,0.2)",
     undoBg: "rgba(5,13,6,0.97)", undoBorder: "rgba(201,168,60,0.2)",
     sortOptionBg: "#091510",
+    cardStyle: "blob", gridCols: "repeat(auto-fill,minmax(140px,1fr))", filterLayout: "pills",
     previewColors: ["#050d06", "#c9a83c", "#3dba5e"],
   },
 };
@@ -1093,12 +1099,17 @@ export default function App() {
         @import url('${t.fontImport}');
         *{box-sizing:border-box;}
         .bottle-card{cursor:pointer;transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),box-shadow 0.35s,border-color 0.2s,background 0.2s;display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 10px 16px;border-radius:${t.cardRadius};background:${t.cardBg};border:1px solid ${t.cardBorder};box-shadow:${t.cardShadow};position:relative;overflow:visible;}
-        .bottle-card:hover{transform:translateY(-10px) scale(1.03);background:${t.cardBgHover};border-color:${t.cardBorderHover};box-shadow:${t.cardShadowHover};}
-        .bottle-card.active{transform:translateY(-14px) scale(1.06);border-color:${t.cardBorderActive};}
+        ${t.cardStyle==="row"
+          ? `.bottle-card:hover{transform:none;background:${t.cardBgHover};border-color:${t.cardBorderHover};box-shadow:${t.cardShadowHover};}.bottle-card.active{transform:none;border-color:${t.cardBorderActive};background:${t.cardBgHover};}`
+          : t.cardStyle==="stripe"
+          ? `.bottle-card:hover{transform:scale(1.01);background:${t.cardBgHover};border-color:${t.cardBorderHover};box-shadow:${t.cardShadowHover};}.bottle-card.active{transform:scale(1.02);border-color:${t.cardBorderActive};}`
+          : `.bottle-card:hover{transform:translateY(-10px) scale(1.03);background:${t.cardBgHover};border-color:${t.cardBorderHover};box-shadow:${t.cardShadowHover};}.bottle-card.active{transform:translateY(-14px) scale(1.06);border-color:${t.cardBorderActive};}`}
         .bottle-card.batch-selected{border-color:${t.cardBorderActive};background:${t.cardBgHover};}
-        .filter-btn{background:${t.filterBg};border:1px solid ${t.filterBorder};color:${t.filterColor};padding:6px 16px;border-radius:${t.filterRadius};cursor:pointer;font-family:${t.fontBody};font-weight:300;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;transition:all 0.2s;white-space:nowrap;}
-        .filter-btn.active,.filter-btn:hover{background:${t.filterBgActive};color:${t.filterColorActive};border-color:${t.filterBorderActive};}
-        .filter-btn.custom-cat{border-style:dashed;}
+        ${t.filterLayout==="underline"
+          ? `.filter-btn{background:transparent;border:none;border-bottom:2px solid transparent;color:${t.filterColor};padding:6px 14px;border-radius:0;cursor:pointer;font-family:${t.fontBody};font-size:11px;letter-spacing:1.5px;text-transform:uppercase;transition:all 0.2s;white-space:nowrap;}.filter-btn.active,.filter-btn:hover{background:transparent;color:${t.filterColorActive};border-bottom-color:${t.filterBorderActive};}.filter-btn.custom-cat{opacity:0.6;}`
+          : t.filterLayout==="block"
+          ? `.filter-btn{background:${t.filterBg};border:1px solid ${t.filterBorder};color:${t.filterColor};padding:5px 14px;border-radius:${t.filterRadius};cursor:pointer;font-family:${t.fontBody};font-size:10px;letter-spacing:3px;text-transform:uppercase;transition:all 0.1s;white-space:nowrap;}.filter-btn.active,.filter-btn:hover{background:${t.filterBgActive};color:${t.filterColorActive};border-color:${t.filterBorderActive};box-shadow:0 0 10px ${t.filterBorderActive}55;}.filter-btn.custom-cat{border-style:dashed;}`
+          : `.filter-btn{background:${t.filterBg};border:1px solid ${t.filterBorder};color:${t.filterColor};padding:6px 16px;border-radius:${t.filterRadius};cursor:pointer;font-family:${t.fontBody};font-weight:300;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;transition:all 0.2s;white-space:nowrap;}.filter-btn.active,.filter-btn:hover{background:${t.filterBgActive};color:${t.filterColorActive};border-color:${t.filterBorderActive};}.filter-btn.custom-cat{border-style:dashed;}`}
         .count-badge{position:absolute;top:10px;right:10px;background:${t.filterBgActive};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:${t.fontBody};color:${t.filterColorActive};}
         .status-dot{position:absolute;top:10px;left:10px;width:8px;height:8px;border-radius:50%;}
         .batch-check{position:absolute;top:8px;left:8px;width:20px;height:20px;border-radius:50%;border:1.5px solid ${t.cardBorderActive};background:transparent;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all 0.15s;}
@@ -1356,27 +1367,82 @@ export default function App() {
       )}
 
       {/* ── Grid ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: "14px", maxWidth: "1100px", margin: "0 auto", padding: "22px 18px 80px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: t.gridCols, gap: t.cardStyle === "row" ? "4px" : "14px", maxWidth: "1100px", margin: "0 auto", padding: "22px 18px 80px" }}>
         {filtered.length === 0 ? (
           <div className="empty-state">Keine Treffer{search ? ` für „${search}"` : ""}</div>
         ) : filtered.map((p) => {
           const globalIdx = polishes.indexOf(p);
           const st = statusObj(p);
           const isBatchSel = batchSel.has(globalIdx);
+          const cardKey = `${p.name}-${globalIdx}`;
+          const cardClass = `bottle-card ${!batchMode && selected === globalIdx ? "active" : ""} ${batchMode && isBatchSel ? "batch-selected" : ""}`;
+          const fadedStyle = p.status !== "ok" && p.status !== "wish" ? { borderColor: t.textFaint } : {};
+          const cardClick = () => {
+            if (batchMode) { toggleBatch(globalIdx); return; }
+            setShowAdd(false); setEditIdx(null); setEditForm(null);
+            setSelected(selected === globalIdx ? null : globalIdx);
+          };
+
+          if (t.cardStyle === "blob") return (
+            <div key={cardKey} className={cardClass} style={fadedStyle} onClick={cardClick}>
+              {batchMode
+                ? <div className={`batch-check ${isBatchSel ? "on" : ""}`}>{isBatchSel ? "✓" : ""}</div>
+                : (p.count ? <div className="count-badge">×{p.count}</div> : null)}
+              {!batchMode && p.status !== "ok" && p.status !== "wish" && <div className="status-dot" style={{ background: st.color }} />}
+              <div style={{ width: 76, height: 76, borderRadius: "50%", background: p.color, boxShadow: `0 4px 24px ${p.color}88`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", fontWeight: 800, color: "rgba(255,255,255,0.85)", fontFamily: t.fontDisplay, flexShrink: 0 }}>
+                {(p.brand || p.name || "?")[0].toUpperCase()}
+              </div>
+              <div style={{ textAlign: "center" }}>
+                {p.brand && allBrands.length > 1 && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textFaint, marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
+                <div style={{ fontFamily: t.fontDisplay, fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, maxWidth: "105px" }}>{p.name}</div>
+                {p.finish && p.finish !== "Classic" && <div style={{ fontSize: "11px", color: t.accentText, marginTop: "3px" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon}</div>}
+              </div>
+            </div>
+          );
+
+          if (t.cardStyle === "stripe") return (
+            <div key={cardKey} className={cardClass}
+              style={{ ...fadedStyle, flexDirection: "row", padding: 0, overflow: "hidden", gap: 0, alignItems: "stretch" }}
+              onClick={cardClick}>
+              <div style={{ width: 48, background: p.color, flexShrink: 0, position: "relative", minHeight: 76 }}>
+                {batchMode
+                  ? <div className={`batch-check ${isBatchSel ? "on" : ""}`} style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)" }}>{isBatchSel ? "✓" : ""}</div>
+                  : (p.count ? <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, textAlign: "center", fontSize: "9px", color: "rgba(255,255,255,0.8)", fontFamily: t.fontBody }}>×{p.count}</div> : null)}
+                {!batchMode && p.status !== "ok" && p.status !== "wish" && <div style={{ position: "absolute", top: 6, left: 6, width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.65)" }} />}
+              </div>
+              <div style={{ padding: "14px 14px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, minWidth: 0 }}>
+                {p.brand && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase" }}>{p.brand}</div>}
+                {p.num && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "3px", color: t.textVeryMuted }}>№ {p.num}</div>}
+                <div style={{ fontFamily: t.fontDisplay, fontSize: "15px", lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text }}>{p.name}</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
+                  {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.accentText }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
+                  <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color }}>{st.label}</span>
+                </div>
+              </div>
+            </div>
+          );
+
+          if (t.cardStyle === "row") return (
+            <div key={cardKey} className={cardClass}
+              style={{ ...fadedStyle, flexDirection: "row", padding: "11px 18px", alignItems: "center", gap: 14 }}
+              onClick={cardClick}>
+              {batchMode && <div className={`batch-check ${isBatchSel ? "on" : ""}`} style={{ position: "static" }}>{isBatchSel ? "✓" : ""}</div>}
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: p.color, flexShrink: 0, border: `1px solid ${t.cardBorderHover}` }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: t.fontDisplay, fontSize: "14px", color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                {(p.brand || p.num) && <div style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textMuted }}>{[p.brand, p.num && `№ ${p.num}`].filter(Boolean).join(" · ")}</div>}
+              </div>
+              {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.accentText, flexShrink: 0, whiteSpace: "nowrap" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
+              <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color, flexShrink: 0 }}>{st.label.replace(/^[✓☆○✕] /, "")}</span>
+              {p.count && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted, flexShrink: 0 }}>×{p.count}</span>}
+            </div>
+          );
+
           return (
-            <div key={`${p.name}-${globalIdx}`}
-              className={`bottle-card ${!batchMode && selected === globalIdx ? "active" : ""} ${batchMode && isBatchSel ? "batch-selected" : ""}`}
-              style={p.status !== "ok" && p.status !== "wish" ? { borderColor: t.textFaint } : {}}
-              onClick={() => {
-                if (batchMode) { toggleBatch(globalIdx); return; }
-                setShowAdd(false); setEditIdx(null); setEditForm(null);
-                setSelected(selected === globalIdx ? null : globalIdx);
-              }}>
-              {batchMode ? (
-                <div className={`batch-check ${isBatchSel ? "on" : ""}`}>{isBatchSel ? "✓" : ""}</div>
-              ) : (
-                p.count && <div className="count-badge">×{p.count}</div>
-              )}
+            <div key={cardKey} className={cardClass} style={fadedStyle} onClick={cardClick}>
+              {batchMode
+                ? <div className={`batch-check ${isBatchSel ? "on" : ""}`}>{isBatchSel ? "✓" : ""}</div>
+                : (p.count ? <div className="count-badge">×{p.count}</div> : null)}
               {!batchMode && p.status !== "ok" && p.status !== "wish" && <div className="status-dot" style={{ background: st.color }} />}
               <NailBottle color={p.color} finish={p.finish} selected={!batchMode && selected === globalIdx} status={p.status} brand={p.brand} />
               <div style={{ textAlign: "center" }}>
