@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
 
-![Version](https://img.shields.io/badge/version-1.6.2-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-1.7.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -24,6 +24,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
 - **System-Logs** — journalctl-Ausgabe live in der App abrufbar
 - **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
+- **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark — jedes mit eigenem Font, Shapes, Farben und Vibe; Auswahl wird im Browser gespeichert
 
 ---
 
@@ -33,7 +34,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
-Benötigt **Debian/Ubuntu** (z. B. LXC-Container in Proxmox). Installiert automatisch Node.js 20.
+Benötigt **Debian/Ubuntu**. Installiert automatisch Node.js 20.
 
 Nach der Installation erreichbar unter **http://SERVER-IP:3000**
 

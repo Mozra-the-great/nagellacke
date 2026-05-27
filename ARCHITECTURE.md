@@ -215,3 +215,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.6.0 | API-Key-Authentifizierung, Security Hardening, Bug-Fixes |
 | v1.6.1 | Foto-Farbpicker: Kamera/Galerie → Farbe per Tipp aus Bild übernehmen (Canvas API) |
 | v1.6.2 | Kamera-Button öffnet direkt die Kamera auf Mobilgeräten (`capture="environment"`) |
+| v1.7.0 | Theme-Switcher: 6 vollständige Designs (Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark) mit eigenen Fonts, Border-Radii, Shadows und Farb-Tokens |
