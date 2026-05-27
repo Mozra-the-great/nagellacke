@@ -101,8 +101,11 @@ function NailBottle({ color, finish, selected, status, brand }) {
 const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", finish: "Classic", count: 1, categories: [], status: "ok", notes: "" };
 
 function PolishForm({ form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success }) {
-  const [newCatName, setNewCatName] = useState("");
-  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName]     = useState("");
+  const [showNewCat, setShowNewCat]     = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef  = useRef(null);
+  const photoCanvasRef = useRef(null);
 
   const toggleCat = (catId) => setForm(f => ({
     ...f,
@@ -114,6 +117,42 @@ function PolishForm({ form, setForm, customCats, allBrands, allColors, onSubmit,
     onAddCategory && onAddCategory(newCatName.trim());
     setNewCatName("");
     setShowNewCat(false);
+  };
+
+  useEffect(() => {
+    if (!photoPreview || !photoCanvasRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = photoCanvasRef.current;
+      if (!canvas) return;
+      const maxW = 280, maxH = 210;
+      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = photoPreview;
+  }, [photoPreview]);
+
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCanvasClick = (e) => {
+    const canvas = photoCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) * (canvas.width  / rect.width));
+    const y = Math.floor((e.clientY - rect.top)  * (canvas.height / rect.height));
+    const [r, g, b] = canvas.getContext("2d").getImageData(x, y, 1, 1).data;
+    const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+    setForm(f => ({ ...f, color: hex }));
+    setPhotoPreview(null);
   };
 
   const swatchColors = useMemo(() => (allColors || []).filter(c => c !== form.color).slice(0, 24), [allColors, form.color]);
@@ -167,7 +206,27 @@ function PolishForm({ form, setForm, customCats, allBrands, allColors, onSubmit,
           <div style={{ display: "flex", alignItems: "center", gap: "9px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: "10px", padding: "8px 12px", height: "42px" }}>
             <div style={{ width: 22, height: 22, borderRadius: "5px", background: form.color, boxShadow: `0 0 8px ${form.color}88`, flexShrink: 0 }} />
             <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: "100%", height: "22px" }} />
+            <button type="button" title="Farbe aus Foto auswählen" onClick={() => photoInputRef.current?.click()}
+              style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, flexShrink: 0, transition: "border-color 0.15s" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.5)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"}>
+              📷
+            </button>
           </div>
+          <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
+          {photoPreview && (
+            <div style={{ marginTop: "10px", position: "relative", display: "inline-block" }}>
+              <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "2px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: "6px" }}>
+                Auf die gewünschte Farbe tippen
+              </div>
+              <canvas ref={photoCanvasRef} onClick={handleCanvasClick}
+                style={{ display: "block", cursor: "crosshair", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.12)", maxWidth: "100%" }} />
+              <button onClick={() => setPhotoPreview(null)}
+                style={{ position: "absolute", top: "26px", right: "6px", background: "rgba(0,0,0,0.55)", border: "none", color: "rgba(255,255,255,0.7)", borderRadius: "50%", width: "22px", height: "22px", cursor: "pointer", fontSize: "12px", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                ✕
+              </button>
+            </div>
+          )}
           {swatchColors.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "8px" }}>
               {swatchColors.map(c => (
