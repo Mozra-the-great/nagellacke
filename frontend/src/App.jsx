@@ -241,6 +241,7 @@ function PolishForm({ form, setForm, customCats, allBrands, allColors, onSubmit,
 }
 
 function hexToHue(hex) {
+  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return 0;
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
@@ -405,7 +406,7 @@ function StatsPage({ polishes, customCats }) {
   );
 }
 
-function LogPanel() {
+function LogPanel({ apiKey }) {
   const [open, setOpen]       = useState(false);
   const [logs, setLogs]       = useState("");
   const [loading, setLoading] = useState(false);
@@ -418,16 +419,20 @@ function LogPanel() {
   const fetchLogs = useCallback((n) => {
     const count = n ?? lines;
     setLoading(true);
-    fetch(`/api/logs?lines=${count}`)
-      .then(r => r.json())
+    fetch(`/api/logs?lines=${count}`, { headers: { "X-Api-Key": apiKey || "" } })
+      .then(r => {
+        if (r.status === 401) { setLogs("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setHasError(true); setLoading(false); return null; }
+        return r.json();
+      })
       .then(d => {
+        if (!d) return;
         setLogs(d.logs || "");
         setHasError(!!d.error);
         setLoading(false);
         setTimeout(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, 30);
       })
       .catch(() => { setHasError(true); setLoading(false); });
-  }, [lines]);
+  }, [lines, apiKey]);
 
   useEffect(() => { if (open) fetchLogs(); }, [open]);
 
@@ -499,7 +504,7 @@ function LogPanel() {
   );
 }
 
-function UpdatePanel() {
+function UpdatePanel({ apiKey }) {
   const [version, setVersion]             = useState(null);
   const [status, setStatus]               = useState("idle");
   const [latestVersion, setLatestVersion] = useState(null);
@@ -513,16 +518,29 @@ function UpdatePanel() {
 
   const check = () => {
     setStatus("checking"); setErrorMsg("");
-    fetch("/api/update/check").then(r => r.json()).then(d => {
-      if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
-      if (d.updateAvailable) { setLatestVersion(d.latestVersion); setStatus("available"); }
-      else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
-    }).catch(e => { setErrorMsg(e.message); setStatus("error"); });
+    fetch("/api/update/check", { headers: { "X-Api-Key": apiKey || "" } })
+      .then(r => {
+        if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
+        return r.json();
+      })
+      .then(d => {
+        if (!d) return;
+        if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
+        if (d.updateAvailable) { setLatestVersion(d.latestVersion); setStatus("available"); }
+        else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
+      })
+      .catch(e => { setErrorMsg(e.message); setStatus("error"); });
   };
 
   const applyUpdate = () => {
     setStatus("updating");
-    fetch("/api/update/apply", { method: "POST" }).then(r => r.json()).then(d => {
+    fetch("/api/update/apply", { method: "POST", headers: { "X-Api-Key": apiKey || "" } })
+      .then(r => {
+        if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
+        return r.json();
+      })
+      .then(d => {
+      if (!d) return;
       if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
       setStatus("restarting");
       // Poll until the new version appears instead of a fixed delay
@@ -588,6 +606,9 @@ export default function App() {
   const [batchSel, setBatchSel]           = useState(new Set());
   const undoTimer                         = useRef(null);
   const importRef                         = useRef(null);
+  const [apiKey, setApiKey]               = useState(() => localStorage.getItem("nagellacke_api_key") || "");
+  const [showSettings, setShowSettings]   = useState(false);
+  const [settingsInput, setSettingsInput] = useState("");
 
   useEffect(() => {
     fetch("/api/data")
@@ -601,13 +622,16 @@ export default function App() {
     setSaveStatus("saving");
     fetch("/api/data", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
       body: JSON.stringify({ polishes: newPolishes, customCats: newCats }),
     })
-      .then(r => r.json())
-      .then(() => { setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 1800); })
+      .then(r => {
+        if (r.status === 401) { setSaveStatus("unauth"); setTimeout(() => setSaveStatus("idle"), 4000); return null; }
+        return r.json();
+      })
+      .then(d => { if (!d) return; setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 1800); })
       .catch(() => { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 3000); });
-  }, []);
+  }, [apiKey]);
 
   const updatePolishes = useCallback((np) => { setPolishes(np); saveToBackend(np, customCats); }, [customCats, saveToBackend]);
   const updateCats     = useCallback((nc) => { setCustomCats(nc); saveToBackend(polishes, nc); }, [polishes, saveToBackend]);
@@ -667,6 +691,14 @@ export default function App() {
     clearTimeout(undoTimer.current);
   };
 
+  const saveApiKey = () => {
+    localStorage.setItem("nagellacke_api_key", settingsInput);
+    setApiKey(settingsInput);
+    setShowSettings(false);
+  };
+
+  useEffect(() => { setBatchSel(new Set()); }, [activeFilter, activeBrand, sortBy]);
+
   // ── CRUD ──
   const handleAdd = () => {
     if (!form.name.trim()) return;
@@ -694,13 +726,14 @@ export default function App() {
 
   const handleSave = () => {
     if (!editForm.name.trim()) return;
+    const cnt = parseInt(editForm.count);
     const newPolishes = polishes.map((p, i) => i !== editIdx ? p : {
       ...p, name: editForm.name.trim(), brand: editForm.brand.trim() || undefined,
       color: editForm.color, finish: editForm.finish,
       categories: editForm.categories, status: editForm.status,
       ...(editForm.num.trim()   ? { num: editForm.num.trim() }   : { num: undefined }),
       ...(editForm.notes.trim() ? { notes: editForm.notes.trim() } : { notes: undefined }),
-      count: parseInt(editForm.count) > 1 ? parseInt(editForm.count) : undefined,
+      count: cnt > 1 ? cnt : undefined,
     });
     updatePolishes(newPolishes);
     setEditSuccess(true);
@@ -766,6 +799,15 @@ export default function App() {
       try {
         const data = JSON.parse(ev.target.result);
         if (!Array.isArray(data.polishes)) { alert("Ungültige Datei — kein polishes-Array gefunden"); return; }
+        const IMPORT_COLOR_RE = /^#[0-9a-f]{6}$/i;
+        const IMPORT_STATUSES = new Set(["ok", "wish", "empty", "gone"]);
+        const invalid = data.polishes.some(p =>
+          !p || typeof p !== "object" ||
+          typeof p.name !== "string" || !p.name.trim() ||
+          (p.color !== undefined && !IMPORT_COLOR_RE.test(p.color)) ||
+          (p.status !== undefined && !IMPORT_STATUSES.has(p.status))
+        );
+        if (invalid) { alert("Datei enthält ungültige Lack-Daten (Name, Farbe oder Status fehlerhaft)"); return; }
         if (window.confirm(`${data.polishes.length} Lacke importieren? Die aktuellen Daten werden ersetzt.`)) {
           const newPolishes = data.polishes;
           const newCats     = Array.isArray(data.customCats) ? data.customCats : [];
@@ -868,6 +910,7 @@ export default function App() {
           {saveStatus === "saving" && <span className="save-indicator" style={{ color: "rgba(255,255,255,0.3)" }}>● Speichert…</span>}
           {saveStatus === "saved"  && <span className="save-indicator" style={{ color: "rgba(150,255,180,0.6)" }}>✓ Gespeichert</span>}
           {saveStatus === "error"  && <span className="save-indicator" style={{ color: "rgba(255,120,120,0.7)" }}>✕ Fehler beim Speichern</span>}
+          {saveStatus === "unauth" && <span className="save-indicator" style={{ color: "rgba(255,180,80,0.9)", cursor: "pointer" }} onClick={() => { setShowSettings(true); setSettingsInput(apiKey); }}>⚙ API-Schlüssel fehlt — hier eintragen</span>}
         </div>
 
         {/* Search + Sort */}
@@ -923,7 +966,7 @@ export default function App() {
       {editIdx === null && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", padding: "28px 0 8px", flexWrap: "wrap" }}>
           <button
-            onClick={() => { setShowAdd(v => !v); setSelected(null); setBatchMode(false); setBatchSel(new Set()); }}
+            onClick={() => { if (showAdd) setForm(EMPTY_FORM); setShowAdd(v => !v); setSelected(null); setBatchMode(false); setBatchSel(new Set()); }}
             style={{
               background: showAdd ? "rgba(255,255,255,0.06)" : "linear-gradient(135deg,rgba(255,100,170,0.18),rgba(160,100,255,0.14))",
               border: `1px solid ${showAdd ? "rgba(255,255,255,0.18)" : "rgba(255,130,200,0.45)"}`,
@@ -1063,6 +1106,27 @@ export default function App() {
 
       </>}
 
+      {/* ── Settings Panel ── */}
+      {showSettings && (
+        <div style={{ maxWidth: "480px", margin: "0 auto 20px", padding: "0 16px" }}>
+          <div style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "18px 20px" }}>
+            <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "3px", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: "12px" }}>⚙ Einstellungen · API-Schlüssel</div>
+            <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "11px", color: "rgba(255,255,255,0.3)", marginBottom: "10px", lineHeight: "1.6" }}>
+              Den Schlüssel aus der Server-Konsole (Startausgabe des Dienstes) hier eintragen. Er wird lokal gespeichert.
+            </div>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input type="password" className="form-input" placeholder="48-stelliger Hex-Schlüssel"
+                value={settingsInput} onChange={e => setSettingsInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && saveApiKey()}
+                style={{ flex: 1 }} />
+              <button className="add-btn" onClick={saveApiKey} style={{ padding: "10px 18px", fontSize: "11px", whiteSpace: "nowrap" }}>Speichern</button>
+              <button className="add-trigger" onClick={() => setShowSettings(false)}>✕</button>
+            </div>
+            {apiKey && <div style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", color: "rgba(150,255,180,0.55)", marginTop: "10px", letterSpacing: "1px" }}>✓ Schlüssel gesetzt</div>}
+          </div>
+        </div>
+      )}
+
       {/* ── Footer ── */}
       <div style={{ textAlign: "center", padding: "0 0 20px", display: "flex", justifyContent: "center", gap: "14px", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "4px", color: "rgba(255,255,255,0.1)", textTransform: "uppercase" }}>Nail Lacquer Kollektion</span>
@@ -1079,10 +1143,17 @@ export default function App() {
           ↑ Import
         </button>
         <input ref={importRef} type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
+        <button
+          onClick={() => { setShowSettings(v => !v); if (!showSettings) setSettingsInput(apiKey); }}
+          style={{ background: showSettings ? "rgba(255,255,255,0.07)" : "transparent", border: `1px solid ${showSettings ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.1)"}`, color: showSettings ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.2)", borderRadius: "14px", padding: "3px 12px", cursor: "pointer", fontFamily: "'Jost',sans-serif", fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,255,255,0.55)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)"; }}
+          onMouseLeave={e => { if (!showSettings) { e.currentTarget.style.color = "rgba(255,255,255,0.2)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; } }}>
+          {apiKey ? "⚙" : "⚙ Schlüssel fehlt"}
+        </button>
       </div>
 
-      <LogPanel />
-      <UpdatePanel />
+      <LogPanel apiKey={apiKey} />
+      <UpdatePanel apiKey={apiKey} />
 
       {/* ── Undo Snackbar ── */}
       {undoEntry && (

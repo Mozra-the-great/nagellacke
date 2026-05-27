@@ -1,18 +1,20 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const https = require("https");
+const fs      = require("fs");
+const path    = require("path");
+const https   = require("https");
+const crypto  = require("crypto");
 const { execSync } = require("child_process");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, "data", "data.json");
-const APP_ROOT = path.join(__dirname, "..");
+const app      = express();
+const PORT     = process.env.PORT || 3000;
+const DATA_FILE     = path.join(__dirname, "data", "data.json");
+const API_KEY_FILE  = path.join(__dirname, "data", ".api_key");
+const APP_ROOT      = path.join(__dirname, "..");
+const SERVICE_NAME  = process.env.SERVICE_NAME || "nagellacke";
 
-const pkg = require("./package.json");
+const pkg             = require("./package.json");
 const CURRENT_VERSION = pkg.version;
 
-// Default data if no file exists yet
 const DEFAULT_DATA = {
   polishes: [
     { name: "High Shine Gel", brand: "Catrice", color: "#ddeeff", finish: "Top Coat",  categories: [], status: "ok" },
@@ -34,16 +36,59 @@ const DEFAULT_DATA = {
   customCats: [],
 };
 
-// Ensure data directory exists
+// Ensure data directory exists before anything else touches it
 if (!fs.existsSync(path.dirname(DATA_FILE))) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
 }
+
+// ── API Key ─────────────────────────────────────────────────────────────────
+
+function loadApiKey() {
+  if (process.env.API_KEY) return process.env.API_KEY;
+  try {
+    if (fs.existsSync(API_KEY_FILE)) return fs.readFileSync(API_KEY_FILE, "utf8").trim();
+  } catch (e) { console.warn("Could not read API key file:", e.message); }
+  const key = crypto.randomBytes(24).toString("hex");
+  try { fs.writeFileSync(API_KEY_FILE, key, { mode: 0o600, encoding: "utf8" }); }
+  catch (e) { console.warn("Could not persist API key:", e.message); }
+  return key;
+}
+
+const API_KEY = loadApiKey();
+
+function requireApiKey(req, res, next) {
+  if (req.headers["x-api-key"] === API_KEY) return next();
+  res.status(401).json({ error: "Unauthorized — API-Schlüssel fehlt oder falsch" });
+}
+
+// ── Rate limiting (in-memory) ────────────────────────────────────────────────
+
+const _rlMap = new Map();
+function rateLimit(max, windowMs) {
+  return (req, res, next) => {
+    const ip  = req.ip || req.connection.remoteAddress || "unknown";
+    const now = Date.now();
+    const e   = _rlMap.get(ip) || { n: 0, reset: now + windowMs };
+    if (now > e.reset) { e.n = 0; e.reset = now + windowMs; }
+    e.n++;
+    _rlMap.set(ip, e);
+    if (e.n > max) return res.status(429).json({ error: "Zu viele Anfragen — bitte warten" });
+    next();
+  };
+}
+
+// ── Global error handler ─────────────────────────────────────────────────────
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+});
+
+// ── Data helpers ─────────────────────────────────────────────────────────────
 
 function loadData() {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-      // Migrate: add missing fields from older data formats
       let migrated = false;
       data.polishes = (data.polishes || []).map(p => {
         let updated = { ...p };
@@ -76,20 +121,36 @@ function saveData(data) {
   fs.renameSync(tmp, DATA_FILE);
 }
 
-// Parse GitHub owner/repo from remote URL
+// Input validation for polishes
+const VALID_STATUSES  = new Set(["ok", "wish", "empty", "gone"]);
+const COLOR_RE        = /^#[0-9a-f]{6}$/i;
+
+function validatePolish(p) {
+  if (!p || typeof p !== "object") return false;
+  if (typeof p.name !== "string" || !p.name.trim() || p.name.length > 200) return false;
+  if (p.color !== undefined && !COLOR_RE.test(p.color)) return false;
+  if (p.status !== undefined && !VALID_STATUSES.has(p.status)) return false;
+  if (p.count !== undefined && (typeof p.count !== "number" || p.count < 1 || p.count > 999)) return false;
+  return true;
+}
+
+// ── GitHub helpers ───────────────────────────────────────────────────────────
+
 function getGithubRepo() {
   try {
-    const url = execSync("git remote get-url origin", { cwd: APP_ROOT, stdio: "pipe" }).toString().trim();
+    const url   = execSync("git remote get-url origin", { cwd: APP_ROOT, stdio: "pipe" }).toString().trim();
     const match = url.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/);
     if (match) return { owner: match[1], repo: match[2] };
-  } catch (e) {}
+  } catch (e) {
+    console.debug("Could not detect GitHub remote:", e.message);
+  }
   return null;
 }
 
-function githubGet(path) {
+function githubGet(apiPath) {
   return new Promise((resolve, reject) => {
     const req = https.get(
-      { hostname: "api.github.com", path, headers: { "User-Agent": "nagellacke-app" } },
+      { hostname: "api.github.com", path: apiPath, headers: { "User-Agent": "nagellacke-app" } },
       (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
@@ -105,11 +166,12 @@ function githubGet(path) {
 }
 
 async function fetchLatestVersion(owner, repo) {
-  // Try releases API first, fall back to tags
   try {
     const release = await githubGet(`/repos/${owner}/${repo}/releases/latest`);
     if (release.tag_name) return { version: release.tag_name, url: release.html_url || null };
-  } catch (e) { /* fall through to tags */ }
+  } catch (e) {
+    console.debug("Releases API failed, trying tags:", e.message);
+  }
 
   const tags = await githubGet(`/repos/${owner}/${repo}/tags`);
   if (!Array.isArray(tags) || tags.length === 0) throw new Error("Keine Tags oder Releases auf GitHub gefunden");
@@ -127,7 +189,6 @@ async function fetchLatestVersion(owner, repo) {
   return { version: semver[0], url: `https://github.com/${owner}/${repo}/releases/tag/${semver[0]}` };
 }
 
-// -1 = v1 older than v2 (update available), 0 = equal, 1 = v1 newer
 function compareVersions(v1, v2) {
   const parse = (v) => v.replace(/^v/, "").split(".").map((n) => parseInt(n) || 0);
   const [a1, b1, c1] = parse(v1);
@@ -138,39 +199,45 @@ function compareVersions(v1, v2) {
   return 0;
 }
 
-app.use(express.json());
+// ── Express middleware ────────────────────────────────────────────────────────
 
-// Serve built frontend
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-// API: get all data
+// ── API routes ────────────────────────────────────────────────────────────────
+
+// GET /api/data — read collection (public, read-only)
 app.get("/api/data", (req, res) => {
   res.json(loadData());
 });
 
-// API: save all data
-app.post("/api/data", (req, res) => {
+// POST /api/data — save collection (requires API key)
+app.post("/api/data", requireApiKey, (req, res) => {
   const { polishes, customCats } = req.body;
   if (!Array.isArray(polishes) || !Array.isArray(customCats)) {
-    return res.status(400).json({ error: "Invalid data format" });
+    return res.status(400).json({ error: "Ungültiges Datenformat" });
+  }
+  if (polishes.length > 10000) {
+    return res.status(400).json({ error: "Zu viele Einträge" });
+  }
+  if (!polishes.every(validatePolish)) {
+    return res.status(400).json({ error: "Ungültige Lack-Daten (Name, Farbe oder Status fehlerhaft)" });
   }
   saveData({ polishes, customCats });
   res.json({ ok: true });
 });
 
-// API: current version
+// GET /api/version — current version (public, needed by frontend before key is set)
 app.get("/api/version", (req, res) => {
   res.json({ version: CURRENT_VERSION });
 });
 
-// API: check for update on GitHub
-app.get("/api/update/check", async (req, res) => {
+// GET /api/update/check — check GitHub for updates (requires key, rate-limited)
+app.get("/api/update/check", requireApiKey, rateLimit(10, 60_000), async (req, res) => {
   const repo = getGithubRepo();
-  if (!repo) {
-    return res.status(500).json({ error: "Kein GitHub-Remote konfiguriert" });
-  }
+  if (!repo) return res.status(500).json({ error: "Kein GitHub-Remote konfiguriert" });
   try {
-    const latest = await fetchLatestVersion(repo.owner, repo.repo);
+    const latest        = await fetchLatestVersion(repo.owner, repo.repo);
     const latestVersion = latest.version.replace(/^v/, "");
     res.json({
       currentVersion: CURRENT_VERSION,
@@ -183,37 +250,36 @@ app.get("/api/update/check", async (req, res) => {
   }
 });
 
-// API: apply update (git pull + rebuild + restart)
-app.post("/api/update/apply", (req, res) => {
+// POST /api/update/apply — git pull + build + restart (requires key, rate-limited)
+app.post("/api/update/apply", requireApiKey, rateLimit(3, 300_000), (req, res) => {
   const frontendDir = path.join(APP_ROOT, "frontend");
   try {
-    execSync("git pull origin main", { cwd: APP_ROOT, stdio: "pipe", timeout: 30000 });
-    execSync("npm install --omit=dev", { cwd: __dirname, stdio: "pipe", timeout: 60000 });
-    execSync("npm install", { cwd: frontendDir, stdio: "pipe", timeout: 60000 });
-    execSync("npm run build", { cwd: frontendDir, stdio: "pipe", timeout: 120000 });
-
+    execSync("git pull origin main",        { cwd: APP_ROOT,    stdio: "pipe", timeout: 30_000 });
+    execSync("npm install --omit=dev",      { cwd: __dirname,   stdio: "pipe", timeout: 60_000 });
+    execSync("npm install",                 { cwd: frontendDir, stdio: "pipe", timeout: 60_000 });
+    execSync("npm run build",               { cwd: frontendDir, stdio: "pipe", timeout: 120_000 });
     res.json({ ok: true });
-
-    // Restart: try systemd first, fall back to process exit (systemd Restart=always picks it up)
     setTimeout(() => {
       try {
-        execSync("systemctl restart nagellacke", { stdio: "pipe" });
+        execSync(`systemctl restart ${SERVICE_NAME}`, { stdio: "pipe" });
       } catch (e) {
+        console.debug("systemctl restart failed, falling back to process.exit:", e.message);
         process.exit(0);
       }
     }, 300);
   } catch (e) {
+    console.error("Update failed:", e.stderr?.toString() || e.message);
     const msg = (e.stderr ? e.stderr.toString() : e.message).split("\n")[0];
     res.status(500).json({ error: msg || "Update fehlgeschlagen" });
   }
 });
 
-// API: fetch systemd journal logs
-app.get("/api/logs", (req, res) => {
+// GET /api/logs — systemd journal (requires key, rate-limited)
+app.get("/api/logs", requireApiKey, rateLimit(30, 60_000), (req, res) => {
   const lines = Math.min(parseInt(req.query.lines) || 100, 500);
   try {
     const output = execSync(
-      `journalctl -u nagellacke -n ${lines} --no-pager --output=short-iso`,
+      `journalctl -u ${SERVICE_NAME} -n ${lines} --no-pager --output=short-iso`,
       { stdio: "pipe", timeout: 6000 }
     ).toString();
     res.json({ logs: output, lines });
@@ -223,12 +289,18 @@ app.get("/api/logs", (req, res) => {
   }
 });
 
-// Fallback: serve index.html for client-side routing
+// Fallback — client-side routing
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+// ── Start ─────────────────────────────────────────────────────────────────────
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Nagellacke v${CURRENT_VERSION} running on http://0.0.0.0:${PORT}`);
-  console.log(`Data stored in: ${DATA_FILE}`);
+  console.log(`\nNagellacke v${CURRENT_VERSION} running on http://0.0.0.0:${PORT}`);
+  console.log(`Data: ${DATA_FILE}\n`);
+  console.log("┌─────────────────────────────────────────────────────┐");
+  console.log(`│  API-Schlüssel: ${API_KEY.padEnd(38)}│`);
+  console.log("│  (In der App unter Einstellungen ⚙ eingeben)        │");
+  console.log("└─────────────────────────────────────────────────────┘\n");
 });
