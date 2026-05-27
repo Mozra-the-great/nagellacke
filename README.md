@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
 
-![Version](https://img.shields.io/badge/version-1.6.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-1.6.2-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -19,6 +19,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Stapelaktionen** — mehrere Lacke gleichzeitig auswählen, Status setzen oder löschen
 - **Undo** — Löschungen 5 Sekunden rückgängig machen
 - **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien und Farbpalette
+- **Foto-Farbpicker** — 📷 Kamera oder 🖼 Galerie öffnen, auf die Farbe tippen → wird direkt übernommen (kein Upload, rein clientseitig)
 - **Export / Import** — vollständiges Backup als JSON
 - **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
 - **System-Logs** — journalctl-Ausgabe live in der App abrufbar
@@ -133,3 +134,9 @@ Vollständige Architektur-Dokumentation: [ARCHITECTURE.md](ARCHITECTURE.md)
 Dieses Projekt wurde vollständig mit Hilfe von KI (Claude von Anthropic) entwickelt. Kein einzige Zeile Code wurde manuell geschrieben — alle Entscheidungen, Anforderungen und Reviews liefen über Konversationen mit dem Modell.
 
 Mehr dazu: [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md)
+
+---
+
+## Lizenz
+
+[MIT](LICENSE) — mach damit was du willst, ich hafte für nichts.

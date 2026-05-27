@@ -202,7 +202,7 @@ Bekannte offene Punkte (für Heimnetz-Betrieb akzeptiert):
 
 ## Versionierung
 
-Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags gesetzt (`v1.6.0`). Der Update-Check im Backend liest Tags via GitHub API.
+Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags gesetzt. Der Update-Check im Backend liest Tags via GitHub API.
 
 | Version | Inhalt |
 |---------|--------|
@@ -213,3 +213,5 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.4.0 | Finish-Typen, Marken-Vorschläge, dynamische Filter |
 | v1.5.0 | Kategorien im Formular, Notizen, Batch-Modus, Undo, Export/Import, Sortierung |
 | v1.6.0 | API-Key-Authentifizierung, Security Hardening, Bug-Fixes |
+| v1.6.1 | Foto-Farbpicker: Kamera/Galerie → Farbe per Tipp aus Bild übernehmen (Canvas API) |
+| v1.6.2 | Kamera-Button öffnet direkt die Kamera auf Mobilgeräten (`capture="environment"`) |
