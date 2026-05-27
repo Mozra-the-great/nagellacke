@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
 
-![Version](https://img.shields.io/badge/version-1.7.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-1.7.2-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -25,6 +25,8 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **System-Logs** — journalctl-Ausgabe live in der App abrufbar
 - **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
 - **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark — jedes mit eigenem Font, Shapes, Farben und Vibe; Auswahl wird im Browser gespeichert
+- **Sternebewertung** — 1–5 Sterne pro Lack, sortierbar, filterbar, Top-Bewertet-Liste in Statistik
+- **Farbklick in Statistik** — Klick auf Farb-Dot zeigt welcher Lack diese Farbe hat; direkter Sprung zur Kollektion
 
 ---
 

@@ -217,3 +217,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.6.2 | Kamera-Button öffnet direkt die Kamera auf Mobilgeräten (`capture="environment"`) |
 | v1.7.0 | Theme-Switcher: 6 vollständige Designs (Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark) mit eigenen Fonts, Border-Radii, Shadows und Farb-Tokens |
 | v1.7.1 | Strukturelle Theme-Unterschiede: 4 Karten-Layouts (Flasche, Blob, Stripe, Row) und 3 Filter-Layouts (Pills, Underline, Block-Glow) je nach Theme |
+| v1.7.2 | Sternebewertung (1–5) pro Lack; Farbklick in Statistik zeigt zugehörigen Lack mit Sprung in Kollektion |

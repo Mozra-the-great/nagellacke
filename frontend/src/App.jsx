@@ -44,6 +44,7 @@ const SORT_OPTIONS = [
   { value: "name",   label: "Name" },
   { value: "brand",  label: "Marke" },
   { value: "hue",    label: "Farbe" },
+  { value: "rating", label: "Bewertung" },
 ];
 
 const THEMES = {
@@ -287,7 +288,7 @@ function NailBottle({ color, finish, selected, status, brand }) {
   );
 }
 
-const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", finish: "Classic", count: 1, categories: [], status: "ok", notes: "" };
+const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", finish: "Classic", count: 1, categories: [], status: "ok", notes: "", rating: 0 };
 
 function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success }) {
   const [newCatName, setNewCatName]     = useState("");
@@ -454,6 +455,23 @@ function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubm
         </div>
       </div>
       <div style={{ marginBottom: "14px" }}>
+        <label className="form-label">Bewertung</label>
+        <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          {[1,2,3,4,5].map(n => (
+            <button key={n} type="button"
+              onClick={() => setForm(f => ({ ...f, rating: (f.rating || 0) === n ? 0 : n }))}
+              style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "20px",
+                       color: (form.rating || 0) >= n ? t.accentText : t.textFaint,
+                       padding: "2px", lineHeight: 1, transition: "color 0.15s" }}>★</button>
+          ))}
+          {(form.rating || 0) > 0 && (
+            <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted, marginLeft: "6px" }}>
+              {form.rating}/5
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Kategorien</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginBottom: "8px" }}>
           {customCats.map(c => (
@@ -536,7 +554,8 @@ function CardLabel({ t, children }) {
   return <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "3px", textTransform: "uppercase", color: t.textVeryMuted, marginBottom: "14px" }}>{children}</div>;
 }
 
-function StatsPage({ t, polishes, customCats }) {
+function StatsPage({ t, polishes, customCats, onSelectPolish }) {
+  const [clickedColor, setClickedColor] = useState(null);
   const total        = polishes.length;
   const totalBottles = polishes.reduce((a, p) => a + (p.count || 1), 0);
   const available    = polishes.filter(p => (p.status || "ok") === "ok").length;
@@ -654,12 +673,69 @@ function StatsPage({ t, polishes, customCats }) {
         <CardLabel t={t}>Farb-Palette · {colorPalette.length} Farben</CardLabel>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
           {colorPalette.map(c => (
-            <div key={c} title={c} style={{ width: "28px", height: "28px", borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}66`, border: `1.5px solid ${t.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.15)"}`, flexShrink: 0, transition: "transform 0.2s", cursor: "default" }}
-              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.3)"}
-              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"} />
+            <div key={c} title={c}
+              style={{ width: "28px", height: "28px", borderRadius: "50%", background: c,
+                       boxShadow: `0 0 8px ${c}66`,
+                       border: `1.5px solid ${clickedColor === c ? t.cardBorderActive : (t.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.15)")}`,
+                       flexShrink: 0, transition: "transform 0.2s, border-color 0.15s",
+                       cursor: "pointer",
+                       transform: clickedColor === c ? "scale(1.35)" : "scale(1)" }}
+              onClick={() => setClickedColor(clickedColor === c ? null : c)}
+              onMouseEnter={e => { if (clickedColor !== c) e.currentTarget.style.transform = "scale(1.3)"; }}
+              onMouseLeave={e => { if (clickedColor !== c) e.currentTarget.style.transform = "scale(1)"; }} />
           ))}
         </div>
+        {clickedColor && (() => {
+          const matches = polishes.map((p, i) => ({ p, i })).filter(({ p }) => p.color === clickedColor);
+          return (
+            <div style={{ marginTop: "14px", borderTop: `1px solid ${t.textFaint}`, paddingTop: "12px" }}>
+              <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: clickedColor, boxShadow: `0 0 14px ${clickedColor}88`, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "8px" }}>
+                    {clickedColor.toUpperCase()} · {matches.length} Lack{matches.length !== 1 ? "e" : ""}
+                  </div>
+                  {matches.map(({ p, i }) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: t.fontDisplay, fontSize: "13px", color: t.text }}>{p.name}</span>
+                      {p.brand && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>{p.brand}</span>}
+                      {p.num && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>№ {p.num}</span>}
+                      {onSelectPolish && (
+                        <button onClick={() => onSelectPolish(i)}
+                          style={{ background: "transparent", border: `1px solid ${t.filterBorder}`, color: t.filterColor,
+                                   borderRadius: t.filterRadius, padding: "2px 10px", cursor: "pointer",
+                                   fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "1.5px",
+                                   textTransform: "uppercase", marginLeft: "auto", whiteSpace: "nowrap" }}>
+                          → Kollektion
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => setClickedColor(null)}
+                  style={{ background: "transparent", border: "none", color: t.textVeryMuted, cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px", flexShrink: 0 }}>×</button>
+              </div>
+            </div>
+          );
+        })()}
       </StatCard>
+
+      {(() => {
+        const topRated = [...polishes].filter(p => (p.rating || 0) > 0).sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 5);
+        if (!topRated.length) return null;
+        return (
+          <StatCard t={t} style={{ marginTop: "20px" }}>
+            <CardLabel t={t}>Top Bewertet</CardLabel>
+            {topRated.map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 0", borderBottom: i < topRated.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                <div style={{ flex: 1, fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted }}>{p.name}{p.brand ? ` · ${p.brand}` : ""}</div>
+                <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.accentText, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>
+              </div>
+            ))}
+          </StatCard>
+        );
+      })()}
     </div>
   );
 }
@@ -913,7 +989,8 @@ export default function App() {
     const arr = [...polishes];
     if (sortBy === "name")  arr.sort((a, b) => a.name.localeCompare(b.name));
     if (sortBy === "brand") arr.sort((a, b) => (a.brand || "").localeCompare(b.brand || ""));
-    if (sortBy === "hue")   arr.sort((a, b) => hexToHue(a.color) - hexToHue(b.color));
+    if (sortBy === "hue")    arr.sort((a, b) => hexToHue(a.color) - hexToHue(b.color));
+    if (sortBy === "rating") arr.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     return arr;
   }, [polishes, sortBy]);
 
@@ -926,9 +1003,10 @@ export default function App() {
       if (!p.name.toLowerCase().includes(q) && !(p.num || "").includes(q) && !(p.brand || "").toLowerCase().includes(q) && !finishLabel.includes(q) && !catLabels.includes(q) && !notesText.includes(q)) return false;
     }
     if (activeBrand && (p.brand || "") !== activeBrand) return false;
-    if (activeFilter === "all")  return true;
-    if (activeFilter === "wish") return p.status === "wish";
-    if (activeFilter === "empty") return p.status === "empty" || p.status === "gone";
+    if (activeFilter === "all")    return true;
+    if (activeFilter === "wish")   return p.status === "wish";
+    if (activeFilter === "empty")  return p.status === "empty" || p.status === "gone";
+    if (activeFilter === "rated")  return (p.rating || 0) > 0;
     if (FINISH_OPTIONS.some(f => f.value === activeFilter)) return (p.finish || "Classic") === activeFilter;
     return (p.categories || []).includes(activeFilter);
   }), [sorted, search, activeFilter, activeBrand, customCats]);
@@ -1236,6 +1314,9 @@ export default function App() {
           {polishes.some(p => p.status === "empty" || p.status === "gone") && (
             <button className={`filter-btn ${activeFilter === "empty" ? "active" : ""}`} onClick={() => setActiveFilter("empty")}>○ Leer / Weg</button>
           )}
+          {polishes.some(p => (p.rating || 0) > 0) && (
+            <button className={`filter-btn ${activeFilter === "rated" ? "active" : ""}`} onClick={() => setActiveFilter("rated")}>★ Bewertet</button>
+          )}
           {usedCustomCats.map(c => (
             <button key={c.id} className={`filter-btn custom-cat ${activeFilter === c.id ? "active" : ""}`} onClick={() => setActiveFilter(c.id)}>◆ {c.label}</button>
           ))}
@@ -1254,7 +1335,8 @@ export default function App() {
       </div>
 
       {/* ── Stats Page ── */}
-      {view === "stats" && <StatsPage t={t} polishes={polishes} customCats={customCats} />}
+      {view === "stats" && <StatsPage t={t} polishes={polishes} customCats={customCats}
+        onSelectPolish={(idx) => { setView("collection"); setSelected(idx); }} />}
 
       {/* ── Collection View ── */}
       {view === "collection" && <>
@@ -1338,10 +1420,15 @@ export default function App() {
                     {sel.color.toUpperCase()} · {getPolishLabel(sel)}{sel.count ? ` · ×${sel.count}` : ""}
                   </span>
                 </div>
-                <div style={{ marginTop: "10px" }}>
+                <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                   <span style={{ fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "1.5px", color: statusObj(sel).color, background: t.cardBg, border: `1px solid ${statusObj(sel).color}55`, borderRadius: t.chipRadius, padding: "3px 12px" }}>
                     {statusObj(sel).label}
                   </span>
+                  {sel.rating > 0 && (
+                    <span style={{ fontSize: "15px", color: t.accentText, letterSpacing: "2px" }}>
+                      {"★".repeat(sel.rating)}{"☆".repeat(5-sel.rating)}
+                    </span>
+                  )}
                 </div>
                 {(sel.categories || []).length > 0 && (
                   <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginTop: "10px" }}>
@@ -1396,6 +1483,7 @@ export default function App() {
                 {p.brand && allBrands.length > 1 && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textFaint, marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
                 <div style={{ fontFamily: t.fontDisplay, fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, maxWidth: "105px" }}>{p.name}</div>
                 {p.finish && p.finish !== "Classic" && <div style={{ fontSize: "11px", color: t.accentText, marginTop: "3px" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon}</div>}
+                {p.rating > 0 && <div style={{ fontSize: "9px", color: t.accentText, marginTop: "2px", letterSpacing: "1px" }}>{"★".repeat(p.rating)}{"☆".repeat(5-p.rating)}</div>}
               </div>
             </div>
           );
@@ -1417,6 +1505,7 @@ export default function App() {
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
                   {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.accentText }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
                   <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color }}>{st.label}</span>
+                  {p.rating > 0 && <span style={{ fontSize: "9px", color: t.accentText, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>}
                 </div>
               </div>
             </div>
@@ -1433,6 +1522,7 @@ export default function App() {
                 {(p.brand || p.num) && <div style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textMuted }}>{[p.brand, p.num && `№ ${p.num}`].filter(Boolean).join(" · ")}</div>}
               </div>
               {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.accentText, flexShrink: 0, whiteSpace: "nowrap" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
+              {p.rating > 0 && <span style={{ fontSize: "10px", color: t.accentText, flexShrink: 0, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>}
               <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color, flexShrink: 0 }}>{st.label.replace(/^[✓☆○✕] /, "")}</span>
               {p.count && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted, flexShrink: 0 }}>×{p.count}</span>}
             </div>
@@ -1450,6 +1540,7 @@ export default function App() {
                 {p.num && <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", color: t.textVeryMuted, marginBottom: "3px" }}>{p.num}</div>}
                 <div style={{ fontFamily: t.fontDisplay, fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, maxWidth: "110px" }}>{p.name}</div>
                 {p.finish && p.finish !== "Classic" && <div style={{ fontSize: "10px", color: t.accentText, marginTop: "3px" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</div>}
+                {p.rating > 0 && <div style={{ fontSize: "9px", color: t.accentText, marginTop: "2px", letterSpacing: "1px" }}>{"★".repeat(p.rating)}{"☆".repeat(5-p.rating)}</div>}
               </div>
             </div>
           );
