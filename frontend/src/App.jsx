@@ -84,8 +84,8 @@ const THEMES = {
     fontImport: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap",
     fontDisplay: "'Nunito', sans-serif", fontBody: "'Nunito', sans-serif",
     bg: "linear-gradient(135deg,#ffe0ef 0%,#f3cfff 50%,#ffd6f0 100%)",
-    text: "#2a0040", textMuted: "rgba(42,0,64,0.80)",
-    textVeryMuted: "rgba(42,0,64,0.62)", textFaint: "rgba(42,0,64,0.28)",
+    text: "#2a0040", textMuted: "rgba(42,0,64,0.85)",
+    textVeryMuted: "rgba(42,0,64,0.78)", textFaint: "rgba(42,0,64,0.32)",
     cardBg: "rgba(255,255,255,0.72)", cardBorder: "rgba(220,130,210,0.25)",
     cardBgHover: "rgba(255,255,255,0.92)", cardBorderHover: "rgba(220,130,210,0.6)",
     cardBorderActive: "#e040ab", cardRadius: "22px",
@@ -115,8 +115,8 @@ const THEMES = {
     fontImport: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400&display=swap",
     fontDisplay: "'Playfair Display', serif", fontBody: "'Lato', sans-serif",
     bg: "linear-gradient(160deg,#f7f1e6 0%,#f0e8d5 60%,#ede0c8 100%)",
-    text: "#3b2507", textMuted: "rgba(59,37,7,0.80)",
-    textVeryMuted: "rgba(59,37,7,0.62)", textFaint: "rgba(59,37,7,0.28)",
+    text: "#3b2507", textMuted: "#3b2507",
+    textVeryMuted: "rgba(59,37,7,0.88)", textFaint: "rgba(59,37,7,0.32)",
     cardBg: "rgba(255,252,242,0.85)", cardBorder: "rgba(139,69,19,0.18)",
     cardBgHover: "#fffcf2", cardBorderHover: "rgba(139,69,19,0.42)",
     cardBorderActive: "#c8a040", cardRadius: "8px",
@@ -177,8 +177,8 @@ const THEMES = {
     fontImport: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap",
     fontDisplay: "'Inter', sans-serif", fontBody: "'Inter', sans-serif",
     bg: "#f4f4f4",
-    text: "#111111", textMuted: "rgba(17,17,17,0.75)",
-    textVeryMuted: "rgba(17,17,17,0.58)", textFaint: "rgba(17,17,17,0.22)",
+    text: "#111111", textMuted: "#111111",
+    textVeryMuted: "rgba(17,17,17,0.72)", textFaint: "rgba(17,17,17,0.28)",
     cardBg: "#ffffff", cardBorder: "rgba(17,17,17,0.1)",
     cardBgHover: "#ffffff", cardBorderHover: "rgba(17,17,17,0.28)",
     cardBorderActive: "#111111", cardRadius: "12px",
@@ -1164,6 +1164,10 @@ export default function App() {
 
   const getPolishLabel = (p) => p.finish || "Classic";
   const statusObj = (p) => STATUS_OPTIONS.find(s => s.value === (p.status || "ok")) || STATUS_OPTIONS[0];
+  const statusTextColor = (status, dark) => {
+    if (dark) return (STATUS_OPTIONS.find(s => s.value === (status || "ok")) || STATUS_OPTIONS[0]).color;
+    return { ok: "#1a6b2a", wish: "#4a3080", empty: "#7a5000", gone: "#8b1a1a" }[status || "ok"] || "#444444";
+  };
 
   const t = THEMES[theme] || THEMES.darkLuxury;
 
@@ -1429,7 +1433,7 @@ export default function App() {
                   </span>
                 </div>
                 <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "1.5px", color: statusObj(sel).color, background: t.cardBg, border: `1px solid ${statusObj(sel).color}55`, borderRadius: t.chipRadius, padding: "3px 12px" }}>
+                  <span style={{ fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "1.5px", color: statusTextColor(sel.status, t.dark), background: t.cardBg, border: `1px solid ${statusTextColor(sel.status, t.dark)}55`, borderRadius: t.chipRadius, padding: "3px 12px" }}>
                     {statusObj(sel).label}
                   </span>
                   {sel.rating > 0 && (
@@ -1512,7 +1516,7 @@ export default function App() {
                 <div style={{ fontFamily: t.fontDisplay, fontSize: "15px", lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text }}>{p.name}</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
                   {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.accentText }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
-                  <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color }}>{st.label}</span>
+                  <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: statusTextColor(p.status, t.dark) }}>{st.label}</span>
                   {p.rating > 0 && <span style={{ fontSize: "9px", color: t.accentText, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>}
                 </div>
               </div>
@@ -1531,7 +1535,7 @@ export default function App() {
               </div>
               {p.finish && p.finish !== "Classic" && <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.accentText, flexShrink: 0, whiteSpace: "nowrap" }}>{FINISH_OPTIONS.find(f => f.value === p.finish)?.icon} {p.finish}</span>}
               {p.rating > 0 && <span style={{ fontSize: "10px", color: t.accentText, flexShrink: 0, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>}
-              <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: st.color, flexShrink: 0 }}>{st.label.replace(/^[✓☆○✕] /, "")}</span>
+              <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: statusTextColor(p.status, t.dark), flexShrink: 0 }}>{st.label.replace(/^[✓☆○✕] /, "")}</span>
               {p.count && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted, flexShrink: 0 }}>×{p.count}</span>}
             </div>
           );
