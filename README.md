@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
 
-![Version](https://img.shields.io/badge/version-1.8.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-1.9.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -27,6 +27,10 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark — jedes mit eigenem Font, Shapes, Farben und Vibe; Auswahl wird im Browser gespeichert
 - **Sternebewertung** — 1–5 Sterne pro Lack, sortierbar, filterbar, Top-Bewertet-Liste in Statistik
 - **Farbklick in Statistik** — Klick auf Farb-Dot zeigt welcher Lack diese Farbe hat; direkter Sprung zur Kollektion
+- **Timestamps** — jeder Lack speichert `createdAt`/`updatedAt`; Sortierung „Neueste/Älteste zuerst"
+- **Batch-Marke/Finish/Kategorie** — im Batch-Modus Marke setzen, Finish ändern oder Kategorie zu mehreren Lacken gleichzeitig hinzufügen
+- **Import Merge-Modus** — beim Import wählen zwischen Ersetzen (Kollektion überschreiben) oder Zusammenführen (nur neue Lacke hinzufügen, Duplikate überspringen)
+- **PWA** — installierbar als App (manifest.json + Service Worker mit Cache-First-Strategie)
 
 ---
 

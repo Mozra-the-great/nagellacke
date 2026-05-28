@@ -104,6 +104,7 @@ function loadData() {
           }
           migrated = true;
         }
+        if (!updated.createdAt) { updated.createdAt = Date.now(); updated.updatedAt = Date.now(); migrated = true; }
         return updated;
       });
       if (migrated) saveData(data);

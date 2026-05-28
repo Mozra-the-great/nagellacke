@@ -1,931 +1,17 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { THEMES } from "./themes.js";
+import { FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, EMPTY_FORM } from "./constants.js";
+import { hexToHue } from "./utils.js";
+import { NailBottle } from "./components/NailBottle.jsx";
+import { PolishForm } from "./components/PolishForm.jsx";
+import { StatsPage } from "./components/StatsPage.jsx";
+import { LogPanel } from "./components/LogPanel.jsx";
+import { UpdatePanel } from "./components/UpdatePanel.jsx";
 
-const FINISH_OPTIONS = [
-  { value: "Classic",     label: "Classic",      icon: "●" },
-  { value: "Shimmer",     label: "Shimmer",      icon: "✨" },
-  { value: "Glitter",     label: "Glitter",      icon: "✦" },
-  { value: "Metallic",    label: "Metallic",     icon: "◉" },
-  { value: "Chrome",      label: "Chrome",       icon: "◎" },
-  { value: "Matte",       label: "Matte",        icon: "◼" },
-  { value: "Satin",       label: "Satin",        icon: "◈" },
-  { value: "Duochrome",   label: "Duochrome",    icon: "◑" },
-  { value: "Holographic", label: "Holographic",  icon: "◇" },
-  { value: "Jelly",       label: "Jelly",        icon: "○" },
-  { value: "Neon",        label: "Neon",         icon: "◆" },
-  { value: "Magnetic",    label: "Magnetic",     icon: "⬡" },
-  { value: "Gel Look",    label: "Gel Look",     icon: "◐" },
-  { value: "Top Coat",    label: "Top Coat",     icon: "▽" },
-  { value: "Base Coat",   label: "Base Coat",    icon: "△" },
-];
-
-const SHIMMER_FINISHES = new Set(["Shimmer", "Glitter", "Metallic", "Chrome", "Holographic", "Duochrome"]);
-
-const BRAND_SUGGESTIONS = [
-  "Alessandro", "Barry M", "Butter London", "Catrice", "Chanel",
-  "China Glaze", "CND", "Color Street", "Dance Legend", "Deborah Lippmann",
-  "Depend", "Dior", "E.Mi", "Essie", "Flormar", "Gelish",
-  "Golden Rose", "IBD", "Inglot", "IsaDora", "Kiko Milano",
-  "Kiara Sky", "Kure Bazaar", "L.A. Colors", "Lancôme",
-  "MAC", "Manucurist", "Maybelline", "Models Own",
-  "Nailberry", "Nails Inc.", "NYX", "OPI", "Orly",
-  "Pastel", "Revlon", "Rimmel", "Sally Hansen",
-  "The Body Shop", "Wet n Wild", "YSL", "Zoya",
-];
-
-const STATUS_OPTIONS = [
-  { value: "ok",    label: "✓ Vorhanden",      color: "rgba(150,255,180,0.7)" },
-  { value: "wish",  label: "☆ Wunschliste",    color: "rgba(180,160,255,0.7)" },
-  { value: "empty", label: "○ Leer",           color: "rgba(255,200,80,0.7)"  },
-  { value: "gone",  label: "✕ Nicht mehr da",  color: "rgba(255,100,100,0.7)" },
-];
-
-const SORT_OPTIONS = [
-  { value: "newest", label: "Neu" },
-  { value: "name",   label: "Name" },
-  { value: "brand",  label: "Marke" },
-  { value: "hue",    label: "Farbe" },
-  { value: "rating", label: "Bewertung" },
-];
-
-const THEMES = {
-  darkLuxury: {
-    id: "darkLuxury", name: "Dark Luxury", icon: "🖤", dark: true,
-    fontImport: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@200;300;400&display=swap",
-    fontDisplay: "'Cormorant Garamond', serif", fontBody: "'Jost', sans-serif",
-    bg: "linear-gradient(135deg,#0a080f 0%,#12091a 50%,#080c18 100%)",
-    text: "#ffffff", textMuted: "rgba(255,255,255,0.75)",
-    textVeryMuted: "rgba(255,255,255,0.52)", textFaint: "rgba(255,255,255,0.18)",
-    cardBg: "rgba(255,255,255,0.03)", cardBorder: "rgba(255,255,255,0.06)",
-    cardBgHover: "rgba(255,255,255,0.06)", cardBorderHover: "rgba(255,255,255,0.15)",
-    cardBorderActive: "rgba(255,255,255,0.3)", cardRadius: "16px",
-    cardShadow: "none", cardShadowHover: "none",
-    filterBg: "transparent", filterBorder: "rgba(255,255,255,0.18)",
-    filterColor: "rgba(255,255,255,0.68)", filterBgActive: "rgba(255,255,255,0.1)",
-    filterBorderActive: "rgba(255,255,255,0.4)", filterColorActive: "white", filterRadius: "20px",
-    inputBg: "rgba(255,255,255,0.07)", inputBorder: "rgba(255,255,255,0.14)",
-    inputBorderFocus: "rgba(255,255,255,0.38)", inputBgFocus: "rgba(255,255,255,0.1)",
-    inputColor: "white", inputPlaceholder: "rgba(255,255,255,0.22)", inputRadius: "10px",
-    chipBg: "rgba(255,255,255,0.04)", chipBorder: "rgba(255,255,255,0.14)",
-    chipColor: "rgba(255,255,255,0.65)", chipBgOn: "rgba(255,255,255,0.14)",
-    chipBorderOn: "rgba(255,255,255,0.35)", chipColorOn: "white", chipRadius: "14px",
-    btnPrimaryBg: "linear-gradient(135deg,rgba(255,255,255,0.15),rgba(255,255,255,0.05))",
-    btnPrimaryBorder: "rgba(255,255,255,0.22)", btnPrimaryColor: "white",
-    btnPrimaryRadius: "24px", btnPrimaryHoverBg: "rgba(255,255,255,0.2)",
-    accent: "rgba(255,130,200,0.45)", accentText: "rgba(255,200,230,0.9)",
-    scrollbarThumb: "rgba(255,255,255,0.12)",
-    batchBarBg: "rgba(12,8,22,0.97)", batchBarBorder: "rgba(255,255,255,0.1)",
-    undoBg: "rgba(16,10,28,0.97)", undoBorder: "rgba(255,255,255,0.14)",
-    sortOptionBg: "#16101f",
-    cardStyle: "bottle", gridCols: "repeat(auto-fill,minmax(130px,1fr))", filterLayout: "pills",
-    previewColors: ["#0a080f", "#ff6699", "rgba(255,200,230,0.9)"],
-  },
-  candyPop: {
-    id: "candyPop", name: "Candy Pop", icon: "🍬", dark: false,
-    fontImport: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap",
-    fontDisplay: "'Nunito', sans-serif", fontBody: "'Nunito', sans-serif",
-    bg: "linear-gradient(135deg,#ffe0ef 0%,#f3cfff 50%,#ffd6f0 100%)",
-    text: "#2a0040", textMuted: "rgba(42,0,64,0.85)",
-    textVeryMuted: "rgba(42,0,64,0.78)", textFaint: "rgba(42,0,64,0.32)",
-    cardBg: "rgba(255,255,255,0.72)", cardBorder: "rgba(220,130,210,0.25)",
-    cardBgHover: "rgba(255,255,255,0.92)", cardBorderHover: "rgba(220,130,210,0.6)",
-    cardBorderActive: "#e040ab", cardRadius: "22px",
-    cardShadow: "0 4px 20px rgba(220,100,200,0.12)", cardShadowHover: "0 8px 28px rgba(220,100,200,0.25)",
-    filterBg: "rgba(255,255,255,0.6)", filterBorder: "rgba(220,130,210,0.35)",
-    filterColor: "rgba(42,0,64,0.72)", filterBgActive: "#e040ab",
-    filterBorderActive: "#e040ab", filterColorActive: "white", filterRadius: "22px",
-    inputBg: "rgba(255,255,255,0.8)", inputBorder: "rgba(220,130,210,0.4)",
-    inputBorderFocus: "#e040ab", inputBgFocus: "rgba(255,255,255,0.95)",
-    inputColor: "#2a0040", inputPlaceholder: "rgba(42,0,64,0.52)", inputRadius: "14px",
-    chipBg: "rgba(255,255,255,0.6)", chipBorder: "rgba(220,130,210,0.3)",
-    chipColor: "rgba(42,0,64,0.72)", chipBgOn: "#e040ab",
-    chipBorderOn: "#e040ab", chipColorOn: "white", chipRadius: "20px",
-    btnPrimaryBg: "linear-gradient(135deg,#e040ab,#b040e0)",
-    btnPrimaryBorder: "transparent", btnPrimaryColor: "white",
-    btnPrimaryRadius: "28px", btnPrimaryHoverBg: "linear-gradient(135deg,#cc2090,#9020c0)",
-    accent: "rgba(220,80,180,0.5)", accentText: "#e040ab",
-    scrollbarThumb: "rgba(220,130,210,0.35)",
-    batchBarBg: "rgba(255,230,245,0.97)", batchBarBorder: "rgba(220,130,210,0.4)",
-    undoBg: "rgba(255,240,250,0.97)", undoBorder: "rgba(220,130,210,0.35)",
-    sortOptionBg: "#fff0fa",
-    cardStyle: "blob", gridCols: "repeat(auto-fill,minmax(110px,1fr))", filterLayout: "pills",
-    previewColors: ["#ffe0ef", "#e040ab", "#2a0040"],
-  },
-  vintageWarm: {
-    id: "vintageWarm", name: "Warm Vintage", icon: "📜", dark: false,
-    fontImport: "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400&display=swap",
-    fontDisplay: "'Playfair Display', serif", fontBody: "'Lato', sans-serif",
-    bg: "linear-gradient(160deg,#f7f1e6 0%,#f0e8d5 60%,#ede0c8 100%)",
-    text: "#3b2507", textMuted: "#3b2507",
-    textVeryMuted: "rgba(59,37,7,0.88)", textFaint: "rgba(59,37,7,0.32)",
-    cardBg: "rgba(255,252,242,0.85)", cardBorder: "rgba(139,69,19,0.18)",
-    cardBgHover: "#fffcf2", cardBorderHover: "rgba(139,69,19,0.42)",
-    cardBorderActive: "#c8a040", cardRadius: "8px",
-    cardShadow: "0 2px 12px rgba(139,69,19,0.1)", cardShadowHover: "0 6px 24px rgba(139,69,19,0.18)",
-    filterBg: "rgba(255,252,242,0.7)", filterBorder: "rgba(139,69,19,0.25)",
-    filterColor: "rgba(59,37,7,0.75)", filterBgActive: "#8b4513",
-    filterBorderActive: "#8b4513", filterColorActive: "#f7f1e6", filterRadius: "6px",
-    inputBg: "rgba(255,252,242,0.9)", inputBorder: "rgba(139,69,19,0.25)",
-    inputBorderFocus: "#8b4513", inputBgFocus: "#fffcf2",
-    inputColor: "#3b2507", inputPlaceholder: "rgba(59,37,7,0.52)", inputRadius: "6px",
-    chipBg: "rgba(255,252,242,0.7)", chipBorder: "rgba(139,69,19,0.2)",
-    chipColor: "rgba(59,37,7,0.75)", chipBgOn: "#8b4513",
-    chipBorderOn: "#8b4513", chipColorOn: "#f7f1e6", chipRadius: "6px",
-    btnPrimaryBg: "linear-gradient(135deg,#8b4513,#6b3510)",
-    btnPrimaryBorder: "transparent", btnPrimaryColor: "#f7f1e6",
-    btnPrimaryRadius: "6px", btnPrimaryHoverBg: "#6b3510",
-    accent: "rgba(139,69,19,0.35)", accentText: "#8b4513",
-    scrollbarThumb: "rgba(139,69,19,0.2)",
-    batchBarBg: "rgba(247,241,230,0.97)", batchBarBorder: "rgba(139,69,19,0.2)",
-    undoBg: "rgba(250,246,238,0.97)", undoBorder: "rgba(139,69,19,0.2)",
-    sortOptionBg: "#f7f1e6",
-    cardStyle: "stripe", gridCols: "repeat(auto-fill,minmax(260px,1fr))", filterLayout: "underline",
-    previewColors: ["#f7f1e6", "#8b4513", "#c8a040"],
-  },
-  neonNightclub: {
-    id: "neonNightclub", name: "Neon Nightclub", icon: "⚡", dark: true,
-    fontImport: "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@300;400;500&display=swap",
-    fontDisplay: "'Bebas Neue', sans-serif", fontBody: "'Rajdhani', sans-serif",
-    bg: "linear-gradient(135deg,#030009 0%,#06000f 50%,#00040f 100%)",
-    text: "#ffffff", textMuted: "rgba(255,255,255,0.7)",
-    textVeryMuted: "rgba(255,255,255,0.4)", textFaint: "rgba(255,255,255,0.15)",
-    cardBg: "rgba(255,0,255,0.04)", cardBorder: "rgba(255,0,230,0.25)",
-    cardBgHover: "rgba(255,0,255,0.08)", cardBorderHover: "rgba(255,0,230,0.7)",
-    cardBorderActive: "#ff00e6", cardRadius: "4px",
-    cardShadow: "0 0 12px rgba(255,0,230,0.15)", cardShadowHover: "0 0 28px rgba(255,0,230,0.4)",
-    filterBg: "transparent", filterBorder: "rgba(0,240,255,0.35)",
-    filterColor: "rgba(0,240,255,0.7)", filterBgActive: "rgba(0,240,255,0.15)",
-    filterBorderActive: "#00f0ff", filterColorActive: "#00f0ff", filterRadius: "2px",
-    inputBg: "rgba(0,240,255,0.05)", inputBorder: "rgba(0,240,255,0.3)",
-    inputBorderFocus: "#00f0ff", inputBgFocus: "rgba(0,240,255,0.09)",
-    inputColor: "white", inputPlaceholder: "rgba(0,240,255,0.3)", inputRadius: "2px",
-    chipBg: "transparent", chipBorder: "rgba(255,0,230,0.35)",
-    chipColor: "rgba(255,0,230,0.7)", chipBgOn: "rgba(255,0,230,0.18)",
-    chipBorderOn: "#ff00e6", chipColorOn: "#ff00e6", chipRadius: "2px",
-    btnPrimaryBg: "transparent",
-    btnPrimaryBorder: "#ff00e6", btnPrimaryColor: "#ff00e6",
-    btnPrimaryRadius: "2px", btnPrimaryHoverBg: "rgba(255,0,230,0.12)",
-    accent: "rgba(255,0,230,0.5)", accentText: "#ff00e6",
-    scrollbarThumb: "rgba(255,0,230,0.25)",
-    batchBarBg: "rgba(3,0,12,0.97)", batchBarBorder: "rgba(255,0,230,0.3)",
-    undoBg: "rgba(3,0,12,0.97)", undoBorder: "rgba(0,240,255,0.3)",
-    sortOptionBg: "#06000f",
-    cardStyle: "bottle", gridCols: "repeat(auto-fill,minmax(120px,1fr))", filterLayout: "block",
-    previewColors: ["#030009", "#ff00e6", "#00f0ff"],
-  },
-  cleanWhite: {
-    id: "cleanWhite", name: "Clean White", icon: "◻", dark: false,
-    fontImport: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap",
-    fontDisplay: "'Inter', sans-serif", fontBody: "'Inter', sans-serif",
-    bg: "#f4f4f4",
-    text: "#111111", textMuted: "#111111",
-    textVeryMuted: "rgba(17,17,17,0.72)", textFaint: "rgba(17,17,17,0.28)",
-    cardBg: "#ffffff", cardBorder: "rgba(17,17,17,0.1)",
-    cardBgHover: "#ffffff", cardBorderHover: "rgba(17,17,17,0.28)",
-    cardBorderActive: "#111111", cardRadius: "12px",
-    cardShadow: "0 1px 4px rgba(0,0,0,0.08)", cardShadowHover: "0 4px 16px rgba(0,0,0,0.12)",
-    filterBg: "#ffffff", filterBorder: "rgba(17,17,17,0.15)",
-    filterColor: "rgba(17,17,17,0.72)", filterBgActive: "#111111",
-    filterBorderActive: "#111111", filterColorActive: "white", filterRadius: "8px",
-    inputBg: "#ffffff", inputBorder: "rgba(17,17,17,0.2)",
-    inputBorderFocus: "#111111", inputBgFocus: "#ffffff",
-    inputColor: "#111111", inputPlaceholder: "rgba(17,17,17,0.48)", inputRadius: "8px",
-    chipBg: "#ffffff", chipBorder: "rgba(17,17,17,0.2)",
-    chipColor: "rgba(17,17,17,0.72)", chipBgOn: "#111111",
-    chipBorderOn: "#111111", chipColorOn: "white", chipRadius: "8px",
-    btnPrimaryBg: "#111111",
-    btnPrimaryBorder: "transparent", btnPrimaryColor: "white",
-    btnPrimaryRadius: "8px", btnPrimaryHoverBg: "#333333",
-    accent: "rgba(17,17,17,0.2)", accentText: "#111111",
-    scrollbarThumb: "rgba(17,17,17,0.15)",
-    batchBarBg: "rgba(244,244,244,0.97)", batchBarBorder: "rgba(17,17,17,0.1)",
-    undoBg: "rgba(255,255,255,0.97)", undoBorder: "rgba(17,17,17,0.12)",
-    sortOptionBg: "#ffffff",
-    cardStyle: "row", gridCols: "1fr", filterLayout: "pills",
-    previewColors: ["#f4f4f4", "#111111", "#e8196c"],
-  },
-  forestGreen: {
-    id: "forestGreen", name: "Forest Dark", icon: "🌿", dark: true,
-    fontImport: "https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Raleway:wght@200;300;400&display=swap",
-    fontDisplay: "'Crimson Text', serif", fontBody: "'Raleway', sans-serif",
-    bg: "linear-gradient(135deg,#050d06 0%,#091510 50%,#050d08 100%)",
-    text: "#e8f5e4", textMuted: "rgba(232,245,228,0.80)",
-    textVeryMuted: "rgba(232,245,228,0.58)", textFaint: "rgba(232,245,228,0.22)",
-    cardBg: "rgba(232,245,228,0.03)", cardBorder: "rgba(201,168,60,0.2)",
-    cardBgHover: "rgba(232,245,228,0.06)", cardBorderHover: "rgba(201,168,60,0.5)",
-    cardBorderActive: "#c9a83c", cardRadius: "12px",
-    cardShadow: "none", cardShadowHover: "0 4px 20px rgba(201,168,60,0.1)",
-    filterBg: "transparent", filterBorder: "rgba(201,168,60,0.3)",
-    filterColor: "rgba(232,245,228,0.72)", filterBgActive: "rgba(201,168,60,0.15)",
-    filterBorderActive: "#c9a83c", filterColorActive: "#c9a83c", filterRadius: "20px",
-    inputBg: "rgba(232,245,228,0.07)", inputBorder: "rgba(201,168,60,0.28)",
-    inputBorderFocus: "#c9a83c", inputBgFocus: "rgba(232,245,228,0.11)",
-    inputColor: "#e8f5e4", inputPlaceholder: "rgba(232,245,228,0.48)", inputRadius: "10px",
-    chipBg: "rgba(232,245,228,0.06)", chipBorder: "rgba(201,168,60,0.28)",
-    chipColor: "rgba(232,245,228,0.72)", chipBgOn: "rgba(201,168,60,0.18)",
-    chipBorderOn: "#c9a83c", chipColorOn: "#c9a83c", chipRadius: "14px",
-    btnPrimaryBg: "linear-gradient(135deg,rgba(201,168,60,0.2),rgba(201,168,60,0.08))",
-    btnPrimaryBorder: "rgba(201,168,60,0.45)", btnPrimaryColor: "#c9a83c",
-    btnPrimaryRadius: "24px", btnPrimaryHoverBg: "rgba(201,168,60,0.25)",
-    accent: "rgba(201,168,60,0.4)", accentText: "#c9a83c",
-    scrollbarThumb: "rgba(201,168,60,0.15)",
-    batchBarBg: "rgba(5,13,6,0.97)", batchBarBorder: "rgba(201,168,60,0.2)",
-    undoBg: "rgba(5,13,6,0.97)", undoBorder: "rgba(201,168,60,0.2)",
-    sortOptionBg: "#091510",
-    cardStyle: "blob", gridCols: "repeat(auto-fill,minmax(140px,1fr))", filterLayout: "pills",
-    previewColors: ["#050d06", "#c9a83c", "#3dba5e"],
-  },
+const statusTextColor = (status, dark) => {
+  if (dark) return (STATUS_OPTIONS.find(s => s.value === (status || "ok")) || STATUS_OPTIONS[0]).color;
+  return { ok: "#1a6b2a", wish: "#4a3080", empty: "#7a5000", gone: "#8b1a1a" }[status || "ok"] || "#444444";
 };
-
-function NailBottle({ color, finish, selected, status, brand }) {
-  const uid = useMemo(() => color.replace("#", "") + Math.random().toString(36).slice(2, 7), []);
-  const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
-  const faded = status === "empty" || status === "gone";
-  const isWish = status === "wish";
-  const shimmer = SHIMMER_FINISHES.has(finish || "Classic");
-  const brandLabel = (brand || "").toUpperCase().slice(0, 9);
-  const brandFs = brandLabel.length > 6 ? "3" : "4";
-  return (
-    <svg width="64" height="130" viewBox="0 0 64 130" fill="none" aria-hidden="true" focusable="false"
-      style={{ filter: selected ? `drop-shadow(0 0 14px ${color}bb)` : "drop-shadow(0 4px 10px rgba(0,0,0,0.55))", transition: "filter 0.3s, opacity 0.3s", opacity: faded ? 0.38 : isWish ? 0.62 : 1 }}>
-      <defs>
-        <linearGradient id={gId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor={color} />
-          <stop offset="60%" stopColor={color} stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#000" stopOpacity="0.3" />
-        </linearGradient>
-        <linearGradient id={sId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="white" stopOpacity="0.35" />
-          <stop offset="40%" stopColor="white" stopOpacity="0.07" />
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
-        </linearGradient>
-        {shimmer && (
-          <linearGradient id={glId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="white" stopOpacity="0.55" />
-            <stop offset="25%" stopColor={color} />
-            <stop offset="50%" stopColor="white" stopOpacity="0.35" />
-            <stop offset="75%" stopColor={color} />
-            <stop offset="100%" stopColor="white" stopOpacity="0.5" />
-          </linearGradient>
-        )}
-      </defs>
-      <rect x="18" y="2" width="28" height="28" rx="5" fill="#1a1a1a" />
-      <rect x="20" y="4" width="24" height="24" rx="4" fill="#2a2a2a" />
-      <rect x="22" y="5" width="8" height="22" rx="2" fill="white" fillOpacity="0.07" />
-      <rect x="26" y="30" width="12" height="12" fill="#1a1a1a" />
-      <rect x="27" y="30" width="5" height="12" fill="white" fillOpacity="0.04" />
-      <rect x="10" y="42" width="44" height="82" rx="6" fill={shimmer ? `url(#${glId})` : `url(#${gId})`} />
-      <rect x="10" y="42" width="44" height="82" rx="6" fill={`url(#${sId})`} />
-      {status === "empty" && <rect x="10" y="90" width="44" height="34" rx="0" fill="rgba(0,0,0,0.55)" />}
-      {isWish && <text x="32" y="39" textAnchor="middle" fontSize="10" fill="rgba(200,180,255,0.9)">☆</text>}
-      <rect x="15" y="48" width="10" height="40" rx="3" fill="white" fillOpacity="0.17" />
-      <rect x="16" y="49" width="4" height="20" rx="2" fill="white" fillOpacity="0.24" />
-      <rect x="10" y="108" width="44" height="16" rx="6" fill="black" fillOpacity="0.2" />
-      <rect x="18" y="75" width="28" height="30" rx="2" fill="white" fillOpacity="0.11" />
-      <text x="32" y="87" textAnchor="middle" fontSize={brandFs} fill="white" fillOpacity="0.65" fontFamily="serif" letterSpacing="0.3">{brandLabel}</text>
-      <line x1="20" y1="90" x2="44" y2="90" stroke="white" strokeOpacity="0.25" strokeWidth="0.5" />
-      <text x="32" y="98" textAnchor="middle" fontSize="3.5" fill="white" fillOpacity="0.45" fontFamily="sans-serif">nail lacquer</text>
-    </svg>
-  );
-}
-
-const EMPTY_FORM = { num: "", name: "", brand: "", color: "#ff6699", finish: "Classic", count: 1, categories: [], status: "ok", notes: "", rating: 0 };
-
-function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success }) {
-  const [newCatName, setNewCatName]     = useState("");
-  const [showNewCat, setShowNewCat]     = useState(false);
-  const [photoPreview, setPhotoPreview] = useState(null);
-  const photoCameraRef  = useRef(null);
-  const photoGalleryRef = useRef(null);
-  const photoCanvasRef  = useRef(null);
-
-  const toggleCat = (catId) => setForm(f => ({
-    ...f,
-    categories: f.categories.includes(catId) ? f.categories.filter(c => c !== catId) : [...f.categories, catId],
-  }));
-
-  const commitNewCat = () => {
-    if (!newCatName.trim()) return;
-    onAddCategory && onAddCategory(newCatName.trim());
-    setNewCatName("");
-    setShowNewCat(false);
-  };
-
-  useEffect(() => {
-    if (!photoPreview || !photoCanvasRef.current) return;
-    const img = new Image();
-    img.onload = () => {
-      const canvas = photoCanvasRef.current;
-      if (!canvas) return;
-      const maxW = 280, maxH = 210;
-      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
-      canvas.width  = Math.round(img.width  * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = photoPreview;
-  }, [photoPreview]);
-
-  const handlePhotoSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPhotoPreview(ev.target.result);
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const handleCanvasClick = (e) => {
-    const canvas = photoCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) * (canvas.width  / rect.width));
-    const y = Math.floor((e.clientY - rect.top)  * (canvas.height / rect.height));
-    const [r, g, b] = canvas.getContext("2d").getImageData(x, y, 1, 1).data;
-    const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
-    setForm(f => ({ ...f, color: hex }));
-    setPhotoPreview(null);
-  };
-
-  const swatchColors = useMemo(() => (allColors || []).filter(c => c !== form.color).slice(0, 24), [allColors, form.color]);
-
-  return (
-    <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius, padding: "26px 26px 22px" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
-        <div style={{ textAlign: "center" }}>
-          <NailBottle color={form.color} finish={form.finish} selected={false} status={form.status} brand={form.brand} />
-          {form.name && (
-            <div style={{ fontFamily: t.fontDisplay, fontSize: "13px", color: t.textMuted, marginTop: "8px", maxWidth: "100px" }}>
-              {form.brand && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textFaint, textTransform: "uppercase" }}>{form.brand}</div>}
-              {form.num && <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted }}>{form.num}</div>}
-              {form.name}
-            </div>
-          )}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr", gap: "12px", marginBottom: "12px" }}>
-        <div>
-          <label htmlFor="polish-name" className="form-label">Name *</label>
-          <input id="polish-name" className="form-input" placeholder="z.B. Blue You A Kiss" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-        </div>
-        <div>
-          <label htmlFor="polish-brand" className="form-label">Marke *</label>
-          <input id="polish-brand" className="form-input" list="brand-suggestions" placeholder="z.B. Catrice, OPI…"
-            value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
-          <datalist id="brand-suggestions">
-            {[...new Set([...(allBrands || []), ...BRAND_SUGGESTIONS])].sort().map(b => <option key={b} value={b} />)}
-          </datalist>
-        </div>
-        <div>
-          <label htmlFor="polish-num" className="form-label">Nummer</label>
-          <input id="polish-num" className="form-input" placeholder="z.B. 029" value={form.num} onChange={e => setForm(f => ({ ...f, num: e.target.value }))} />
-        </div>
-      </div>
-      <div style={{ marginBottom: "12px" }}>
-        <label className="form-label">Finish / Effekt</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-          {FINISH_OPTIONS.map(f => (
-            <button key={f.value} className={`cat-chip ${form.finish === f.value ? "on" : ""}`}
-              onClick={() => setForm(frm => ({ ...frm, finish: f.value }))}>
-              {f.icon} {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: "12px", marginBottom: "12px" }}>
-        <div>
-          <label className="form-label">Farbe</label>
-          <div style={{ display: "flex", alignItems: "center", gap: "9px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: t.inputRadius, padding: "8px 12px", height: "42px" }}>
-            <div style={{ width: 22, height: 22, borderRadius: "5px", background: form.color, boxShadow: `0 0 8px ${form.color}88`, flexShrink: 0 }} />
-            <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: "100%", height: "22px" }} />
-            <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-              <button type="button" title="Foto aufnehmen" onClick={() => photoCameraRef.current?.click()}
-                style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
-                onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
-                📷
-              </button>
-              <button type="button" title="Bild aus Galerie wählen" onClick={() => photoGalleryRef.current?.click()}
-                style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
-                onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
-                🖼
-              </button>
-            </div>
-          </div>
-          <input ref={photoCameraRef}  type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: "none" }} />
-          <input ref={photoGalleryRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
-          {photoPreview && (
-            <div style={{ marginTop: "10px", position: "relative", display: "inline-block" }}>
-              <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "6px" }}>
-                Auf die gewünschte Farbe tippen
-              </div>
-              <canvas ref={photoCanvasRef} onClick={handleCanvasClick}
-                style={{ display: "block", cursor: "crosshair", borderRadius: t.inputRadius, border: `1px solid ${t.cardBorder}`, maxWidth: "100%" }} />
-              <button aria-label="Foto schließen" onClick={() => setPhotoPreview(null)}
-                style={{ position: "absolute", top: "26px", right: "6px", background: "rgba(0,0,0,0.55)", border: "none", color: "rgba(255,255,255,0.7)", borderRadius: "50%", width: "22px", height: "22px", cursor: "pointer", fontSize: "12px", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                ✕
-              </button>
-            </div>
-          )}
-          {swatchColors.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "8px" }}>
-              {swatchColors.map(c => (
-                <button key={c} title={c} onClick={() => setForm(f => ({ ...f, color: c }))}
-                  style={{ width: 18, height: 18, borderRadius: "50%", background: c, border: `1px solid ${t.inputBorder}`, cursor: "pointer", padding: 0, transition: "transform 0.15s", flexShrink: 0 }}
-                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.3)"}
-                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"} />
-              ))}
-            </div>
-          )}
-        </div>
-        <div>
-          <label htmlFor="polish-count" className="form-label">Anzahl</label>
-          <input id="polish-count" className="form-input" type="number" min="1" max="99" value={form.count}
-            onChange={e => setForm(f => ({ ...f, count: Math.max(1, parseInt(e.target.value) || 1) }))} style={{ textAlign: "center" }} />
-        </div>
-      </div>
-      <div style={{ marginBottom: "14px" }}>
-        <label className="form-label">Status</label>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {STATUS_OPTIONS.map(s => (
-            <button key={s.value} className={`cat-chip ${form.status === s.value ? "on" : ""}`}
-              style={form.status === s.value ? { borderColor: s.color, color: s.color, background: t.inputBg } : {}}
-              onClick={() => setForm(f => ({ ...f, status: s.value }))}>{s.label}</button>
-          ))}
-        </div>
-      </div>
-      <div style={{ marginBottom: "14px" }}>
-        <div className="form-label" id="rating-label">Bewertung</div>
-        <div role="group" aria-labelledby="rating-label" style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-          {[1,2,3,4,5].map(n => (
-            <button key={n} type="button"
-              aria-label={`${n} Stern${n > 1 ? "e" : ""}`}
-              aria-pressed={(form.rating || 0) === n}
-              onClick={() => setForm(f => ({ ...f, rating: (f.rating || 0) === n ? 0 : n }))}
-              style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: "20px",
-                       color: (form.rating || 0) >= n ? t.accentText : t.textFaint,
-                       padding: "2px", lineHeight: 1, transition: "color 0.15s" }}>★</button>
-          ))}
-          {(form.rating || 0) > 0 && (
-            <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted, marginLeft: "6px" }}>
-              {form.rating}/5
-            </span>
-          )}
-        </div>
-      </div>
-      <div style={{ marginBottom: "14px" }}>
-        <label className="form-label">Kategorien</label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "7px", marginBottom: "8px" }}>
-          {customCats.map(c => (
-            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-              <button className={`cat-chip ${form.categories.includes(c.id) ? "on" : ""}`} onClick={() => toggleCat(c.id)}>◆ {c.label}</button>
-              {onDeleteCategory && (
-                <button onClick={() => onDeleteCategory(c.id)}
-                  title={`Kategorie „${c.label}" löschen`}
-                  style={{ background: "transparent", border: "none", color: "rgba(255,100,100,0.4)", cursor: "pointer", fontSize: "11px", padding: "2px 4px", lineHeight: 1, borderRadius: "6px", transition: "color 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.color = "rgba(255,120,120,0.9)"}
-                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,100,100,0.4)"}>×</button>
-              )}
-            </div>
-          ))}
-          {customCats.length === 0 && !showNewCat && <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textVeryMuted, alignSelf: "center" }}>Noch keine eigenen Kategorien</span>}
-        </div>
-        {showNewCat ? (
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            <input className="form-input" placeholder="Kategorie-Name" value={newCatName}
-              onChange={e => setNewCatName(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && commitNewCat()}
-              autoFocus style={{ width: "160px", padding: "5px 12px", fontSize: "12px", borderRadius: "20px" }} />
-            <button className="add-trigger open" style={{ borderStyle: "solid" }} onClick={commitNewCat}>✓</button>
-            <button className="add-trigger" onClick={() => { setShowNewCat(false); setNewCatName(""); }}>✕</button>
-          </div>
-        ) : (
-          <button className="add-trigger" style={{ fontSize: "10px", padding: "4px 11px" }} onClick={() => setShowNewCat(true)}>+ Neue Kategorie</button>
-        )}
-      </div>
-      <div style={{ marginBottom: "18px" }}>
-        <label htmlFor="polish-notes" className="form-label">Notizen</label>
-        <textarea id="polish-notes" className="form-input" placeholder="Kaufdatum, Bewertung, Besonderheiten…" value={form.notes || ""}
-          onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-          style={{ resize: "vertical", minHeight: "58px", lineHeight: "1.5" }} />
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-        <button className="add-btn" onClick={onSubmit} disabled={!form.name.trim()}>{submitLabel}</button>
-        {onCancel && <button className="add-trigger" onClick={onCancel}>Abbrechen</button>}
-        {success && <span className="success-msg">✓ Gespeichert!</span>}
-      </div>
-    </div>
-  );
-}
-
-function hexToHue(hex) {
-  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return 0;
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  if (max === min) return 0;
-  let h;
-  if (max === r)      h = ((g - b) / (max - min) + 6) % 6;
-  else if (max === g) h = (b - r) / (max - min) + 2;
-  else                h = (r - g) / (max - min) + 4;
-  return h * 60;
-}
-
-function Bar({ t, value, max, color }) {
-  const pct = max === 0 ? 0 : Math.round((value / max) * 100);
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-      <div style={{ flex: 1, height: "6px", background: t.dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.08)", borderRadius: "3px", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: "3px", transition: "width 0.6s ease" }} />
-      </div>
-      <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textVeryMuted, minWidth: "28px", textAlign: "right" }}>{value}</span>
-    </div>
-  );
-}
-
-function StatCard({ t, children, style }) {
-  return (
-    <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius, padding: "22px 24px", ...style }}>
-      {children}
-    </div>
-  );
-}
-
-function CardLabel({ t, children }) {
-  return <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "3px", textTransform: "uppercase", color: t.textVeryMuted, marginBottom: "14px" }}>{children}</div>;
-}
-
-function StatsPage({ t, polishes, customCats, onSelectPolish }) {
-  const [clickedColor, setClickedColor] = useState(null);
-  const total        = polishes.length;
-  const totalBottles = polishes.reduce((a, p) => a + (p.count || 1), 0);
-  const available    = polishes.filter(p => (p.status || "ok") === "ok").length;
-  const wish         = polishes.filter(p => p.status === "wish").length;
-  const empty        = polishes.filter(p => p.status === "empty").length;
-  const gone         = polishes.filter(p => p.status === "gone").length;
-
-  const finishCounts = useMemo(() => {
-    const map = {};
-    polishes.forEach(p => { const f = p.finish || "Classic"; map[f] = (map[f] || 0) + 1; });
-    return FINISH_OPTIONS.filter(f => map[f.value]).map(f => ({ ...f, count: map[f.value] || 0 }));
-  }, [polishes]);
-
-  const byBrand = useMemo(() => {
-    const map = {};
-    polishes.forEach(p => { const b = p.brand || "—"; map[b] = (map[b] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [polishes]);
-
-  const byCat = useMemo(() => {
-    return customCats.map(c => ({
-      label: c.label,
-      count: polishes.filter(p => (p.categories || []).includes(c.id)).length,
-    })).filter(c => c.count > 0).sort((a, b) => b.count - a.count);
-  }, [polishes, customCats]);
-
-  const colorPalette = useMemo(() => {
-    const unique = [...new Set(polishes.map(p => p.color))];
-    return unique.sort((a, b) => hexToHue(a) - hexToHue(b));
-  }, [polishes]);
-
-  const bigNum = { fontFamily: t.fontDisplay, fontSize: "42px", fontWeight: 300, lineHeight: 1, color: t.text };
-  const bigLabel = { fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", color: t.textVeryMuted, marginTop: "6px" };
-
-  return (
-    <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 18px 60px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "14px", marginBottom: "20px" }}>
-        {[
-          { value: total,        label: "Lacke gesamt",   color: t.text },
-          { value: totalBottles, label: "Flaschen",       color: t.dark ? "rgba(200,230,255,0.9)"  : "#1a4080" },
-          { value: available,    label: "Verfügbar",      color: t.dark ? "rgba(150,255,180,0.85)" : "#1a6b2a" },
-          { value: wish,         label: "Wunschliste",    color: t.dark ? "rgba(180,160,255,0.85)" : "#5040a0" },
-          { value: empty + gone, label: "Leer / Weg",     color: t.dark ? "rgba(255,180,80,0.85)"  : "#804000" },
-        ].map(({ value, label, color }) => (
-          <StatCard t={t} key={label}>
-            <div style={{ ...bigNum, color }}>{value}</div>
-            <div style={bigLabel}>{label}</div>
-          </StatCard>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
-        <StatCard t={t}>
-          <CardLabel t={t}>Marken</CardLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {byBrand.map(([brand, count]) => (
-              <div key={brand}>
-                <div style={{ marginBottom: "4px" }}>
-                  <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted, letterSpacing: "1px" }}>{brand}</span>
-                </div>
-                <Bar t={t} value={count} max={total} color="rgba(180,180,255,0.55)" />
-              </div>
-            ))}
-            {byBrand.length === 0 && <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textVeryMuted }}>Keine Marken eingetragen</span>}
-          </div>
-        </StatCard>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <StatCard t={t}>
-            <CardLabel t={t}>Finish</CardLabel>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {finishCounts.map(({ icon, label, count }) => (
-                <div key={label}>
-                  <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted, marginBottom: "3px" }}>{icon} {label}</div>
-                  <Bar t={t} value={count} max={total} color="rgba(200,200,255,0.55)" />
-                </div>
-              ))}
-            </div>
-          </StatCard>
-
-          <StatCard t={t}>
-            <CardLabel t={t}>Status</CardLabel>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {[
-                { label: "✓ Vorhanden",      value: available, color: "rgba(150,255,180,0.55)" },
-                { label: "☆ Wunschliste",    value: wish,      color: "rgba(180,160,255,0.55)" },
-                { label: "○ Leer",           value: empty,     color: "rgba(255,200,80,0.55)"  },
-                { label: "✕ Nicht mehr da",  value: gone,      color: "rgba(255,100,100,0.55)" },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted, marginBottom: "3px" }}>{label}</div>
-                  <Bar t={t} value={value} max={total} color={color} />
-                </div>
-              ))}
-            </div>
-          </StatCard>
-        </div>
-      </div>
-
-      {byCat.length > 0 && (
-        <StatCard t={t} style={{ marginBottom: "20px" }}>
-          <CardLabel t={t}>Eigene Kategorien</CardLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {byCat.map(({ label, count }) => (
-              <div key={label}>
-                <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted, marginBottom: "3px" }}>◆ {label}</div>
-                <Bar t={t} value={count} max={total} color="rgba(220,160,255,0.55)" />
-              </div>
-            ))}
-          </div>
-        </StatCard>
-      )}
-
-      <StatCard t={t}>
-        <CardLabel t={t}>Farb-Palette · {colorPalette.length} Farben</CardLabel>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          {colorPalette.map(c => (
-            <div key={c} title={c}
-              style={{ width: "28px", height: "28px", borderRadius: "50%", background: c,
-                       boxShadow: `0 0 8px ${c}66`,
-                       border: `1.5px solid ${clickedColor === c ? t.cardBorderActive : (t.dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.15)")}`,
-                       flexShrink: 0, transition: "transform 0.2s, border-color 0.15s",
-                       cursor: "pointer",
-                       transform: clickedColor === c ? "scale(1.35)" : "scale(1)" }}
-              onClick={() => setClickedColor(clickedColor === c ? null : c)}
-              onMouseEnter={e => { if (clickedColor !== c) e.currentTarget.style.transform = "scale(1.3)"; }}
-              onMouseLeave={e => { if (clickedColor !== c) e.currentTarget.style.transform = "scale(1)"; }} />
-          ))}
-        </div>
-        {clickedColor && (() => {
-          const matches = polishes.map((p, i) => ({ p, i })).filter(({ p }) => p.color === clickedColor);
-          return (
-            <div style={{ marginTop: "14px", borderTop: `1px solid ${t.textFaint}`, paddingTop: "12px" }}>
-              <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flexWrap: "wrap" }}>
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: clickedColor, boxShadow: `0 0 14px ${clickedColor}88`, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "8px" }}>
-                    {clickedColor.toUpperCase()} · {matches.length} Lack{matches.length !== 1 ? "e" : ""}
-                  </div>
-                  {matches.map(({ p, i }) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px", flexWrap: "wrap" }}>
-                      <span style={{ fontFamily: t.fontDisplay, fontSize: "13px", color: t.text }}>{p.name}</span>
-                      {p.brand && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>{p.brand}</span>}
-                      {p.num && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>№ {p.num}</span>}
-                      {onSelectPolish && (
-                        <button onClick={() => onSelectPolish(i)}
-                          style={{ background: "transparent", border: `1px solid ${t.filterBorder}`, color: t.filterColor,
-                                   borderRadius: t.filterRadius, padding: "2px 10px", cursor: "pointer",
-                                   fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "1.5px",
-                                   textTransform: "uppercase", marginLeft: "auto", whiteSpace: "nowrap" }}>
-                          → Kollektion
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => setClickedColor(null)}
-                  style={{ background: "transparent", border: "none", color: t.textVeryMuted, cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px", flexShrink: 0 }}>×</button>
-              </div>
-            </div>
-          );
-        })()}
-      </StatCard>
-
-      {(() => {
-        const topRated = [...polishes].filter(p => (p.rating || 0) > 0).sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 5);
-        if (!topRated.length) return null;
-        return (
-          <StatCard t={t} style={{ marginTop: "20px" }}>
-            <CardLabel t={t}>Top Bewertet</CardLabel>
-            {topRated.map((p, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 0", borderBottom: i < topRated.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
-                <div style={{ width: 16, height: 16, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
-                <div style={{ flex: 1, fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted }}>{p.name}{p.brand ? ` · ${p.brand}` : ""}</div>
-                <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.accentText, letterSpacing: "1px" }}>{"★".repeat(p.rating)}</span>
-              </div>
-            ))}
-          </StatCard>
-        );
-      })()}
-    </div>
-  );
-}
-
-function LogPanel({ t, apiKey }) {
-  const [open, setOpen]       = useState(false);
-  const [logs, setLogs]       = useState("");
-  const [loading, setLoading] = useState(false);
-  const [lines, setLines]     = useState(100);
-  const [live, setLive]       = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const logRef   = useRef(null);
-  const timerRef = useRef(null);
-
-  const fetchLogs = useCallback((n) => {
-    const count = n ?? lines;
-    setLoading(true);
-    fetch(`/api/logs?lines=${count}`, { headers: { "X-Api-Key": apiKey || "" } })
-      .then(r => {
-        if (r.status === 401) { setLogs("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setHasError(true); setLoading(false); return null; }
-        return r.json();
-      })
-      .then(d => {
-        if (!d) return;
-        setLogs(d.logs || "");
-        setHasError(!!d.error);
-        setLoading(false);
-        setTimeout(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, 30);
-      })
-      .catch(() => { setHasError(true); setLoading(false); });
-  }, [lines, apiKey]);
-
-  useEffect(() => { if (open) fetchLogs(); }, [open]);
-
-  useEffect(() => {
-    clearInterval(timerRef.current);
-    if (live && open) timerRef.current = setInterval(() => fetchLogs(), 3000);
-    return () => clearInterval(timerRef.current);
-  }, [live, open, fetchLogs]);
-
-  const handleLines = (n) => { setLines(n); fetchLogs(n); };
-
-  const btnBase = {
-    background: "transparent", border: `1px solid ${t.filterBorder}`,
-    color: t.textVeryMuted, padding: "3px 12px", borderRadius: t.filterRadius,
-    cursor: "pointer", fontFamily: t.fontBody, fontSize: "10px",
-    letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s",
-  };
-  const btnActive = { ...btnBase, background: t.filterBgActive, color: t.filterColorActive, borderColor: t.filterBorderActive };
-
-  if (!open) return (
-    <div style={{ textAlign: "center", paddingBottom: "12px" }}>
-      <button style={btnBase}
-        onMouseEnter={e => Object.assign(e.currentTarget.style, { color: t.textMuted, borderColor: t.filterBorderActive })}
-        onMouseLeave={e => Object.assign(e.currentTarget.style, { color: t.textVeryMuted, borderColor: t.filterBorder })}
-        onClick={() => setOpen(true)}>
-        ≡ System Logs
-      </button>
-    </div>
-  );
-
-  return (
-    <div style={{ maxWidth: "900px", margin: "0 auto 40px", padding: "0 18px" }}>
-      <div style={{ background: t.dark ? "rgba(0,0,0,0.55)" : t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderBottom: `1px solid ${t.textFaint}`, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", color: t.textVeryMuted, textTransform: "uppercase", flexShrink: 0 }}>
-            ≡ System Logs {loading && <span style={{ marginLeft: "8px", opacity: 0.5 }}>⟳</span>}
-          </span>
-          <div style={{ display: "flex", gap: "6px", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
-            {[50, 100, 200].map(n => (
-              <button key={n} style={lines === n ? btnActive : btnBase} onClick={() => handleLines(n)}>{n}</button>
-            ))}
-            <button style={live ? { ...btnActive, borderColor: "rgba(100,255,150,0.4)", color: "rgba(100,255,150,0.8)" } : btnBase}
-              onClick={() => setLive(v => !v)}>
-              {live ? "● Live" : "○ Live"}
-            </button>
-            <button style={btnBase} onClick={() => fetchLogs()}
-              onMouseEnter={e => Object.assign(e.currentTarget.style, { color: t.textMuted, borderColor: t.filterBorderActive })}
-              onMouseLeave={e => Object.assign(e.currentTarget.style, { color: t.textVeryMuted, borderColor: t.filterBorder })}>
-              ↺ Refresh
-            </button>
-            <button style={{ ...btnBase, borderColor: "rgba(255,80,80,0.25)", color: "rgba(255,100,100,0.5)" }}
-              onClick={() => { setOpen(false); setLive(false); }}
-              onMouseEnter={e => Object.assign(e.currentTarget.style, { color: "rgba(255,120,120,0.9)", borderColor: "rgba(255,80,80,0.55)" })}
-              onMouseLeave={e => Object.assign(e.currentTarget.style, { color: "rgba(255,100,100,0.5)", borderColor: "rgba(255,80,80,0.25)" })}>
-              ✕ Schließen
-            </button>
-          </div>
-        </div>
-        <pre ref={logRef} style={{
-          margin: 0, padding: "14px 18px", maxHeight: "420px", overflowY: "auto",
-          fontFamily: "'Courier New', 'Consolas', monospace", fontSize: "11px",
-          lineHeight: "1.6", color: hasError ? "rgba(255,140,140,0.8)" : t.dark ? "rgba(180,220,180,0.85)" : "rgba(20,80,20,0.9)",
-          whiteSpace: "pre-wrap", wordBreak: "break-all",
-        }}>
-          {logs || (loading ? "Lade…" : "Keine Logs verfügbar")}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function UpdatePanel({ t, apiKey }) {
-  const [version, setVersion]             = useState(null);
-  const [status, setStatus]               = useState("idle");
-  const [latestVersion, setLatestVersion] = useState(null);
-  const [errorMsg, setErrorMsg]           = useState("");
-  const pollRef                           = useRef(null);
-
-  useEffect(() => {
-    fetch("/api/version").then(r => r.json()).then(d => setVersion(d.version)).catch(() => {});
-    return () => clearInterval(pollRef.current);
-  }, []);
-
-  const UPDATE_CACHE_TTL = 10 * 60 * 1000;
-  const check = () => {
-    setStatus("checking"); setErrorMsg("");
-    const cached = JSON.parse(localStorage.getItem("nagellacke_update_cache") || "null");
-    if (cached && Date.now() - cached.ts < UPDATE_CACHE_TTL) {
-      if (cached.updateAvailable) { setLatestVersion(cached.latestVersion); setStatus("available"); }
-      else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
-      return;
-    }
-    fetch("/api/update/check", { headers: { "X-Api-Key": apiKey || "" } })
-      .then(r => {
-        if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
-        return r.json();
-      })
-      .then(d => {
-        if (!d) return;
-        if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
-        localStorage.setItem("nagellacke_update_cache", JSON.stringify({ ts: Date.now(), updateAvailable: !!d.updateAvailable, latestVersion: d.latestVersion || null }));
-        if (d.updateAvailable) { setLatestVersion(d.latestVersion); setStatus("available"); }
-        else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
-      })
-      .catch(e => { setErrorMsg(e.message); setStatus("error"); });
-  };
-
-  const applyUpdate = () => {
-    setStatus("updating");
-    fetch("/api/update/apply", { method: "POST", headers: { "X-Api-Key": apiKey || "" } })
-      .then(r => {
-        if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
-        return r.json();
-      })
-      .then(d => {
-      if (!d) return;
-      if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
-      setStatus("restarting");
-      // Poll until the new version appears instead of a fixed delay
-      pollRef.current = setInterval(() => {
-        fetch("/api/version").then(r => r.json()).then(d => {
-          if (d.version && d.version !== version) {
-            clearInterval(pollRef.current);
-            window.location.reload();
-          }
-        }).catch(() => {});
-      }, 2000);
-      // Hard fallback after 60 seconds
-      setTimeout(() => { clearInterval(pollRef.current); window.location.reload(); }, 60000);
-    }).catch(e => { setErrorMsg(e.message); setStatus("error"); });
-  };
-
-  const btnStyle = { background: "transparent", border: `1px solid ${t.filterBorder}`, color: t.textVeryMuted, padding: "4px 14px", borderRadius: t.filterRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" };
-  const updateBtnStyle = { ...btnStyle, borderColor: "rgba(255,210,60,0.45)", color: "rgba(255,210,60,0.75)" };
-  const textStyle = { fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase" };
-
-  return (
-    <div style={{ textAlign: "center", padding: "0 0 36px" }}>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
-        {version && <span style={{ ...textStyle, color: t.textFaint }}>v{version}</span>}
-        {status === "idle"       && <button style={btnStyle} onMouseEnter={e => { e.currentTarget.style.color = t.textMuted; e.currentTarget.style.borderColor = t.filterBorderActive; }} onMouseLeave={e => { e.currentTarget.style.color = t.textVeryMuted; e.currentTarget.style.borderColor = t.filterBorder; }} onClick={check}>Updates prüfen</button>}
-        {status === "checking"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>Prüfe…</span>}
-        {status === "uptodate"   && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.55)" : "#2a7a2a" }}>✓ Aktuell</span>}
-        {status === "available"  && <>
-          <span style={{ ...textStyle, color: "rgba(255,210,60,0.75)" }}>↑ v{latestVersion} verfügbar</span>
-          <button style={updateBtnStyle} onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,210,60,1)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.75)"; e.currentTarget.style.background = "rgba(255,210,60,0.07)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,210,60,0.75)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.45)"; e.currentTarget.style.background = "transparent"; }} onClick={applyUpdate}>Jetzt updaten</button>
-        </>}
-        {status === "updating"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>⟳ Installiere Update…</span>}
-        {status === "restarting" && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.6)" : "#2a7a2a" }}>✓ Update installiert · warte auf Neustart…</span>}
-        {status === "error"      && <>
-          <span style={{ ...textStyle, color: "rgba(255,120,120,0.7)" }}>✕ {errorMsg}</span>
-          <button style={btnStyle} onClick={() => setStatus("idle")}>Zurück</button>
-        </>}
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [polishes, setPolishes]           = useState([]);
@@ -948,6 +34,9 @@ export default function App() {
   const [undoEntry, setUndoEntry]         = useState(null);
   const [batchMode, setBatchMode]         = useState(false);
   const [batchSel, setBatchSel]           = useState(new Set());
+  const [showBatchMore, setShowBatchMore] = useState(false);
+  const [batchBrandInput, setBatchBrandInput] = useState("");
+  const [importModal, setImportModal]     = useState(null);
   const undoTimer                         = useRef(null);
   const importRef                         = useRef(null);
   const searchRef                         = useRef(null);
@@ -999,8 +88,10 @@ export default function App() {
 
   const sorted = useMemo(() => {
     const arr = [...polishes];
-    if (sortBy === "name")  arr.sort((a, b) => a.name.localeCompare(b.name));
-    if (sortBy === "brand") arr.sort((a, b) => (a.brand || "").localeCompare(b.brand || ""));
+    if (sortBy === "newest") arr.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (sortBy === "oldest") arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    if (sortBy === "name")   arr.sort((a, b) => a.name.localeCompare(b.name));
+    if (sortBy === "brand")  arr.sort((a, b) => (a.brand || "").localeCompare(b.brand || ""));
     if (sortBy === "hue")    arr.sort((a, b) => hexToHue(a.color) - hexToHue(b.color));
     if (sortBy === "rating") arr.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     return arr;
@@ -1061,7 +152,7 @@ export default function App() {
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "/" || e.key === "f") { e.preventDefault(); searchRef.current?.focus(); }
-      if (e.key === "Escape") { setSelected(null); setShowAdd(false); setEditIdx(null); setEditForm(null); setShowSettings(false); setShowThemePicker(false); }
+      if (e.key === "Escape") { setSelected(null); setShowAdd(false); setEditIdx(null); setEditForm(null); setShowSettings(false); setShowThemePicker(false); setImportModal(null); }
       if (e.key === "n" && !showAdd && editIdx === null && view === "collection") setShowAdd(true);
     };
     document.addEventListener("keydown", handler);
@@ -1075,14 +166,16 @@ export default function App() {
     const newFinish = form.finish || "Classic";
     const dupe = polishes.find(p => { const d = Math.abs(hexToHue(p.color) - newHue); return Math.min(d, 360 - d) < 15 && (p.finish || "Classic") === newFinish; });
     if (dupe && !window.confirm(`Ähnlicher Lack vorhanden:\n„${[dupe.brand, dupe.name].filter(Boolean).join(" · ")}" (gleicher Finish, ähnliche Farbe)\n\nTrotzdem hinzufügen?`)) return;
+    const now = Date.now();
     const newPolishes = [...polishes, {
       name: form.name.trim(), brand: form.brand.trim() || undefined,
       color: form.color, finish: form.finish,
       categories: form.categories, status: form.status,
-      ...(form.num.trim()             && { num:   form.num.trim() }),
-      ...(parseInt(form.count) > 1    && { count: parseInt(form.count) }),
-      ...(form.notes.trim()           && { notes: form.notes.trim() }),
-      ...(form.rating > 0             && { rating: form.rating }),
+      createdAt: now, updatedAt: now,
+      ...(form.num.trim()          && { num:   form.num.trim() }),
+      ...(parseInt(form.count) > 1 && { count: parseInt(form.count) }),
+      ...(form.notes.trim()        && { notes: form.notes.trim() }),
+      ...(form.rating > 0          && { rating: form.rating }),
     }];
     updatePolishes(newPolishes);
     setForm(EMPTY_FORM);
@@ -1105,6 +198,7 @@ export default function App() {
       ...p, name: editForm.name.trim(), brand: editForm.brand.trim() || undefined,
       color: editForm.color, finish: editForm.finish,
       categories: editForm.categories, status: editForm.status,
+      updatedAt: Date.now(),
       ...(editForm.num.trim()   ? { num: editForm.num.trim() }   : { num: undefined }),
       ...(editForm.notes.trim() ? { notes: editForm.notes.trim() } : { notes: undefined }),
       count: cnt > 1 ? cnt : undefined,
@@ -1147,12 +241,34 @@ export default function App() {
     const snapshot = { polishes, customCats };
     triggerUndo(snapshot, `${batchSel.size} Lacke`);
     updatePolishes(polishes.filter((_, i) => !batchSel.has(i)));
-    setBatchSel(new Set()); setBatchMode(false);
+    setBatchSel(new Set()); setBatchMode(false); setShowBatchMore(false);
   };
 
   const batchSetStatus = (status) => {
-    updatePolishes(polishes.map((p, i) => batchSel.has(i) ? { ...p, status } : p));
-    setBatchSel(new Set()); setBatchMode(false);
+    updatePolishes(polishes.map((p, i) => batchSel.has(i) ? { ...p, status, updatedAt: Date.now() } : p));
+    setBatchSel(new Set()); setBatchMode(false); setShowBatchMore(false);
+  };
+
+  const batchSetBrand = (brand) => {
+    if (!batchSel.size || !brand.trim()) return;
+    updatePolishes(polishes.map((p, i) => batchSel.has(i) ? { ...p, brand: brand.trim(), updatedAt: Date.now() } : p));
+    setBatchSel(new Set()); setBatchMode(false); setShowBatchMore(false); setBatchBrandInput("");
+  };
+
+  const batchSetFinish = (finish) => {
+    if (!batchSel.size || !finish) return;
+    updatePolishes(polishes.map((p, i) => batchSel.has(i) ? { ...p, finish, updatedAt: Date.now() } : p));
+    setBatchSel(new Set()); setBatchMode(false); setShowBatchMore(false);
+  };
+
+  const batchAddCategory = (catId) => {
+    if (!batchSel.size || !catId) return;
+    updatePolishes(polishes.map((p, i) =>
+      batchSel.has(i) && !(p.categories || []).includes(catId)
+        ? { ...p, categories: [...(p.categories || []), catId], updatedAt: Date.now() }
+        : p
+    ));
+    setBatchSel(new Set()); setBatchMode(false); setShowBatchMore(false);
   };
 
   // ── Export / Import ──
@@ -1183,24 +299,34 @@ export default function App() {
           (p.status !== undefined && !IMPORT_STATUSES.has(p.status))
         );
         if (invalid) { alert("Datei enthält ungültige Lack-Daten (Name, Farbe oder Status fehlerhaft)"); return; }
-        if (window.confirm(`${data.polishes.length} Lacke importieren? Die aktuellen Daten werden ersetzt.`)) {
-          const newPolishes = data.polishes;
-          const newCats     = Array.isArray(data.customCats) ? data.customCats : [];
-          setPolishes(newPolishes); setCustomCats(newCats);
-          saveToBackend(newPolishes, newCats);
-        }
+        setImportModal({ polishes: data.polishes, customCats: Array.isArray(data.customCats) ? data.customCats : [] });
       } catch { alert("Datei konnte nicht gelesen werden"); }
     };
     reader.readAsText(file);
     e.target.value = "";
   };
 
+  const doImportReplace = (data) => {
+    setPolishes(data.polishes);
+    setCustomCats(data.customCats);
+    saveToBackend(data.polishes, data.customCats);
+    setImportModal(null);
+  };
+
+  const doImportMerge = (data) => {
+    const toAdd = data.polishes.filter(imp =>
+      !polishes.some(ex => ex.name === imp.name && ex.brand === imp.brand)
+    );
+    const merged = [...polishes, ...toAdd];
+    setPolishes(merged);
+    saveToBackend(merged, customCats);
+    setImportModal(null);
+    if (toAdd.length === 0) alert("Keine neuen Lacke gefunden — alle bereits vorhanden.");
+    else alert(`${toAdd.length} neue Lack${toAdd.length !== 1 ? "e" : ""} hinzugefügt.`);
+  };
+
   const getPolishLabel = (p) => p.finish || "Classic";
   const statusObj = (p) => STATUS_OPTIONS.find(s => s.value === (p.status || "ok")) || STATUS_OPTIONS[0];
-  const statusTextColor = (status, dark) => {
-    if (dark) return (STATUS_OPTIONS.find(s => s.value === (status || "ok")) || STATUS_OPTIONS[0]).color;
-    return { ok: "#1a6b2a", wish: "#4a3080", empty: "#7a5000", gone: "#8b1a1a" }[status || "ok"] || "#444444";
-  };
 
   const effectiveTheme = theme === "system" ? (systemPrefersDark ? "darkLuxury" : "cleanWhite") : theme;
   const t = THEMES[effectiveTheme] || THEMES.darkLuxury;
@@ -1400,7 +526,7 @@ export default function App() {
       {editIdx === null && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", padding: "28px 0 8px", flexWrap: "wrap" }}>
           <button
-            onClick={() => { if (showAdd) setForm(EMPTY_FORM); setShowAdd(v => !v); setSelected(null); setBatchMode(false); setBatchSel(new Set()); }}
+            onClick={() => { if (showAdd) setForm(EMPTY_FORM); setShowAdd(v => !v); setSelected(null); setBatchMode(false); setBatchSel(new Set()); setShowBatchMore(false); }}
             style={{
               background: showAdd ? t.cardBg : t.btnPrimaryBg,
               border: `1px solid ${showAdd ? t.cardBorder : t.btnPrimaryBorder || t.accent}`,
@@ -1412,7 +538,7 @@ export default function App() {
           </button>
           {!showAdd && polishes.length > 0 && (
             <button
-              onClick={() => { setBatchMode(v => !v); setBatchSel(new Set()); setSelected(null); }}
+              onClick={() => { setBatchMode(v => !v); setBatchSel(new Set()); setSelected(null); setShowBatchMore(false); }}
               style={{
                 background: batchMode ? t.filterBgActive : t.filterBg,
                 border: `1px solid ${batchMode ? t.filterBorderActive : t.filterBorder}`,
@@ -1663,17 +789,85 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Import Modal ── */}
+      {importModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ background: t.dark ? "rgba(16,10,28,0.98)" : t.cardBgHover, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius, padding: "28px 28px 24px", maxWidth: "380px", width: "100%", boxShadow: "0 16px 48px rgba(0,0,0,0.5)" }}>
+            <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", textTransform: "uppercase", color: t.textVeryMuted, marginBottom: "10px" }}>↑ Import</div>
+            <div style={{ fontFamily: t.fontDisplay, fontSize: "20px", color: t.text, marginBottom: "8px" }}>
+              {importModal.polishes.length} Lack{importModal.polishes.length !== 1 ? "e" : ""} in der Datei
+            </div>
+            <div style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted, lineHeight: "1.6", marginBottom: "22px" }}>
+              Wie soll importiert werden?
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button onClick={() => doImportMerge(importModal)}
+                style={{ background: t.btnPrimaryBg, border: `1px solid ${t.btnPrimaryBorder || t.accent}`, color: t.btnPrimaryColor, padding: "12px 20px", borderRadius: t.btnPrimaryRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", textAlign: "left", transition: "all 0.2s" }}>
+                ＋ Zusammenführen
+                <div style={{ fontSize: "10px", letterSpacing: "1px", opacity: 0.7, marginTop: "3px", textTransform: "none" }}>Neue Lacke hinzufügen, Duplikate überspringen</div>
+              </button>
+              <button onClick={() => doImportReplace(importModal)}
+                style={{ background: "transparent", border: `1px solid rgba(255,80,80,0.35)`, color: "rgba(255,120,120,0.85)", padding: "12px 20px", borderRadius: t.btnPrimaryRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", textAlign: "left", transition: "all 0.2s" }}>
+                ↺ Ersetzen
+                <div style={{ fontSize: "10px", letterSpacing: "1px", opacity: 0.7, marginTop: "3px", textTransform: "none" }}>Aktuelle Kollektion vollständig überschreiben</div>
+              </button>
+              <button onClick={() => setImportModal(null)}
+                style={{ background: "transparent", border: `1px solid ${t.cardBorder}`, color: t.textVeryMuted, padding: "9px 20px", borderRadius: t.btnPrimaryRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Batch Action Bar ── */}
       {batchMode && batchSel.size > 0 && (
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: t.batchBarBg, borderTop: `1px solid ${t.batchBarBorder}`, padding: "14px 20px", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", flexWrap: "wrap", zIndex: 100, backdropFilter: "blur(10px)" }}>
-          <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted, letterSpacing: "2px", marginRight: "4px" }}>{batchSel.size} ausgewählt</span>
-          {STATUS_OPTIONS.map(s => (
-            <button key={s.value} onClick={() => batchSetStatus(s.value)}
-              style={{ ...batchSmallBtn, borderColor: s.color.replace("0.7)", "0.35)"), color: s.color }}>
-              {s.label}
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100, backdropFilter: "blur(10px)" }}>
+          {/* Expanded "Mehr" section */}
+          {showBatchMore && (
+            <div style={{ background: t.batchBarBg, borderTop: `1px solid ${t.batchBarBorder}`, padding: "10px 20px", display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                <input
+                  className="form-input"
+                  placeholder="Marke setzen…"
+                  value={batchBrandInput}
+                  onChange={e => setBatchBrandInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && batchSetBrand(batchBrandInput)}
+                  style={{ width: "150px", padding: "5px 10px", fontSize: "12px" }}
+                />
+                <button onClick={() => batchSetBrand(batchBrandInput)} style={{ ...batchSmallBtn, padding: "5px 12px" }}>✓</button>
+              </div>
+              <select className="sort-select"
+                defaultValue=""
+                onChange={e => { if (e.target.value) batchSetFinish(e.target.value); e.target.value = ""; }}>
+                <option value="">Finish setzen…</option>
+                {FINISH_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.icon} {f.label}</option>)}
+              </select>
+              {customCats.length > 0 && (
+                <select className="sort-select"
+                  defaultValue=""
+                  onChange={e => { if (e.target.value) batchAddCategory(e.target.value); e.target.value = ""; }}>
+                  <option value="">Kategorie hinzufügen…</option>
+                  {customCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          {/* Main bar */}
+          <div style={{ background: t.batchBarBg, borderTop: `1px solid ${t.batchBarBorder}`, padding: "14px 20px", display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted, letterSpacing: "2px", marginRight: "4px" }}>{batchSel.size} ausgewählt</span>
+            {STATUS_OPTIONS.map(s => (
+              <button key={s.value} onClick={() => batchSetStatus(s.value)}
+                style={{ ...batchSmallBtn, borderColor: s.color.replace("0.7)", "0.35)"), color: s.color }}>
+                {s.label}
+              </button>
+            ))}
+            <button onClick={batchDelete} style={{ ...batchSmallBtn, borderColor: "rgba(255,80,80,0.45)", color: "rgba(255,120,120,0.85)" }}>✕ Löschen</button>
+            <button onClick={() => setShowBatchMore(v => !v)}
+              style={{ ...batchSmallBtn, opacity: showBatchMore ? 1 : 0.65 }}>
+              {showBatchMore ? "▲ Weniger" : "▼ Mehr"}
             </button>
-          ))}
-          <button onClick={batchDelete} style={{ ...batchSmallBtn, borderColor: "rgba(255,80,80,0.45)", color: "rgba(255,120,120,0.85)" }}>✕ Löschen</button>
+          </div>
         </div>
       )}
     </div>

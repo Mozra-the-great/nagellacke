@@ -27,9 +27,23 @@ nagellacke/
 │       ├── data.json       ← Persistenz (Lacke + Kategorien)
 │       └── .api_key        ← API-Schlüssel (mode 0o600)
 ├── frontend/
+│   ├── public/             ← statische Assets (von Vite 1:1 in dist kopiert)
+│   │   ├── manifest.json   ← PWA-Manifest
+│   │   ├── sw.js           ← Service Worker (Cache-First, /api/ ausgenommen)
+│   │   ├── icon-192.svg    ← PWA-Icon
+│   │   └── icon-512.svg    ← PWA-Icon (groß)
 │   ├── src/
-│   │   ├── App.jsx         ← gesamte Frontend-Logik (~1200 Zeilen, eine Datei)
-│   │   └── main.jsx        ← React-Einstiegspunkt
+│   │   ├── themes.js       ← THEMES-Objekt (alle 7 Designs)
+│   │   ├── constants.js    ← FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, EMPTY_FORM, …
+│   │   ├── utils.js        ← hexToHue() und weitere shared Helpers
+│   │   ├── App.jsx         ← State, Handler, Main-Render (~600 Zeilen)
+│   │   ├── main.jsx        ← React-Einstiegspunkt + SW-Registrierung
+│   │   └── components/
+│   │       ├── NailBottle.jsx
+│   │       ├── PolishForm.jsx
+│   │       ├── StatsPage.jsx
+│   │       ├── LogPanel.jsx
+│   │       └── UpdatePanel.jsx
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
@@ -53,10 +67,9 @@ Alternativen wie Vue oder Svelte wären ebenfalls möglich gewesen — der Haupt
 **Warum Vite statt Create React App?**
 Vite bietet wesentlich schnellere Builds durch nativen ESM-Support und Rollup als Bundler. Create React App ist deprecated. Vite baut das Frontend in `backend/public/` — genau dort, wo Express seine statischen Dateien erwartet. Der Entwicklungs-Proxy (`/api → localhost:3000`) ist mit wenigen Zeilen konfiguriert.
 
-### Eine einzige `App.jsx`
+### Modulare Dateistruktur (seit v1.9.0)
 
-**Warum nicht mehrere Komponenten-Dateien?**
-Die App ist klein genug (~1200 Zeilen), dass eine einzelne Datei überschaubar bleibt. Mehrere Dateien hätten mehr Import-Overhead und keine echten Vorteile gebracht. Intern gibt es klare Komponenten (`NailBottle`, `PolishForm`, `StatsPage`, `LogPanel`, `UpdatePanel`), aber keine eigenen Dateien.
+`App.jsx` wurde in separate Module aufgeteilt: `themes.js` (Theme-Daten), `constants.js` (Optionslisten, EMPTY_FORM), `utils.js` (shared Helpers) und fünf Komponentendateien unter `components/`. `App.jsx` enthält nur noch State, Handler und den Haupt-Render (~600 Zeilen statt ~1700). Intern genutzte Hilfskomponenten wie `Bar` in StatsPage bleiben in der jeweiligen Datei.
 
 ### Kein Router
 
@@ -162,7 +175,10 @@ Vite baut die SPA als statische Dateien in `backend/public/`. Express liefert di
   "status":     "ok",                  // "ok" | "wish" | "empty" | "gone"
   "count":      2,                     // Anzahl Flaschen (optional, ≥2)
   "categories": ["sommer_1234567890"], // IDs aus customCats
-  "notes":      "Gekauft 2024-03"      // Freitext (optional)
+  "notes":      "Gekauft 2024-03",     // Freitext (optional)
+  "rating":     4,                     // Sterne 1–5 (optional)
+  "createdAt":  1716900000000,         // Unix-ms, beim Anlegen gesetzt
+  "updatedAt":  1716900000000          // Unix-ms, bei jeder Änderung aktualisiert
 }
 ```
 
@@ -220,3 +236,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.7.2 | Sternebewertung (1–5) pro Lack; Farbklick in Statistik zeigt zugehörigen Lack mit Sprung in Kollektion |
 | v1.7.3 | Lesbarkeit: Kontrast-Fixes in allen 6 Themes (WCAG AA); Accessibility: aria-label, aria-pressed, aria-live, Fokus-Ringe, Landmark-Elemente, htmlFor/id-Verbindungen; Rating-Bug in Bearbeitungsformular behoben |
 | v1.8.0 | Tastatur-Shortcuts (/ Suche, Esc schließen, n Neuer Lack); Theme „System" (folgt OS prefers-color-scheme); Dupe-Detektor beim Anlegen (Hue + Finish); Update-Check-Cache 10 min (kein GitHub-Rate-Limit); PolishForm key-Bug behoben |
+| v1.9.0 | Code-Split (App.jsx → themes.js, constants.js, utils.js, 5 Komponenten); Timestamps (createdAt/updatedAt + Sortierung „Neueste/Älteste"); Batch-Erweiterung (Marke, Finish, Kategorie); Import Merge-Modus (Zusammenführen vs. Ersetzen); PWA (manifest.json, Service Worker Cache-First, SVG-Icons) — **Hinweis:** `CACHE`-Name in `sw.js` bei jedem Release auf neue Version aktualisieren (z.B. `nagellacke-v1.9.1`), damit alte Assets durch neue ersetzt werden |
