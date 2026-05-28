@@ -459,12 +459,14 @@ export default function App() {
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:${t.scrollbarThumb};border-radius:2px;}
         .nav-btn{padding:7px 16px;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;white-space:nowrap;font-family:${t.fontBody};border-radius:${t.filterRadius};}
+        .header-nav{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto;}
         @media(max-width:600px){
           .bottle-card{padding:14px 6px 12px;}
           .filter-btn{padding:5px 10px;font-size:10px;}
           .search-input{width:160px;}
           .search-input:focus{width:190px;}
           .nav-btn{padding:5px 9px;font-size:10px;letter-spacing:1px;}
+          .header-nav{margin-left:0;width:100%;justify-content:flex-start;}
         }
       `}</style>
 
@@ -507,8 +509,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Nav — right, marginLeft auto pushes it right even when wrapping */}
-        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end", marginLeft: "auto" }}>
+        {/* Nav — right on desktop, full-width row on mobile via .header-nav */}
+        <div className="header-nav">
           {[
             { id: "collection", label: "◈ Nagellack" },
             { id: "stickers",   label: "◈ Sticker" },
