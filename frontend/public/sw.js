@@ -1,4 +1,4 @@
-const CACHE = "nagellacke-v2.1.4";
+const CACHE = "nagellacke-v2.1.5";
 
 self.addEventListener("install", e => e.waitUntil(self.skipWaiting()));
 self.addEventListener("activate", e => e.waitUntil(

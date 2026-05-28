@@ -1,4 +1,60 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+
+function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove, btnBase }) {
+  const [open, setOpen] = useState(false);
+  const camRef          = useRef(null);
+  const galRef          = useRef(null);
+
+  const pick = (ref) => { setOpen(false); ref.current?.click(); };
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (!e.target.closest("[data-photo-picker]")) setOpen(false); };
+    document.addEventListener("pointerdown", h);
+    return () => document.removeEventListener("pointerdown", h);
+  }, [open]);
+
+  const handle = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    onFile(file);
+  };
+
+  const menuStyle = {
+    position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+    background: t.dark ? "rgba(18,12,30,0.97)" : t.cardBg,
+    border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius,
+    minWidth: "150px", boxShadow: "0 4px 20px rgba(0,0,0,0.35)", overflow: "hidden",
+  };
+  const itemStyle = (danger) => ({
+    display: "block", width: "100%", textAlign: "left",
+    padding: "10px 14px", border: "none", background: "transparent",
+    color: danger ? "rgba(255,120,120,0.85)" : t.textMuted,
+    cursor: "pointer", fontFamily: t.fontBody, fontSize: "12px", letterSpacing: "1px",
+    borderTop: danger ? `1px solid ${t.cardBorder}` : "none",
+  });
+
+  return (
+    <div data-photo-picker style={{ position: "relative", display: "block" }}>
+      <button type="button" disabled={uploading} onClick={() => !uploading && setOpen(v => !v)}
+        style={{ ...btnBase, display: "block", width: "100%", textAlign: "center" }}>
+        {uploading ? "⟳ Wird hochgeladen…" : "📷 Foto wählen"}
+      </button>
+      {open && (
+        <div style={menuStyle}>
+          <button type="button" style={itemStyle(false)} onClick={() => pick(camRef)}>📷 Kamera</button>
+          <button type="button" style={{ ...itemStyle(false), borderTop: `1px solid ${t.cardBorder}` }} onClick={() => pick(galRef)}>🖼 Galerie</button>
+          {hasPhoto && onRemove && (
+            <button type="button" style={itemStyle(true)} onClick={() => { setOpen(false); onRemove(); }}>✕ Entfernen</button>
+          )}
+        </div>
+      )}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handle} style={{ display: "none" }} />
+      <input ref={galRef} type="file" accept="image/*"                       onChange={handle} style={{ display: "none" }} />
+    </div>
+  );
+}
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -16,8 +72,8 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
   const [search, setSearch]             = useState("");
   const [stickerSearch, setStickerSearch] = useState("");
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError]         = useState(null);
   const [expandedId, setExpandedId]     = useState(null);
-  const photoRef = useRef(null);
 
   const filtered = (polishes || []).filter(p => {
     const q = search.toLowerCase();
@@ -49,10 +105,8 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
     }));
   };
 
-  const handlePhotoSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
+  const handlePhotoUpload = (file) => {
+    setPhotoError(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -71,12 +125,17 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
           body: JSON.stringify({ data: base64, ext: "jpg" }),
         })
           .then(r => r.json())
-          .then(d => { if (d.filename) setForm(f => ({ ...f, photo: d.filename })); })
-          .catch(() => {})
+          .then(d => {
+            if (d.filename) setForm(f => ({ ...f, photo: d.filename }));
+            else setPhotoError("Foto-Upload fehlgeschlagen" + (d.error ? `: ${d.error}` : ""));
+          })
+          .catch(() => setPhotoError("Foto-Upload fehlgeschlagen — Verbindungsfehler"))
           .finally(() => setPhotoUploading(false));
       };
+      img.onerror = () => setPhotoError("Bild konnte nicht gelesen werden");
       img.src = ev.target.result;
     };
+    reader.onerror = () => setPhotoError("Datei konnte nicht gelesen werden");
     reader.readAsDataURL(file);
   };
 
@@ -118,20 +177,20 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
             </div>
             <div>
               <label className="form-label">Foto (optional)</label>
-              {form.photo ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {form.photo && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
                   <img src={`/photos/${form.photo}`} alt=""
                     style={{ width: 52, height: 39, objectFit: "cover", borderRadius: "6px", border: `1px solid ${t.cardBorder}` }} />
-                  <button type="button" onClick={() => setForm(f => ({ ...f, photo: null }))}
-                    style={{ ...btnBase, padding: "2px 8px", fontSize: "9px" }}>✕</button>
                 </div>
-              ) : (
-                <button type="button" disabled={photoUploading} onClick={() => photoRef.current?.click()}
-                  style={{ ...btnBase, display: "block", width: "100%", textAlign: "center" }}>
-                  {photoUploading ? "⟳ Wird hochgeladen…" : "📷 Foto wählen"}
-                </button>
               )}
-              <input ref={photoRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
+              <PhotoPicker t={t} btnBase={btnBase} uploading={photoUploading} hasPhoto={!!form.photo}
+                onFile={handlePhotoUpload}
+                onRemove={form.photo ? () => setForm(f => ({ ...f, photo: null })) : undefined} />
+              {photoError && (
+                <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: "rgba(255,120,120,0.85)", marginTop: "4px" }}>
+                  ✕ {photoError}
+                </div>
+              )}
             </div>
           </div>
 

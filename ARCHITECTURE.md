@@ -280,3 +280,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v2.1.2 | Robustes Update-Polling (erkennt Server-Downtime via `downCount`; Fallback-Reload nach 45 s); Version-Bump-Pflicht in allen Patch-Commits klargestellt |
 | v2.1.3 | Mobile Nav-Fix: `.header-nav` CSS-Klasse statt Inline-`marginLeft:auto`, Media-Query überschreibt auf Mobilgeräten zu voller Breite und Linksbündigkeit |
 | v2.1.4 | Sticker: Foto wird standardmäßig angezeigt; „Mehrfarbig"-Option im Farb-Editor (Regenbogen-Gradient); PolishForm Foto-Farbpicker auf einen Button reduziert (nativer Android-Chooser statt 📷/🖼 getrennt) |
+| v2.1.5 | Mobile Bug-Fixes: PhotoPicker-Komponente (ein Button → Dropdown „📷 Kamera" / „🖼 Galerie") in StickerPage + DiaryPage; Fehler-Feedback bei fehlgeschlagenem Foto-Upload; `type="button"` auf alle Buttons in StickerFormFields; API-Schlüssel-Warnung in Sticker-Formularen |
