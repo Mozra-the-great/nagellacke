@@ -39,6 +39,7 @@ export function UpdatePanel({ t, apiKey }) {
 
   const applyUpdate = () => {
     setStatus("updating");
+    localStorage.removeItem("nagellacke_update_cache");
     fetch("/api/update/apply", { method: "POST", headers: { "X-Api-Key": apiKey || "" } })
       .then(r => {
         if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }

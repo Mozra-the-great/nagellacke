@@ -458,19 +458,24 @@ export default function App() {
         input[type="color"]::-webkit-color-swatch{border:none;border-radius:6px;}
         ::-webkit-scrollbar{width:4px;}
         ::-webkit-scrollbar-thumb{background:${t.scrollbarThumb};border-radius:2px;}
+        .nav-btn{padding:7px 16px;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all 0.2s;white-space:nowrap;font-family:${t.fontBody};border-radius:${t.filterRadius};}
         @media(max-width:600px){
           .bottle-card{padding:14px 6px 12px;}
           .filter-btn{padding:5px 10px;font-size:10px;}
           .search-input{width:160px;}
           .search-input:focus{width:190px;}
+          .nav-btn{padding:5px 9px;font-size:10px;letter-spacing:1px;}
         }
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ textAlign: "center", padding: "48px 24px 24px", borderBottom: `1px solid ${t.textFaint}`, position: "relative" }}>
+      <div style={{ textAlign: "center", padding: "0 24px 24px", borderBottom: `1px solid ${t.textFaint}` }}>
 
-        {/* Theme Switcher — left */}
-        <div style={{ position: "absolute", top: "20px", left: "20px", zIndex: 50 }}>
+        {/* Controls row — theme left, nav right, wraps on mobile */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "12px 0 0", gap: "8px", flexWrap: "wrap" }}>
+
+        {/* Theme Switcher */}
+        <div style={{ position: "relative", zIndex: 50, flexShrink: 0 }}>
           <button onClick={() => setShowThemePicker(v => !v)}
             style={{ background: showThemePicker ? t.filterBgActive : t.filterBg, border: `1px solid ${t.filterBorder}`, color: showThemePicker ? t.filterColorActive : t.filterColor, padding: "7px 16px", borderRadius: t.filterRadius, fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}>
             {t.icon} Theme
@@ -502,22 +507,24 @@ export default function App() {
           )}
         </div>
 
-        {/* Nav — right */}
-        <div style={{ position: "absolute", top: "20px", right: "20px", display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {/* Nav — right, marginLeft auto pushes it right even when wrapping */}
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end", marginLeft: "auto" }}>
           {[
-            { id: "collection", label: "◈ Kollektion" },
+            { id: "collection", label: "◈ Nagellack" },
             { id: "stickers",   label: "◈ Sticker" },
             { id: "stats",      label: "◈ Statistiken" },
             { id: "diary",      label: "◈ Tagebuch" },
           ].map(({ id, label }) => (
-            <button key={id} onClick={() => setView(id)}
-              style={{ background: view === id ? t.filterBgActive : t.filterBg, border: `1px solid ${t.filterBorder}`, color: view === id ? t.filterColorActive : t.filterColor, padding: "7px 16px", borderRadius: t.filterRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s", opacity: view === id ? 1 : 0.6 }}>
+            <button key={id} className="nav-btn" onClick={() => setView(id)}
+              style={{ background: view === id ? t.filterBgActive : t.filterBg, border: `1px solid ${t.filterBorder}`, color: view === id ? t.filterColorActive : t.filterColor, opacity: view === id ? 1 : 0.6 }}>
               {label}
             </button>
           ))}
         </div>
 
-        <div style={{ fontSize: "10px", letterSpacing: "6px", color: t.textVeryMuted, fontFamily: t.fontBody, textTransform: "uppercase", marginBottom: "12px" }}>meine kollektion</div>
+        </div>{/* end controls row */}
+
+        <div style={{ fontSize: "10px", letterSpacing: "6px", color: t.textVeryMuted, fontFamily: t.fontBody, textTransform: "uppercase", marginBottom: "12px", marginTop: "18px" }}>meine kollektion</div>
         <h1 style={t.id === "neonNightclub"
           ? { fontFamily: t.fontDisplay, fontSize: "clamp(44px,8vw,88px)", fontWeight: 400, letterSpacing: "10px", margin: 0, color: "#ff00e6", textShadow: "0 0 24px #ff00e660,0 0 48px #ff00e625", lineHeight: 1.1 }
           : t.dark
@@ -588,7 +595,7 @@ export default function App() {
         onSelectPolish={(idx) => { setView("collection"); setSelected(idx); }} /></main>}
 
       {/* ── Diary Page ── */}
-      {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes}
+      {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes} stickers={stickers}
         onAdd={handleAddManicure} onDelete={handleDeleteManicure} apiKey={apiKey} /></main>}
 
       {/* ── Sticker Page ── */}

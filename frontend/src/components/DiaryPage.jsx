@@ -10,10 +10,11 @@ function formatDate(iso) {
   return `${d}.${m}.${y}`;
 }
 
-export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
+export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, apiKey }) {
   const [showForm, setShowForm]         = useState(false);
-  const [form, setForm]                 = useState({ date: todayISO(), polishRefs: [], notes: "", photo: null });
+  const [form, setForm]                 = useState({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photo: null });
   const [search, setSearch]             = useState("");
+  const [stickerSearch, setStickerSearch] = useState("");
   const [photoUploading, setPhotoUploading] = useState(false);
   const [expandedId, setExpandedId]     = useState(null);
   const photoRef = useRef(null);
@@ -22,6 +23,21 @@ export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
     const q = search.toLowerCase();
     return !q || p.name.toLowerCase().includes(q) || (p.brand || "").toLowerCase().includes(q);
   });
+
+  const filteredStickers = (stickers || []).filter(s => {
+    const q = stickerSearch.toLowerCase();
+    return !q || s.name.toLowerCase().includes(q) || (s.brand || "").toLowerCase().includes(q) || (s.style || "").toLowerCase().includes(q);
+  });
+
+  const toggleSticker = (s) => {
+    const already = form.stickerRefs.some(r => r.name === s.name && r.brand === s.brand);
+    setForm(f => ({
+      ...f,
+      stickerRefs: already
+        ? f.stickerRefs.filter(r => !(r.name === s.name && r.brand === s.brand))
+        : [...f.stickerRefs, { name: s.name, brand: s.brand || "", colors: s.colors || [] }],
+    }));
+  };
 
   const togglePolish = (p) => {
     const already = form.polishRefs.some(r => r.name === p.name && r.brand === p.brand);
@@ -66,9 +82,9 @@ export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
 
   const handleSubmit = () => {
     if (!form.date) return;
-    onAdd({ date: form.date, polishRefs: form.polishRefs, notes: form.notes, photo: form.photo });
-    setForm({ date: todayISO(), polishRefs: [], notes: "", photo: null });
-    setSearch("");
+    onAdd({ date: form.date, polishRefs: form.polishRefs, stickerRefs: form.stickerRefs, notes: form.notes, photo: form.photo });
+    setForm({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photo: null });
+    setSearch(""); setStickerSearch("");
     setShowForm(false);
   };
 
@@ -165,6 +181,63 @@ export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
             </div>
           </div>
 
+          {(stickers || []).length > 0 && (
+            <div style={{ marginBottom: "14px" }}>
+              <label className="form-label">Verwendete Sticker</label>
+              {form.stickerRefs.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+                  {form.stickerRefs.map(r => (
+                    <span key={r.name + r.brand} style={{ display: "inline-flex", alignItems: "center", gap: "5px",
+                      background: t.filterBgActive, border: `1px solid ${t.filterBorderActive}`,
+                      borderRadius: "20px", padding: "2px 10px 2px 6px",
+                      fontFamily: t.fontBody, fontSize: "11px", color: t.filterColorActive }}>
+                      {r.colors && r.colors[0] && r.colors[0] !== "transparent" && (
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: r.colors[0], display: "inline-block", flexShrink: 0 }} />
+                      )}
+                      {r.name}
+                      <button onClick={() => toggleSticker(r)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: t.textVeryMuted,
+                                 fontSize: "12px", lineHeight: 1, padding: "0 0 0 2px" }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input className="form-input" placeholder="Sticker suchen…" value={stickerSearch}
+                onChange={e => setStickerSearch(e.target.value)}
+                style={{ marginBottom: "6px" }} />
+              <div style={{ maxHeight: "160px", overflowY: "auto", border: `1px solid ${t.cardBorder}`,
+                            borderRadius: t.inputRadius, background: t.inputBg }}>
+                {filteredStickers.length === 0 && (
+                  <div style={{ padding: "10px 14px", fontFamily: t.fontBody, fontSize: "11px", color: t.textVeryMuted }}>
+                    Keine Sticker gefunden
+                  </div>
+                )}
+                {filteredStickers.map((s, i) => {
+                  const sel = form.stickerRefs.some(r => r.name === s.name && r.brand === s.brand);
+                  const firstColor = (s.colors || []).find(c => c !== "transparent");
+                  return (
+                    <div key={i} onClick={() => toggleSticker(s)}
+                      style={{ display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px",
+                               cursor: "pointer", background: sel ? (t.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)") : "transparent",
+                               borderBottom: i < filteredStickers.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
+                      {firstColor
+                        ? <span style={{ width: 14, height: 14, borderRadius: "50%", background: firstColor, border: `1px solid ${t.cardBorder}`, flexShrink: 0 }} />
+                        : <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1px solid ${t.cardBorder}`, flexShrink: 0, opacity: 0.4 }} />
+                      }
+                      <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.text, flex: 1 }}>{s.name}</span>
+                      {(s.brand || s.style) && (
+                        <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>
+                          {[s.brand, s.style].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                      {sel && <span style={{ color: t.filterColorActive, fontSize: "12px" }}>✓</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div style={{ marginBottom: "18px" }}>
             <label className="form-label">Notizen</label>
             <textarea className="form-input" placeholder="Anlass, Haltbarkeit, Gedanken…"
@@ -202,7 +275,7 @@ export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
                     {formatDate(m.date)}
                   </div>
                   {m.polishRefs && m.polishRefs.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "6px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "4px" }}>
                       {m.polishRefs.map((r, i) => (
                         <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "5px",
                           fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted }}>
@@ -212,6 +285,24 @@ export function DiaryPage({ t, manicures, polishes, onAdd, onDelete, apiKey }) {
                           {i < m.polishRefs.length - 1 && <span style={{ color: t.textFaint }}>,</span>}
                         </span>
                       ))}
+                    </div>
+                  )}
+                  {m.stickerRefs && m.stickerRefs.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "6px" }}>
+                      {m.stickerRefs.map((r, i) => {
+                        const fc = (r.colors || []).find(c => c !== "transparent");
+                        return (
+                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "5px",
+                            fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted }}>
+                            {fc
+                              ? <span style={{ width: 10, height: 10, borderRadius: "3px", background: fc, border: `1px solid ${t.cardBorder}`, flexShrink: 0, display: "inline-block" }} />
+                              : <span style={{ fontSize: "10px", flexShrink: 0 }}>◌</span>
+                            }
+                            {r.name}{r.brand ? ` · ${r.brand}` : ""}
+                            {i < m.stickerRefs.length - 1 && <span style={{ color: t.textFaint }}>,</span>}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                   {m.notes && (
