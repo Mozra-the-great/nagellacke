@@ -197,13 +197,36 @@ Vite baut die SPA als statische Dateien in `backend/public/`. Express liefert di
 }
 ```
 
+### Sticker-Objekt (seit v2.1.0)
+
+```json
+{
+  "name":      "Cherry Blossoms",
+  "brand":     "Born Pretty",
+  "style":     "Blumen",
+  "type":      "accent",
+  "colors":    ["#ffb3c6", "transparent", "#ffffff"],
+  "status":    "ok",
+  "notes":     "Sehr filigran",
+  "photo":     "sticker-filename.jpg",
+  "rating":    4,
+  "createdAt": 1716900000000,
+  "updatedAt": 1716900000000
+}
+```
+
+`colors` ist ein Array aus Hex-Strings plus dem Sonderwert `"transparent"`, der als CSS-Wert direkt verwendbar ist und als Schachbrettmuster dargestellt wird. Maximal 10 Farben pro Sticker.
+
+`type` ist eines von: `"full"` (Full Cover), `"accent"`, `"wrap"` (Nail Wrap), `"3d"`, `"foil"` (Folie), `"slider"`.
+
 ### data.json-Struktur
 
 ```json
 {
   "polishes":  [ ...Polish-Objekte ],
   "customCats": [ { "id": "sommer_1234567890", "label": "Sommer" } ],
-  "manicures": [ ...Manicure-Objekte ]
+  "manicures": [ ...Manicure-Objekte ],
+  "stickers":  [ ...Sticker-Objekte ]
 }
 ```
 
@@ -252,3 +275,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.8.0 | Tastatur-Shortcuts (/ Suche, Esc schließen, n Neuer Lack); Theme „System" (folgt OS prefers-color-scheme); Dupe-Detektor beim Anlegen (Hue + Finish); Update-Check-Cache 10 min (kein GitHub-Rate-Limit); PolishForm key-Bug behoben |
 | v1.9.0 | Code-Split (App.jsx → themes.js, constants.js, utils.js, 5 Komponenten); Timestamps (createdAt/updatedAt + Sortierung „Neueste/Älteste"); Batch-Erweiterung (Marke, Finish, Kategorie); Import Merge-Modus (Zusammenführen vs. Ersetzen); PWA (manifest.json, Service Worker Cache-First, SVG-Icons) — **Hinweis:** `CACHE`-Name in `sw.js` bei jedem Release auf neue Version aktualisieren (z.B. `nagellacke-v1.9.1`), damit alte Assets durch neue ersetzt werden |
 | v2.0.0 | Flaschenfoto pro Lack (Canvas-Resize → Base64 → `data/photos/`, kein neues npm-Paket); Foto-Toggle auf Karte (SVG ↔ Foto, alle 4 Kartentypen); Maniküre-Tagebuch (neue 3. View, Einträge mit Datum, Lacke aus Kollektion, Notizen, optionales Foto); Navigation auf 3 Buttons erweitert; `data.manicures`-Array in data.json; Backend-Endpoints POST/DELETE `/api/photos` |
+| v2.1.0 | Nail-Sticker-Inventar: eigener Nav-Tab „Sticker"; Felder Name, Marke, Stil (Freitext), Typ (6 Typen als Chips), Farben (Multi-Color-Editor mit Hex + Transparent-Option), Status, Bewertung, Foto, Notizen; `data.stickers`-Array in data.json; automatische Migration älterer data.json ohne `stickers`-Feld |

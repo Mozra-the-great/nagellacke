@@ -8,6 +8,7 @@ import { StatsPage } from "./components/StatsPage.jsx";
 import { LogPanel } from "./components/LogPanel.jsx";
 import { UpdatePanel } from "./components/UpdatePanel.jsx";
 import { DiaryPage } from "./components/DiaryPage.jsx";
+import { StickerPage } from "./components/StickerPage.jsx";
 
 const statusTextColor = (status, dark) => {
   if (dark) return (STATUS_OPTIONS.find(s => s.value === (status || "ok")) || STATUS_OPTIONS[0]).color;
@@ -39,6 +40,7 @@ export default function App() {
   const [batchBrandInput, setBatchBrandInput] = useState("");
   const [importModal, setImportModal]     = useState(null);
   const [manicures, setManicures]         = useState([]);
+  const [stickers, setStickers]           = useState([]);
   const [photoViewSet, setPhotoViewSet]   = useState(new Set());
   const undoTimer                         = useRef(null);
   const importRef                         = useRef(null);
@@ -53,17 +55,17 @@ export default function App() {
   useEffect(() => {
     fetch("/api/data")
       .then(r => r.json())
-      .then(data => { setPolishes(data.polishes || []); setCustomCats(data.customCats || []); setManicures(data.manicures || []); })
+      .then(data => { setPolishes(data.polishes || []); setCustomCats(data.customCats || []); setManicures(data.manicures || []); setStickers(data.stickers || []); })
       .catch(e => console.error("Load error:", e))
       .finally(() => setLoading(false));
   }, []);
 
-  const saveToBackend = useCallback((newPolishes, newCats, newManicures) => {
+  const saveToBackend = useCallback((newPolishes, newCats, newManicures, newStickers) => {
     setSaveStatus("saving");
     fetch("/api/data", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
-      body: JSON.stringify({ polishes: newPolishes, customCats: newCats, manicures: newManicures }),
+      body: JSON.stringify({ polishes: newPolishes, customCats: newCats, manicures: newManicures, stickers: newStickers ?? stickers }),
     })
       .then(r => {
         if (r.status === 401) { setSaveStatus("unauth"); setTimeout(() => setSaveStatus("idle"), 4000); return null; }
@@ -71,7 +73,7 @@ export default function App() {
       })
       .then(d => { if (!d) return; setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 1800); })
       .catch(() => { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 3000); });
-  }, [apiKey]);
+  }, [apiKey, stickers]);
 
   const updatePolishes = useCallback((np) => { setPolishes(np); saveToBackend(np, customCats, manicures); }, [customCats, manicures, saveToBackend]);
   const updateCats     = useCallback((nc) => { setCustomCats(nc); saveToBackend(polishes, nc, manicures); }, [polishes, manicures, saveToBackend]);
@@ -245,6 +247,31 @@ export default function App() {
     const next = manicures.filter(m => m.id !== id);
     setManicures(next);
     saveToBackend(polishes, customCats, next);
+  };
+
+  // ── Stickers ──
+  const handleAddSticker = (s) => {
+    const now = Date.now();
+    const next = [{ ...s, createdAt: now, updatedAt: now }, ...stickers];
+    setStickers(next);
+    saveToBackend(polishes, customCats, manicures, next);
+  };
+
+  const handleSaveSticker = (idx, s) => {
+    const old = stickers[idx];
+    if (old.photo && old.photo !== s.photo)
+      fetch(`/api/photos/${old.photo}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
+    const next = stickers.map((st, i) => i === idx ? { ...st, ...s, updatedAt: Date.now() } : st);
+    setStickers(next);
+    saveToBackend(polishes, customCats, manicures, next);
+  };
+
+  const handleDeleteSticker = (idx) => {
+    if (stickers[idx]?.photo)
+      fetch(`/api/photos/${stickers[idx].photo}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
+    const next = stickers.filter((_, i) => i !== idx);
+    setStickers(next);
+    saveToBackend(polishes, customCats, manicures, next);
   };
 
   // ── Categories ──
@@ -479,6 +506,7 @@ export default function App() {
         <div style={{ position: "absolute", top: "20px", right: "20px", display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {[
             { id: "collection", label: "◈ Kollektion" },
+            { id: "stickers",   label: "◈ Sticker" },
             { id: "stats",      label: "◈ Statistiken" },
             { id: "diary",      label: "◈ Tagebuch" },
           ].map(({ id, label }) => (
@@ -562,6 +590,11 @@ export default function App() {
       {/* ── Diary Page ── */}
       {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes}
         onAdd={handleAddManicure} onDelete={handleDeleteManicure} apiKey={apiKey} /></main>}
+
+      {/* ── Sticker Page ── */}
+      {view === "stickers" && <main><StickerPage t={t} stickers={stickers}
+        onAdd={handleAddSticker} onSave={handleSaveSticker} onDelete={handleDeleteSticker}
+        apiKey={apiKey} /></main>}
 
       {/* ── Collection View ── */}
       {view === "collection" && <main>

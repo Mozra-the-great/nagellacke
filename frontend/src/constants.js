@@ -50,3 +50,23 @@ export const EMPTY_FORM = {
   num: "", name: "", brand: "", color: "#ff6699", finish: "Classic",
   count: 1, categories: [], status: "ok", notes: "", rating: 0,
 };
+
+export const STICKER_TYPE_OPTIONS = [
+  { value: "full",   label: "Full Cover", icon: "▬" },
+  { value: "accent", label: "Akzent",     icon: "◆" },
+  { value: "wrap",   label: "Nail Wrap",  icon: "◌" },
+  { value: "3d",     label: "3D",         icon: "●" },
+  { value: "foil",   label: "Folie",      icon: "✦" },
+  { value: "slider", label: "Slider",     icon: "◎" },
+];
+
+export const STICKER_STYLE_SUGGESTIONS = [
+  "Blumen", "Geometrisch", "Abstrakt", "Glitzer", "Französisch",
+  "Weihnachten", "Halloween", "Sommer", "Herzen", "Sterne",
+  "Tiere", "Früchte", "Botanisch", "Marble", "Japanisch",
+];
+
+export const EMPTY_STICKER = {
+  name: "", brand: "", style: "", type: "accent",
+  colors: ["#ff6699"], status: "ok", notes: "", rating: 0, photo: null,
+};

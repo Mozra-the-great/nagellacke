@@ -18,6 +18,7 @@ const CURRENT_VERSION = pkg.version;
 
 const DEFAULT_DATA = {
   manicures: [],
+  stickers: [],
   customCats: [],
   polishes: [
     { name: "High Shine Gel", brand: "Catrice", color: "#ddeeff", finish: "Top Coat",  categories: [], status: "ok" },
@@ -113,6 +114,7 @@ function loadData() {
         return updated;
       });
       if (!data.manicures) { data.manicures = []; migrated = true; }
+      if (!data.stickers)  { data.stickers  = []; migrated = true; }
       if (migrated) saveData(data);
       return data;
     }
@@ -221,7 +223,7 @@ app.get("/api/data", (req, res) => {
 
 // POST /api/data — save collection (requires API key)
 app.post("/api/data", requireApiKey, (req, res) => {
-  const { polishes, customCats, manicures } = req.body;
+  const { polishes, customCats, manicures, stickers } = req.body;
   if (!Array.isArray(polishes) || !Array.isArray(customCats)) {
     return res.status(400).json({ error: "Ungültiges Datenformat" });
   }
@@ -231,7 +233,7 @@ app.post("/api/data", requireApiKey, (req, res) => {
   if (!polishes.every(validatePolish)) {
     return res.status(400).json({ error: "Ungültige Lack-Daten (Name, Farbe oder Status fehlerhaft)" });
   }
-  saveData({ polishes, customCats, manicures: Array.isArray(manicures) ? manicures : [] });
+  saveData({ polishes, customCats, manicures: Array.isArray(manicures) ? manicures : [], stickers: Array.isArray(stickers) ? stickers : [] });
   res.json({ ok: true });
 });
 
