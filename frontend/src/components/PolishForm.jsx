@@ -2,14 +2,64 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { NailBottle } from "./NailBottle.jsx";
 import { FINISH_OPTIONS, STATUS_OPTIONS, BRAND_SUGGESTIONS } from "../constants.js";
 
+function PhotoPicker({ t, onFile, style, children, disabled }) {
+  const [open, setOpen] = useState(false);
+  const camRef          = useRef(null);
+  const galRef          = useRef(null);
+
+  const pick = (ref) => { ref.current?.click(); setOpen(false); };
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (!e.target.closest("[data-photo-picker]")) setOpen(false); };
+    document.addEventListener("pointerdown", h);
+    return () => document.removeEventListener("pointerdown", h);
+  }, [open]);
+
+  const handle = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    onFile(file);
+  };
+
+  return (
+    <div data-photo-picker style={{ position: "relative", display: "inline-block" }}>
+      <button type="button" style={style} disabled={disabled}
+        onClick={disabled ? undefined : () => setOpen(o => !o)}>
+        {children}
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
+          background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: "10px",
+          padding: "4px", display: "flex", flexDirection: "column", gap: "2px",
+          minWidth: "120px", boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
+          <button type="button" onClick={() => pick(camRef)}
+            style={{ background: "transparent", border: "none", color: t.textMuted, fontFamily: t.fontBody,
+                     fontSize: "12px", padding: "6px 10px", textAlign: "left", cursor: "pointer", borderRadius: "7px" }}>
+            📷 Kamera
+          </button>
+          <button type="button" onClick={() => pick(galRef)}
+            style={{ background: "transparent", border: "none", color: t.textMuted, fontFamily: t.fontBody,
+                     fontSize: "12px", padding: "6px 10px", textAlign: "left", cursor: "pointer", borderRadius: "7px" }}>
+            🖼 Galerie
+          </button>
+        </div>
+      )}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handle}
+        style={{ position: "absolute", width: "0.1px", height: "0.1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }} />
+      <input ref={galRef} type="file" accept="image/*" onChange={handle}
+        style={{ position: "absolute", width: "0.1px", height: "0.1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }} />
+    </div>
+  );
+}
+
 export function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success, apiKey }) {
   const [newCatName, setNewCatName]     = useState("");
   const [showNewCat, setShowNewCat]     = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
-  const photoPickerRef    = useRef(null);
-  const photoCanvasRef    = useRef(null);
-  const bottlePhotoRef    = useRef(null);
+  const photoCanvasRef = useRef(null);
 
   const toggleCat = (catId) => setForm(f => ({
     ...f,
@@ -38,13 +88,10 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
     img.src = photoPreview;
   }, [photoPreview]);
 
-  const handlePhotoSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const handleColorPhotoFile = (file) => {
     const reader = new FileReader();
     reader.onload = (ev) => setPhotoPreview(ev.target.result);
     reader.readAsDataURL(file);
-    e.target.value = "";
   };
 
   const handleCanvasClick = (e) => {
@@ -59,10 +106,7 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
     setPhotoPreview(null);
   };
 
-  const handleBottlePhotoSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
+  const handleBottlePhotoFile = (file) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -141,14 +185,13 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
           <div style={{ display: "flex", alignItems: "center", gap: "9px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: t.inputRadius, padding: "8px 12px", height: "42px" }}>
             <div style={{ width: 22, height: 22, borderRadius: "5px", background: form.color, boxShadow: `0 0 8px ${form.color}88`, flexShrink: 0 }} />
             <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: "100%", height: "22px" }} />
-            <button type="button" title="Foto aufnehmen oder aus Galerie wählen" onClick={() => photoPickerRef.current?.click()}
-              style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s", flexShrink: 0 }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
-              onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
+            <PhotoPicker t={t} onFile={handleColorPhotoFile}
+              style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px",
+                       padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1,
+                       transition: "border-color 0.15s", flexShrink: 0 }}>
               📷
-            </button>
+            </PhotoPicker>
           </div>
-          <input ref={photoPickerRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
           {photoPreview && (
             <div style={{ marginTop: "10px", position: "relative", display: "inline-block" }}>
               <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "6px" }}>
@@ -181,26 +224,27 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
       </div>
       <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Flaschenfoto</label>
-        {form.photo ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {form.photo && (
             <img src={`/photos/${form.photo}`} alt="Flaschenfoto"
               style={{ width: 48, height: 72, objectFit: "cover", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
+          )}
+          <PhotoPicker t={t} onFile={handleBottlePhotoFile} disabled={photoUploading}
+            style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
+                     borderRadius: t.filterRadius, padding: "5px 14px", cursor: photoUploading ? "not-allowed" : "pointer",
+                     fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase",
+                     opacity: photoUploading ? 0.6 : 1 }}>
+            {photoUploading ? "⟳ Wird hochgeladen…" : form.photo ? "📷 Foto ändern" : "📷 Foto hinzufügen"}
+          </PhotoPicker>
+          {form.photo && (
             <button type="button" onClick={() => setForm(f => ({ ...f, photo: null }))}
               style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
                        borderRadius: t.filterRadius, padding: "3px 10px", cursor: "pointer",
                        fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
               ✕ Entfernen
             </button>
-          </div>
-        ) : (
-          <button type="button" disabled={photoUploading} onClick={() => bottlePhotoRef.current?.click()}
-            style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
-                     borderRadius: t.filterRadius, padding: "5px 14px", cursor: "pointer",
-                     fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
-            {photoUploading ? "⟳ Wird hochgeladen…" : "📷 Foto hinzufügen"}
-          </button>
-        )}
-        <input ref={bottlePhotoRef} type="file" accept="image/*" onChange={handleBottlePhotoSelect} style={{ display: "none" }} />
+          )}
+        </div>
       </div>
       <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Status</label>
