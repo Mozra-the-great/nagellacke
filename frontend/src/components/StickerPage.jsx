@@ -12,7 +12,7 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove }) {
   const camRef           = useRef(null);
   const galRef           = useRef(null);
 
-  const pick = (ref) => { setOpen(false); ref.current?.click(); };
+  const pick = (ref) => { ref.current?.click(); setOpen(false); };
 
   useEffect(() => {
     if (!open) return;
@@ -63,8 +63,8 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove }) {
           )}
         </div>
       )}
-      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handle} style={{ display: "none" }} />
-      <input ref={galRef} type="file" accept="image/*"                       onChange={handle} style={{ display: "none" }} />
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={handle} style={{ position: "absolute", width: "0.1px", height: "0.1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }} />
+      <input ref={galRef} type="file" accept="image/*"                       onChange={handle} style={{ position: "absolute", width: "0.1px", height: "0.1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }} />
     </div>
   );
 }
