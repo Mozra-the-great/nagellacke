@@ -2,13 +2,15 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { NailBottle } from "./NailBottle.jsx";
 import { FINISH_OPTIONS, STATUS_OPTIONS, BRAND_SUGGESTIONS } from "../constants.js";
 
-export function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success }) {
+export function PolishForm({ t, form, setForm, customCats, allBrands, allColors, onSubmit, submitLabel, onCancel, onAddCategory, onDeleteCategory, success, apiKey }) {
   const [newCatName, setNewCatName]     = useState("");
   const [showNewCat, setShowNewCat]     = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const photoCameraRef  = useRef(null);
-  const photoGalleryRef = useRef(null);
-  const photoCanvasRef  = useRef(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoCameraRef    = useRef(null);
+  const photoGalleryRef   = useRef(null);
+  const photoCanvasRef    = useRef(null);
+  const bottlePhotoRef    = useRef(null);
 
   const toggleCat = (catId) => setForm(f => ({
     ...f,
@@ -56,6 +58,37 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
     const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
     setForm(f => ({ ...f, color: hex }));
     setPhotoPreview(null);
+  };
+
+  const handleBottlePhotoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxW = 300, maxH = 450;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+        setPhotoUploading(true);
+        fetch("/api/photos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
+          body: JSON.stringify({ data: base64, ext: "jpg" }),
+        })
+          .then(r => r.json())
+          .then(d => { if (d.filename) setForm(f => ({ ...f, photo: d.filename })); })
+          .catch(() => {})
+          .finally(() => setPhotoUploading(false));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
   };
 
   const swatchColors = useMemo(() => (allColors || []).filter(c => c !== form.color).slice(0, 24), [allColors, form.color]);
@@ -155,6 +188,29 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
           <input id="polish-count" className="form-input" type="number" min="1" max="99" value={form.count}
             onChange={e => setForm(f => ({ ...f, count: Math.max(1, parseInt(e.target.value) || 1) }))} style={{ textAlign: "center" }} />
         </div>
+      </div>
+      <div style={{ marginBottom: "14px" }}>
+        <label className="form-label">Flaschenfoto</label>
+        {form.photo ? (
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <img src={`/photos/${form.photo}`} alt="Flaschenfoto"
+              style={{ width: 48, height: 72, objectFit: "cover", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
+            <button type="button" onClick={() => setForm(f => ({ ...f, photo: null }))}
+              style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
+                       borderRadius: t.filterRadius, padding: "3px 10px", cursor: "pointer",
+                       fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
+              ✕ Entfernen
+            </button>
+          </div>
+        ) : (
+          <button type="button" disabled={photoUploading} onClick={() => bottlePhotoRef.current?.click()}
+            style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
+                     borderRadius: t.filterRadius, padding: "5px 14px", cursor: "pointer",
+                     fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
+            {photoUploading ? "⟳ Wird hochgeladen…" : "📷 Foto hinzufügen"}
+          </button>
+        )}
+        <input ref={bottlePhotoRef} type="file" accept="image/*" onChange={handleBottlePhotoSelect} style={{ display: "none" }} />
       </div>
       <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Status</label>

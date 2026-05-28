@@ -9,6 +9,7 @@ const app      = express();
 const PORT     = process.env.PORT || 3000;
 const DATA_FILE     = path.join(__dirname, "data", "data.json");
 const API_KEY_FILE  = path.join(__dirname, "data", ".api_key");
+const PHOTOS_DIR    = path.join(__dirname, "data", "photos");
 const APP_ROOT      = path.join(__dirname, "..");
 const SERVICE_NAME  = process.env.SERVICE_NAME || "nagellacke";
 
@@ -16,6 +17,8 @@ const pkg             = require("./package.json");
 const CURRENT_VERSION = pkg.version;
 
 const DEFAULT_DATA = {
+  manicures: [],
+  customCats: [],
   polishes: [
     { name: "High Shine Gel", brand: "Catrice", color: "#ddeeff", finish: "Top Coat",  categories: [], status: "ok" },
     { num: "029", name: "Blue You A Kiss",             brand: "Catrice", color: "#3a7bd5", finish: "Classic", categories: [], status: "ok" },
@@ -33,12 +36,14 @@ const DEFAULT_DATA = {
     { num: "044", name: "Sparkle Like It's Midnight",  brand: "Catrice", color: "#0a0e2e", finish: "Glitter", categories: [], status: "ok" },
     { num: "031", name: "Electric Turquoise",          brand: "Catrice", color: "#00c9c8", finish: "Classic", categories: [], status: "ok" },
   ],
-  customCats: [],
 };
 
-// Ensure data directory exists before anything else touches it
+// Ensure data directories exist before anything else touches them
 if (!fs.existsSync(path.dirname(DATA_FILE))) {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+}
+if (!fs.existsSync(PHOTOS_DIR)) {
+  fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 }
 
 // ── API Key ─────────────────────────────────────────────────────────────────
@@ -107,6 +112,7 @@ function loadData() {
         if (!updated.createdAt) { updated.createdAt = Date.now(); updated.updatedAt = Date.now(); migrated = true; }
         return updated;
       });
+      if (!data.manicures) { data.manicures = []; migrated = true; }
       if (migrated) saveData(data);
       return data;
     }
@@ -202,8 +208,9 @@ function compareVersions(v1, v2) {
 
 // ── Express middleware ────────────────────────────────────────────────────────
 
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "4mb" }));
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/photos", express.static(PHOTOS_DIR));
 
 // ── API routes ────────────────────────────────────────────────────────────────
 
@@ -214,7 +221,7 @@ app.get("/api/data", (req, res) => {
 
 // POST /api/data — save collection (requires API key)
 app.post("/api/data", requireApiKey, (req, res) => {
-  const { polishes, customCats } = req.body;
+  const { polishes, customCats, manicures } = req.body;
   if (!Array.isArray(polishes) || !Array.isArray(customCats)) {
     return res.status(400).json({ error: "Ungültiges Datenformat" });
   }
@@ -224,7 +231,30 @@ app.post("/api/data", requireApiKey, (req, res) => {
   if (!polishes.every(validatePolish)) {
     return res.status(400).json({ error: "Ungültige Lack-Daten (Name, Farbe oder Status fehlerhaft)" });
   }
-  saveData({ polishes, customCats });
+  saveData({ polishes, customCats, manicures: Array.isArray(manicures) ? manicures : [] });
+  res.json({ ok: true });
+});
+
+// POST /api/photos — save a photo (base64 JSON, requires API key)
+app.post("/api/photos", requireApiKey, (req, res) => {
+  const { data, ext = "jpg" } = req.body;
+  if (!data || typeof data !== "string" || data.length > 4_000_000)
+    return res.status(400).json({ error: "Ungültige Bilddaten" });
+  const safe = /^(jpg|jpeg|png|webp)$/.test(ext) ? ext : "jpg";
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${safe}`;
+  try {
+    fs.writeFileSync(path.join(PHOTOS_DIR, filename), Buffer.from(data, "base64"));
+    res.json({ filename });
+  } catch (e) {
+    res.status(500).json({ error: "Foto konnte nicht gespeichert werden" });
+  }
+});
+
+// DELETE /api/photos/:filename — remove a photo (requires API key)
+app.delete("/api/photos/:filename", requireApiKey, (req, res) => {
+  const name = path.basename(req.params.filename);
+  const full = path.join(PHOTOS_DIR, name);
+  if (fs.existsSync(full)) fs.unlinkSync(full);
   res.json({ ok: true });
 });
 

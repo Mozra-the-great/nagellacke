@@ -7,6 +7,7 @@ import { PolishForm } from "./components/PolishForm.jsx";
 import { StatsPage } from "./components/StatsPage.jsx";
 import { LogPanel } from "./components/LogPanel.jsx";
 import { UpdatePanel } from "./components/UpdatePanel.jsx";
+import { DiaryPage } from "./components/DiaryPage.jsx";
 
 const statusTextColor = (status, dark) => {
   if (dark) return (STATUS_OPTIONS.find(s => s.value === (status || "ok")) || STATUS_OPTIONS[0]).color;
@@ -37,6 +38,8 @@ export default function App() {
   const [showBatchMore, setShowBatchMore] = useState(false);
   const [batchBrandInput, setBatchBrandInput] = useState("");
   const [importModal, setImportModal]     = useState(null);
+  const [manicures, setManicures]         = useState([]);
+  const [photoViewSet, setPhotoViewSet]   = useState(new Set());
   const undoTimer                         = useRef(null);
   const importRef                         = useRef(null);
   const searchRef                         = useRef(null);
@@ -50,17 +53,17 @@ export default function App() {
   useEffect(() => {
     fetch("/api/data")
       .then(r => r.json())
-      .then(data => { setPolishes(data.polishes || []); setCustomCats(data.customCats || []); })
+      .then(data => { setPolishes(data.polishes || []); setCustomCats(data.customCats || []); setManicures(data.manicures || []); })
       .catch(e => console.error("Load error:", e))
       .finally(() => setLoading(false));
   }, []);
 
-  const saveToBackend = useCallback((newPolishes, newCats) => {
+  const saveToBackend = useCallback((newPolishes, newCats, newManicures) => {
     setSaveStatus("saving");
     fetch("/api/data", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
-      body: JSON.stringify({ polishes: newPolishes, customCats: newCats }),
+      body: JSON.stringify({ polishes: newPolishes, customCats: newCats, manicures: newManicures }),
     })
       .then(r => {
         if (r.status === 401) { setSaveStatus("unauth"); setTimeout(() => setSaveStatus("idle"), 4000); return null; }
@@ -70,8 +73,8 @@ export default function App() {
       .catch(() => { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 3000); });
   }, [apiKey]);
 
-  const updatePolishes = useCallback((np) => { setPolishes(np); saveToBackend(np, customCats); }, [customCats, saveToBackend]);
-  const updateCats     = useCallback((nc) => { setCustomCats(nc); saveToBackend(polishes, nc); }, [polishes, saveToBackend]);
+  const updatePolishes = useCallback((np) => { setPolishes(np); saveToBackend(np, customCats, manicures); }, [customCats, manicures, saveToBackend]);
+  const updateCats     = useCallback((nc) => { setCustomCats(nc); saveToBackend(polishes, nc, manicures); }, [polishes, manicures, saveToBackend]);
 
   const allBrands = useMemo(() => [...new Set(polishes.map(p => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [polishes]);
   const allColors = useMemo(() => [...new Set(polishes.map(p => p.color))], [polishes]);
@@ -127,7 +130,7 @@ export default function App() {
     if (!undoEntry) return;
     setPolishes(undoEntry.polishes);
     setCustomCats(undoEntry.customCats);
-    saveToBackend(undoEntry.polishes, undoEntry.customCats);
+    saveToBackend(undoEntry.polishes, undoEntry.customCats, manicures);
     setUndoEntry(null);
     clearTimeout(undoTimer.current);
   };
@@ -176,6 +179,7 @@ export default function App() {
       ...(parseInt(form.count) > 1 && { count: parseInt(form.count) }),
       ...(form.notes.trim()        && { notes: form.notes.trim() }),
       ...(form.rating > 0          && { rating: form.rating }),
+      ...(form.photo               && { photo: form.photo }),
     }];
     updatePolishes(newPolishes);
     setForm(EMPTY_FORM);
@@ -186,7 +190,7 @@ export default function App() {
   const openEdit = (idx) => {
     const p = polishes[idx];
     setEditIdx(idx);
-    setEditForm({ num: p.num || "", name: p.name, brand: p.brand || "", color: p.color, finish: p.finish || "Classic", count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok", notes: p.notes || "", rating: p.rating || 0 });
+    setEditForm({ num: p.num || "", name: p.name, brand: p.brand || "", color: p.color, finish: p.finish || "Classic", count: p.count || 1, categories: [...(p.categories || [])], status: p.status || "ok", notes: p.notes || "", rating: p.rating || 0, photo: p.photo || null });
     setConfirmDelete(false);
     setEditSuccess(false);
   };
@@ -194,6 +198,10 @@ export default function App() {
   const handleSave = () => {
     if (!editForm.name.trim()) return;
     const cnt = parseInt(editForm.count);
+    const oldPhoto = polishes[editIdx]?.photo;
+    if (oldPhoto && oldPhoto !== editForm.photo) {
+      fetch(`/api/photos/${oldPhoto}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
+    }
     const newPolishes = polishes.map((p, i) => i !== editIdx ? p : {
       ...p, name: editForm.name.trim(), brand: editForm.brand.trim() || undefined,
       color: editForm.color, finish: editForm.finish,
@@ -203,6 +211,7 @@ export default function App() {
       ...(editForm.notes.trim() ? { notes: editForm.notes.trim() } : { notes: undefined }),
       count: cnt > 1 ? cnt : undefined,
       rating: editForm.rating > 0 ? editForm.rating : undefined,
+      photo: editForm.photo || undefined,
     });
     updatePolishes(newPolishes);
     setEditSuccess(true);
@@ -210,9 +219,32 @@ export default function App() {
   };
 
   const handleDelete = () => {
+    const deletedPhoto = polishes[editIdx]?.photo;
+    if (deletedPhoto) fetch(`/api/photos/${deletedPhoto}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
     triggerUndo({ polishes, customCats }, polishes[editIdx]?.name || "Lack");
     updatePolishes(polishes.filter((_, i) => i !== editIdx));
     setEditIdx(null); setEditForm(null); setSelected(null); setConfirmDelete(false);
+  };
+
+  const togglePhotoView = (idx) => setPhotoViewSet(prev => {
+    const next = new Set(prev);
+    next.has(idx) ? next.delete(idx) : next.add(idx);
+    return next;
+  });
+
+  const handleAddManicure = (entry) => {
+    const m = { ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, createdAt: Date.now() };
+    const next = [m, ...manicures];
+    setManicures(next);
+    saveToBackend(polishes, customCats, next);
+  };
+
+  const handleDeleteManicure = (id) => {
+    const entry = manicures.find(m => m.id === id);
+    if (entry?.photo) fetch(`/api/photos/${entry.photo}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
+    const next = manicures.filter(m => m.id !== id);
+    setManicures(next);
+    saveToBackend(polishes, customCats, next);
   };
 
   // ── Categories ──
@@ -228,7 +260,7 @@ export default function App() {
     const newPolishes = polishes.map(p => ({ ...p, categories: (p.categories || []).filter(c => c !== catId) }));
     setPolishes(newPolishes);
     setCustomCats(newCats);
-    saveToBackend(newPolishes, newCats);
+    saveToBackend(newPolishes, newCats, manicures);
     if (activeFilter === catId) setActiveFilter("all");
   };
 
@@ -309,7 +341,7 @@ export default function App() {
   const doImportReplace = (data) => {
     setPolishes(data.polishes);
     setCustomCats(data.customCats);
-    saveToBackend(data.polishes, data.customCats);
+    saveToBackend(data.polishes, data.customCats, manicures);
     setImportModal(null);
   };
 
@@ -319,7 +351,7 @@ export default function App() {
     );
     const merged = [...polishes, ...toAdd];
     setPolishes(merged);
-    saveToBackend(merged, customCats);
+    saveToBackend(merged, customCats, manicures);
     setImportModal(null);
     if (toAdd.length === 0) alert("Keine neuen Lacke gefunden — alle bereits vorhanden.");
     else alert(`${toAdd.length} neue Lack${toAdd.length !== 1 ? "e" : ""} hinzugefügt.`);
@@ -443,11 +475,19 @@ export default function App() {
           )}
         </div>
 
-        {/* Stats button — right */}
-        <button onClick={() => setView(v => v === "stats" ? "collection" : "stats")}
-          style={{ position: "absolute", top: "20px", right: "20px", background: view === "stats" ? t.filterBgActive : t.filterBg, border: `1px solid ${t.filterBorder}`, color: view === "stats" ? t.filterColorActive : t.filterColor, padding: "7px 16px", borderRadius: t.filterRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}>
-          {view === "stats" ? "◈ Kollektion" : "◈ Statistiken"}
-        </button>
+        {/* Nav — right */}
+        <div style={{ position: "absolute", top: "20px", right: "20px", display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {[
+            { id: "collection", label: "◈ Kollektion" },
+            { id: "stats",      label: "◈ Statistiken" },
+            { id: "diary",      label: "◈ Tagebuch" },
+          ].map(({ id, label }) => (
+            <button key={id} onClick={() => setView(id)}
+              style={{ background: view === id ? t.filterBgActive : t.filterBg, border: `1px solid ${t.filterBorder}`, color: view === id ? t.filterColorActive : t.filterColor, padding: "7px 16px", borderRadius: t.filterRadius, cursor: "pointer", fontFamily: t.fontBody, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s", opacity: view === id ? 1 : 0.6 }}>
+              {label}
+            </button>
+          ))}
+        </div>
 
         <div style={{ fontSize: "10px", letterSpacing: "6px", color: t.textVeryMuted, fontFamily: t.fontBody, textTransform: "uppercase", marginBottom: "12px" }}>meine kollektion</div>
         <h1 style={t.id === "neonNightclub"
@@ -519,6 +559,10 @@ export default function App() {
       {view === "stats" && <main><StatsPage t={t} polishes={polishes} customCats={customCats}
         onSelectPolish={(idx) => { setView("collection"); setSelected(idx); }} /></main>}
 
+      {/* ── Diary Page ── */}
+      {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes}
+        onAdd={handleAddManicure} onDelete={handleDeleteManicure} apiKey={apiKey} /></main>}
+
       {/* ── Collection View ── */}
       {view === "collection" && <main>
 
@@ -557,7 +601,7 @@ export default function App() {
         <div className="slide-up" style={{ margin: "16px auto 28px", maxWidth: "560px", padding: "0 16px" }}>
           <div style={{ fontFamily: t.fontDisplay, fontSize: "21px", fontWeight: 300, letterSpacing: "3px", marginBottom: "16px", color: t.textMuted, paddingLeft: "4px" }}>Neuen Lack hinzufügen</div>
           <PolishForm key="add" t={t} form={form} setForm={setForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
-            onSubmit={handleAdd} submitLabel="+ Hinzufügen" onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={addSuccess} />
+            onSubmit={handleAdd} submitLabel="+ Hinzufügen" onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={addSuccess} apiKey={apiKey} />
         </div>
       )}
 
@@ -581,7 +625,7 @@ export default function App() {
           <PolishForm key={`edit-${editIdx}`} t={t} form={editForm} setForm={setEditForm} customCats={customCats} allBrands={allBrands} allColors={allColors}
             onSubmit={handleSave} submitLabel="✓ Speichern"
             onCancel={() => { setEditIdx(null); setEditForm(null); setConfirmDelete(false); }}
-            onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={editSuccess} />
+            onAddCategory={addCategory} onDeleteCategory={deleteCategory} success={editSuccess} apiKey={apiKey} />
         </div>
       )}
 
@@ -657,9 +701,21 @@ export default function App() {
                 ? <div className={`batch-check ${isBatchSel ? "on" : ""}`}>{isBatchSel ? "✓" : ""}</div>
                 : (p.count ? <div className="count-badge">×{p.count}</div> : null)}
               {!batchMode && p.status !== "ok" && p.status !== "wish" && <div className="status-dot" style={{ background: st.color }} />}
-              <div style={{ width: 76, height: 76, borderRadius: "50%", background: p.color, boxShadow: `0 4px 24px ${p.color}88`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", fontWeight: 800, color: "rgba(255,255,255,0.85)", fontFamily: t.fontDisplay, flexShrink: 0 }}>
-                {(p.brand || p.name || "?")[0].toUpperCase()}
-              </div>
+              {!batchMode && p.photo && (
+                <button onClick={e => { e.stopPropagation(); togglePhotoView(globalIdx); }}
+                  style={{ position: "absolute", top: 4, right: p.count ? 30 : 4, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: "10px", lineHeight: 1, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+                  {photoViewSet.has(globalIdx) ? "🎨" : "📷"}
+                </button>
+              )}
+              {photoViewSet.has(globalIdx) && p.photo ? (
+                <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", flexShrink: 0, boxShadow: `0 4px 24px ${p.color}88` }}>
+                  <img src={`/photos/${p.photo}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+              ) : (
+                <div style={{ width: 76, height: 76, borderRadius: "50%", background: p.color, boxShadow: `0 4px 24px ${p.color}88`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", fontWeight: 800, color: "rgba(255,255,255,0.85)", fontFamily: t.fontDisplay, flexShrink: 0 }}>
+                  {(p.brand || p.name || "?")[0].toUpperCase()}
+                </div>
+              )}
               <div style={{ textAlign: "center" }}>
                 {p.brand && allBrands.length > 1 && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textFaint, marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
                 <div style={{ fontFamily: t.fontDisplay, fontSize: "13px", fontWeight: 400, lineHeight: 1.3, color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, maxWidth: "105px" }}>{p.name}</div>
@@ -673,11 +729,20 @@ export default function App() {
             <div key={cardKey} className={cardClass}
               style={{ ...fadedStyle, flexDirection: "row", padding: 0, overflow: "hidden", gap: 0, alignItems: "stretch" }}
               onClick={cardClick}>
-              <div style={{ width: 48, background: p.color, flexShrink: 0, position: "relative", minHeight: 76 }}>
+              <div style={{ width: 48, background: photoViewSet.has(globalIdx) && p.photo ? "transparent" : p.color, flexShrink: 0, position: "relative", minHeight: 76, overflow: "hidden" }}>
+                {photoViewSet.has(globalIdx) && p.photo && (
+                  <img src={`/photos/${p.photo}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} />
+                )}
                 {batchMode
                   ? <div className={`batch-check ${isBatchSel ? "on" : ""}`} style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)" }}>{isBatchSel ? "✓" : ""}</div>
                   : (p.count ? <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, textAlign: "center", fontSize: "9px", color: "rgba(255,255,255,0.8)", fontFamily: t.fontBody }}>×{p.count}</div> : null)}
                 {!batchMode && p.status !== "ok" && p.status !== "wish" && <div style={{ position: "absolute", top: 6, left: 6, width: 6, height: 6, borderRadius: "50%", background: "rgba(255,255,255,0.65)" }} />}
+                {!batchMode && p.photo && (
+                  <button onClick={e => { e.stopPropagation(); togglePhotoView(globalIdx); }}
+                    style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "8px", lineHeight: 1, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+                    {photoViewSet.has(globalIdx) ? "🎨" : "📷"}
+                  </button>
+                )}
               </div>
               <div style={{ padding: "14px 14px", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, minWidth: 0 }}>
                 {p.brand && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase" }}>{p.brand}</div>}
@@ -697,7 +762,19 @@ export default function App() {
               style={{ ...fadedStyle, flexDirection: "row", padding: "11px 18px", alignItems: "center", gap: 14 }}
               onClick={cardClick}>
               {batchMode && <div className={`batch-check ${isBatchSel ? "on" : ""}`} style={{ position: "static" }}>{isBatchSel ? "✓" : ""}</div>}
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: p.color, flexShrink: 0, border: `1px solid ${t.cardBorderHover}` }} />
+              {photoViewSet.has(globalIdx) && p.photo ? (
+                <div style={{ width: 20, height: 20, borderRadius: "50%", overflow: "hidden", flexShrink: 0, border: `1px solid ${t.cardBorderHover}` }}>
+                  <img src={`/photos/${p.photo}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </div>
+              ) : (
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: p.color, flexShrink: 0, border: `1px solid ${t.cardBorderHover}` }} />
+              )}
+              {!batchMode && p.photo && (
+                <button onClick={e => { e.stopPropagation(); togglePhotoView(globalIdx); }}
+                  style={{ background: "rgba(0,0,0,0.3)", border: "none", borderRadius: "50%", width: 16, height: 16, cursor: "pointer", fontSize: "8px", lineHeight: 1, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {photoViewSet.has(globalIdx) ? "🎨" : "📷"}
+                </button>
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: t.fontDisplay, fontSize: "14px", color: p.status !== "ok" && p.status !== "wish" ? t.textVeryMuted : t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                 {(p.brand || p.num) && <div style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textMuted }}>{[p.brand, p.num && `№ ${p.num}`].filter(Boolean).join(" · ")}</div>}
@@ -715,7 +792,14 @@ export default function App() {
                 ? <div className={`batch-check ${isBatchSel ? "on" : ""}`}>{isBatchSel ? "✓" : ""}</div>
                 : (p.count ? <div className="count-badge">×{p.count}</div> : null)}
               {!batchMode && p.status !== "ok" && p.status !== "wish" && <div className="status-dot" style={{ background: st.color }} />}
-              <NailBottle color={p.color} finish={p.finish} selected={!batchMode && selected === globalIdx} status={p.status} brand={p.brand} />
+              {!batchMode && p.photo && (
+                <button onClick={e => { e.stopPropagation(); togglePhotoView(globalIdx); }}
+                  style={{ position: "absolute", top: 4, right: p.count ? 30 : 4, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: "10px", lineHeight: 1, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+                  {photoViewSet.has(globalIdx) ? "🎨" : "📷"}
+                </button>
+              )}
+              <NailBottle color={p.color} finish={p.finish} selected={!batchMode && selected === globalIdx} status={p.status} brand={p.brand}
+                photoUrl={photoViewSet.has(globalIdx) && p.photo ? `/photos/${p.photo}` : undefined} />
               <div style={{ textAlign: "center" }}>
                 {p.brand && allBrands.length > 1 && <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "2px", color: t.textFaint, marginBottom: "2px", textTransform: "uppercase" }}>{p.brand}</div>}
                 {p.num && <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", color: t.textVeryMuted, marginBottom: "3px" }}>{p.num}</div>}

@@ -24,7 +24,8 @@ nagellacke/
 │   ├── server.js           ← Express-Server, alle API-Routen, Auth, Rate-Limiting
 │   ├── package.json
 │   └── data/               ← wird beim ersten Start automatisch angelegt
-│       ├── data.json       ← Persistenz (Lacke + Kategorien)
+│       ├── data.json       ← Persistenz (Lacke + Kategorien + Maniküren)
+│       ├── photos/         ← Flaschenfoto- und Tagebuch-Fotos (jpg)
 │       └── .api_key        ← API-Schlüssel (mode 0o600)
 ├── frontend/
 │   ├── public/             ← statische Assets (von Vite 1:1 in dist kopiert)
@@ -178,7 +179,21 @@ Vite baut die SPA als statische Dateien in `backend/public/`. Express liefert di
   "notes":      "Gekauft 2024-03",     // Freitext (optional)
   "rating":     4,                     // Sterne 1–5 (optional)
   "createdAt":  1716900000000,         // Unix-ms, beim Anlegen gesetzt
-  "updatedAt":  1716900000000          // Unix-ms, bei jeder Änderung aktualisiert
+  "updatedAt":  1716900000000,         // Unix-ms, bei jeder Änderung aktualisiert
+  "photo":      "filename.jpg"         // Dateiname in data/photos/ (optional, seit v2.0.0)
+}
+```
+
+### Manicure-Objekt (seit v2.0.0)
+
+```json
+{
+  "id":         "1716900000000-abc",
+  "date":       "2025-05-28",
+  "polishRefs": [{ "name": "Blue You A Kiss", "brand": "Catrice", "color": "#3a7bd5" }],
+  "notes":      "für den Urlaub",
+  "photo":      "manicure-filename.jpg",
+  "createdAt":  1716900000000
 }
 ```
 
@@ -186,10 +201,9 @@ Vite baut die SPA als statische Dateien in `backend/public/`. Express liefert di
 
 ```json
 {
-  "polishes": [ ...Polish-Objekte ],
-  "customCats": [
-    { "id": "sommer_1234567890", "label": "Sommer" }
-  ]
+  "polishes":  [ ...Polish-Objekte ],
+  "customCats": [ { "id": "sommer_1234567890", "label": "Sommer" } ],
+  "manicures": [ ...Manicure-Objekte ]
 }
 ```
 
@@ -237,3 +251,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v1.7.3 | Lesbarkeit: Kontrast-Fixes in allen 6 Themes (WCAG AA); Accessibility: aria-label, aria-pressed, aria-live, Fokus-Ringe, Landmark-Elemente, htmlFor/id-Verbindungen; Rating-Bug in Bearbeitungsformular behoben |
 | v1.8.0 | Tastatur-Shortcuts (/ Suche, Esc schließen, n Neuer Lack); Theme „System" (folgt OS prefers-color-scheme); Dupe-Detektor beim Anlegen (Hue + Finish); Update-Check-Cache 10 min (kein GitHub-Rate-Limit); PolishForm key-Bug behoben |
 | v1.9.0 | Code-Split (App.jsx → themes.js, constants.js, utils.js, 5 Komponenten); Timestamps (createdAt/updatedAt + Sortierung „Neueste/Älteste"); Batch-Erweiterung (Marke, Finish, Kategorie); Import Merge-Modus (Zusammenführen vs. Ersetzen); PWA (manifest.json, Service Worker Cache-First, SVG-Icons) — **Hinweis:** `CACHE`-Name in `sw.js` bei jedem Release auf neue Version aktualisieren (z.B. `nagellacke-v1.9.1`), damit alte Assets durch neue ersetzt werden |
+| v2.0.0 | Flaschenfoto pro Lack (Canvas-Resize → Base64 → `data/photos/`, kein neues npm-Paket); Foto-Toggle auf Karte (SVG ↔ Foto, alle 4 Kartentypen); Maniküre-Tagebuch (neue 3. View, Einträge mit Datum, Lacke aus Kollektion, Notizen, optionales Foto); Navigation auf 3 Buttons erweitert; `data.manicures`-Array in data.json; Backend-Endpoints POST/DELETE `/api/photos` |

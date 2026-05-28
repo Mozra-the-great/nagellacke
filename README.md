@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine Cloud, keine Accounts.
 
-![Version](https://img.shields.io/badge/version-1.9.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-2.0.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Node.js-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -31,6 +31,8 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Batch-Marke/Finish/Kategorie** — im Batch-Modus Marke setzen, Finish ändern oder Kategorie zu mehreren Lacken gleichzeitig hinzufügen
 - **Import Merge-Modus** — beim Import wählen zwischen Ersetzen (Kollektion überschreiben) oder Zusammenführen (nur neue Lacke hinzufügen, Duplikate überspringen)
 - **PWA** — installierbar als App (manifest.json + Service Worker mit Cache-First-Strategie)
+- **Flaschenfoto** — pro Lack ein Foto hochladen; Karte zwischen SVG-Grafik und echtem Foto umschalten
+- **Maniküre-Tagebuch** — Einträge mit Datum, Lacken aus der Kollektion, Notizen und optionalem Foto; eigene Ansicht neben Kollektion und Statistiken
 
 ---
 

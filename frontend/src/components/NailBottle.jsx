@@ -1,7 +1,18 @@
 import { useMemo } from "react";
 import { SHIMMER_FINISHES } from "../constants.js";
 
-export function NailBottle({ color, finish, selected, status, brand }) {
+export function NailBottle({ color, finish, selected, status, brand, photoUrl }) {
+  if (photoUrl) {
+    const faded = status === "empty" || status === "gone";
+    return (
+      <div style={{ width: 64, height: 130, borderRadius: "10px", overflow: "hidden",
+                    opacity: faded ? 0.38 : status === "wish" ? 0.62 : 1,
+                    boxShadow: selected ? `0 0 14px ${color}bb` : "0 4px 10px rgba(0,0,0,0.55)",
+                    transition: "box-shadow 0.3s, opacity 0.3s", flexShrink: 0 }}>
+        <img src={photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      </div>
+    );
+  }
   const uid = useMemo(() => color.replace("#", "") + Math.random().toString(36).slice(2, 7), []);
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === "empty" || status === "gone";
