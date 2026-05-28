@@ -7,8 +7,7 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
   const [showNewCat, setShowNewCat]     = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
-  const photoCameraRef    = useRef(null);
-  const photoGalleryRef   = useRef(null);
+  const photoPickerRef    = useRef(null);
   const photoCanvasRef    = useRef(null);
   const bottlePhotoRef    = useRef(null);
 
@@ -142,23 +141,14 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
           <div style={{ display: "flex", alignItems: "center", gap: "9px", background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: t.inputRadius, padding: "8px 12px", height: "42px" }}>
             <div style={{ width: 22, height: 22, borderRadius: "5px", background: form.color, boxShadow: `0 0 8px ${form.color}88`, flexShrink: 0 }} />
             <input type="color" value={form.color} onChange={e => setForm(f => ({ ...f, color: e.target.value }))} style={{ width: "100%", height: "22px" }} />
-            <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-              <button type="button" title="Foto aufnehmen" onClick={() => photoCameraRef.current?.click()}
-                style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
-                onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
-                📷
-              </button>
-              <button type="button" title="Bild aus Galerie wählen" onClick={() => photoGalleryRef.current?.click()}
-                style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s" }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
-                onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
-                🖼
-              </button>
-            </div>
+            <button type="button" title="Foto aufnehmen oder aus Galerie wählen" onClick={() => photoPickerRef.current?.click()}
+              style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, borderRadius: "7px", padding: "3px 7px", cursor: "pointer", fontSize: "14px", lineHeight: 1, transition: "border-color 0.15s", flexShrink: 0 }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = t.inputBorderFocus}
+              onMouseLeave={e => e.currentTarget.style.borderColor = t.inputBorder}>
+              📷
+            </button>
           </div>
-          <input ref={photoCameraRef}  type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: "none" }} />
-          <input ref={photoGalleryRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
+          <input ref={photoPickerRef} type="file" accept="image/*" onChange={handlePhotoSelect} style={{ display: "none" }} />
           {photoPreview && (
             <div style={{ marginTop: "10px", position: "relative", display: "inline-block" }}>
               <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "6px" }}>

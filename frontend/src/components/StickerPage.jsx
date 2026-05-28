@@ -4,9 +4,18 @@ import { STICKER_TYPE_OPTIONS, STICKER_STYLE_SUGGESTIONS, EMPTY_STICKER } from "
 const TRANSPARENT_BG =
   "linear-gradient(45deg,#ccc 25%,transparent 25%,transparent 75%,#ccc 75%) 0 0/8px 8px," +
   "linear-gradient(45deg,#ccc 25%,white 25%,white 75%,#ccc 75%) 4px 4px/8px 8px";
+const MULTICOLOR_BG =
+  "linear-gradient(135deg,#ff6b6b 0%,#ffd93d 20%,#6bcb77 40%,#4d96ff 60%,#c77dff 80%,#ff6b6b 100%)";
 
-function ColorEditor({ t, colors, onAdd, onAddTransparent, onRemove }) {
+function ColorEditor({ t, colors, onAdd, onAddTransparent, onAddMulticolor, onRemove }) {
   const pickerRef = useRef(null);
+  const btnStyle = (disabled) => ({
+    background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
+    borderRadius: t.filterRadius, padding: "3px 10px", cursor: disabled ? "not-allowed" : "pointer",
+    fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase",
+    opacity: disabled ? 0.4 : 1,
+  });
+  const colorDot = (c) => c === "transparent" ? TRANSPARENT_BG : c === "multicolor" ? MULTICOLOR_BG : c;
   return (
     <div>
       {colors.length > 0 && (
@@ -15,8 +24,7 @@ function ColorEditor({ t, colors, onAdd, onAddTransparent, onRemove }) {
             <div key={i} style={{ position: "relative", display: "inline-flex" }}>
               <span style={{
                 display: "inline-block", width: 26, height: 26, borderRadius: "50%",
-                background: c === "transparent" ? TRANSPARENT_BG : c,
-                border: `1px solid rgba(255,255,255,0.2)`,
+                background: colorDot(c), border: `1px solid rgba(255,255,255,0.2)`,
               }} />
               <button type="button" onClick={() => onRemove(i)} aria-label="Farbe entfernen"
                 style={{ position: "absolute", top: -5, right: -5, width: 14, height: 14,
@@ -31,20 +39,20 @@ function ColorEditor({ t, colors, onAdd, onAddTransparent, onRemove }) {
       )}
       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" disabled={colors.length >= 10} onClick={() => pickerRef.current?.click()}
-          style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
-                   borderRadius: t.filterRadius, padding: "3px 10px", cursor: "pointer",
-                   fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase",
-                   opacity: colors.length >= 10 ? 0.4 : 1 }}>
+          style={btnStyle(colors.length >= 10)}>
           + Farbe
         </button>
         <button type="button"
           disabled={colors.length >= 10 || colors.includes("transparent")}
           onClick={onAddTransparent}
-          style={{ background: "transparent", border: `1px solid ${t.inputBorder}`, color: t.textVeryMuted,
-                   borderRadius: t.filterRadius, padding: "3px 10px", cursor: "pointer",
-                   fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px", textTransform: "uppercase",
-                   opacity: colors.length >= 10 || colors.includes("transparent") ? 0.4 : 1 }}>
+          style={btnStyle(colors.length >= 10 || colors.includes("transparent"))}>
           ◌ Transparent
+        </button>
+        <button type="button"
+          disabled={colors.length >= 10 || colors.includes("multicolor")}
+          onClick={onAddMulticolor}
+          style={btnStyle(colors.length >= 10 || colors.includes("multicolor"))}>
+          ◑ Mehrfarbig
         </button>
         <input ref={pickerRef} type="color" defaultValue="#ff6699"
           onChange={e => onAdd(e.target.value)}
@@ -106,6 +114,10 @@ function StickerFormFields({ t, f, setF, allBrands, photoRef, photoUploading, on
           onAddTransparent={() => setF(frm =>
             frm.colors.length >= 10 || frm.colors.includes("transparent") ? frm
             : { ...frm, colors: [...frm.colors, "transparent"] }
+          )}
+          onAddMulticolor={() => setF(frm =>
+            frm.colors.length >= 10 || frm.colors.includes("multicolor") ? frm
+            : { ...frm, colors: [...frm.colors, "multicolor"] }
           )}
           onRemove={i => setF(frm => ({ ...frm, colors: frm.colors.filter((_, ci) => ci !== i) }))}
         />
@@ -318,7 +330,7 @@ export function StickerPage({ t, stickers, onAdd, onSave, onDelete, apiKey }) {
           const realIdx = stickers.indexOf(s);
           const isEditing  = editIdx === realIdx;
           const typeOpt    = STICKER_TYPE_OPTIONS.find(o => o.value === s.type);
-          const showPhoto  = photoMode[realIdx] && s.photo;
+          const showPhoto  = (photoMode[realIdx] !== false) && s.photo;
 
           return (
             <div key={realIdx} style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`,
@@ -330,7 +342,7 @@ export function StickerPage({ t, stickers, onAdd, onSave, onDelete, apiKey }) {
                     {(s.colors || []).map((c, ci) => (
                       <span key={ci} style={{
                         display: "inline-block", width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                        background: c === "transparent" ? TRANSPARENT_BG : c,
+                        background: c === "transparent" ? TRANSPARENT_BG : c === "multicolor" ? MULTICOLOR_BG : c,
                         border: `1px solid ${t.cardBorder}`,
                       }} />
                     ))}
