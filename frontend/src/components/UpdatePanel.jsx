@@ -49,15 +49,20 @@ export function UpdatePanel({ t, apiKey }) {
         if (!d) return;
         if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
         setStatus("restarting");
+        // Track consecutive failures to detect server going down then coming back
+        let downCount = 0;
         pollRef.current = setInterval(() => {
           fetch("/api/version").then(r => r.json()).then(d => {
-            if (d.version && d.version !== version) {
+            if (!d.version) return;
+            // Reload if version changed OR if server was down and is back up
+            if (d.version !== version || downCount >= 2) {
               clearInterval(pollRef.current);
               window.location.reload();
             }
-          }).catch(() => {});
+            downCount = 0;
+          }).catch(() => { downCount++; });
         }, 2000);
-        setTimeout(() => { clearInterval(pollRef.current); window.location.reload(); }, 60000);
+        setTimeout(() => { clearInterval(pollRef.current); window.location.reload(); }, 45000);
       }).catch(e => { setErrorMsg(e.message); setStatus("error"); });
   };
 
