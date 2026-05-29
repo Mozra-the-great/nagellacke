@@ -32,7 +32,7 @@ export default function App() {
   const [editSuccess, setEditSuccess]     = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [activeBrand, setActiveBrand]     = useState(null);
-  const [view, setView]                   = useState("collection");
+  const [view, setView]                   = useState(() => localStorage.getItem("nagellacke_view") || "collection");
   const [undoEntry, setUndoEntry]         = useState(null);
   const [batchMode, setBatchMode]         = useState(false);
   const [batchSel, setBatchSel]           = useState(new Set());
@@ -144,6 +144,8 @@ export default function App() {
   };
 
   useEffect(() => { setBatchSel(new Set()); }, [activeFilter, activeBrand, sortBy]);
+
+  useEffect(() => { localStorage.setItem("nagellacke_view", view); }, [view]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -546,55 +548,60 @@ export default function App() {
           {saveStatus === "unauth" && <span className="save-indicator" style={{ color: "rgba(255,180,80,0.9)", cursor: "pointer" }} onClick={() => { setShowSettings(true); setSettingsInput(apiKey); }}>⚙ API-Schlüssel fehlt — hier eintragen</span>}
         </div>
 
-        {/* Search + Sort */}
-        <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "12px", flexWrap: "wrap", alignItems: "center" }}>
-          <div className="search-wrap">
-            <span className="search-icon" aria-hidden="true">⌕</span>
-            <input ref={searchRef} className="search-input" aria-label="Kollektion durchsuchen" placeholder="Suchen… (/)" value={search} onChange={e => setSearch(e.target.value)} />
-            {search && <button aria-label="Suche löschen" onClick={() => setSearch("")} style={{ position: "absolute", right: "12px", background: "transparent", border: "none", color: t.textVeryMuted, cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>×</button>}
+        {view === "collection" && <>
+          {/* Search + Sort */}
+          <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "12px", flexWrap: "wrap", alignItems: "center" }}>
+            <div className="search-wrap">
+              <span className="search-icon" aria-hidden="true">⌕</span>
+              <input ref={searchRef} className="search-input" aria-label="Kollektion durchsuchen" placeholder="Suchen… (/)" value={search} onChange={e => setSearch(e.target.value)} />
+              {search && <button aria-label="Suche löschen" onClick={() => setSearch("")} style={{ position: "absolute", right: "12px", background: "transparent", border: "none", color: t.textVeryMuted, cursor: "pointer", fontSize: "14px", lineHeight: 1 }}>×</button>}
+            </div>
+            <select className="sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
           </div>
-          <select className="sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </div>
 
-        {/* Filters */}
-        <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "14px", flexWrap: "wrap", padding: "0 12px" }}>
-          <button aria-pressed={activeFilter === "all"} className={`filter-btn ${activeFilter === "all" ? "active" : ""}`} onClick={() => setActiveFilter("all")}>◈ Alle</button>
-          {usedFinishes.map(f => (
-            <button key={f.value} aria-pressed={activeFilter === f.value} className={`filter-btn ${activeFilter === f.value ? "active" : ""}`} onClick={() => setActiveFilter(f.value)}>
-              {f.icon} {f.label}
-            </button>
-          ))}
-          {polishes.some(p => p.status === "wish") && (
-            <button aria-pressed={activeFilter === "wish"} className={`filter-btn ${activeFilter === "wish" ? "active" : ""}`} onClick={() => setActiveFilter("wish")}>☆ Wunsch</button>
-          )}
-          {polishes.some(p => p.status === "empty" || p.status === "gone") && (
-            <button aria-pressed={activeFilter === "empty"} className={`filter-btn ${activeFilter === "empty" ? "active" : ""}`} onClick={() => setActiveFilter("empty")}>○ Leer / Weg</button>
-          )}
-          {polishes.some(p => (p.rating || 0) > 0) && (
-            <button aria-pressed={activeFilter === "rated"} className={`filter-btn ${activeFilter === "rated" ? "active" : ""}`} onClick={() => setActiveFilter("rated")}>★ Bewertet</button>
-          )}
-          {usedCustomCats.map(c => (
-            <button key={c.id} aria-pressed={activeFilter === c.id} className={`filter-btn custom-cat ${activeFilter === c.id ? "active" : ""}`} onClick={() => setActiveFilter(c.id)}>◆ {c.label}</button>
-          ))}
-        </div>
-
-        {/* Brand filter */}
-        {allBrands.length > 1 && (
-          <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "8px", flexWrap: "wrap", padding: "0 12px" }}>
-            <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textFaint, textTransform: "uppercase", alignSelf: "center", paddingRight: "4px" }}>Marke</span>
-            <button aria-pressed={activeBrand === null} className={`filter-btn ${activeBrand === null ? "active" : ""}`} onClick={() => setActiveBrand(null)}>◈ Alle</button>
-            {allBrands.map(b => (
-              <button key={b} aria-pressed={activeBrand === b} className={`filter-btn ${activeBrand === b ? "active" : ""}`} onClick={() => setActiveBrand(activeBrand === b ? null : b)}>{b}</button>
+          {/* Filters */}
+          <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "14px", flexWrap: "wrap", padding: "0 12px" }}>
+            <button aria-pressed={activeFilter === "all"} className={`filter-btn ${activeFilter === "all" ? "active" : ""}`} onClick={() => setActiveFilter("all")}>◈ Alle</button>
+            {usedFinishes.map(f => (
+              <button key={f.value} aria-pressed={activeFilter === f.value} className={`filter-btn ${activeFilter === f.value ? "active" : ""}`} onClick={() => setActiveFilter(f.value)}>
+                {f.icon} {f.label}
+              </button>
+            ))}
+            {polishes.some(p => p.status === "wish") && (
+              <button aria-pressed={activeFilter === "wish"} className={`filter-btn ${activeFilter === "wish" ? "active" : ""}`} onClick={() => setActiveFilter("wish")}>☆ Wunsch</button>
+            )}
+            {polishes.some(p => p.status === "empty" || p.status === "gone") && (
+              <button aria-pressed={activeFilter === "empty"} className={`filter-btn ${activeFilter === "empty" ? "active" : ""}`} onClick={() => setActiveFilter("empty")}>○ Leer / Weg</button>
+            )}
+            {polishes.some(p => (p.rating || 0) > 0) && (
+              <button aria-pressed={activeFilter === "rated"} className={`filter-btn ${activeFilter === "rated" ? "active" : ""}`} onClick={() => setActiveFilter("rated")}>★ Bewertet</button>
+            )}
+            {usedCustomCats.map(c => (
+              <button key={c.id} aria-pressed={activeFilter === c.id} className={`filter-btn custom-cat ${activeFilter === c.id ? "active" : ""}`} onClick={() => setActiveFilter(c.id)}>◆ {c.label}</button>
             ))}
           </div>
-        )}
+
+          {/* Brand filter */}
+          {allBrands.length > 1 && (
+            <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "8px", flexWrap: "wrap", padding: "0 12px" }}>
+              <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textFaint, textTransform: "uppercase", alignSelf: "center", paddingRight: "4px" }}>Marke</span>
+              <button aria-pressed={activeBrand === null} className={`filter-btn ${activeBrand === null ? "active" : ""}`} onClick={() => setActiveBrand(null)}>◈ Alle</button>
+              {allBrands.map(b => (
+                <button key={b} aria-pressed={activeBrand === b} className={`filter-btn ${activeBrand === b ? "active" : ""}`} onClick={() => setActiveBrand(activeBrand === b ? null : b)}>{b}</button>
+              ))}
+            </div>
+          )}
+        </>}
       </div>
 
       {/* ── Stats Page ── */}
       {view === "stats" && <main><StatsPage t={t} polishes={polishes} customCats={customCats}
-        onSelectPolish={(idx) => { setView("collection"); setSelected(idx); }} /></main>}
+        stickers={stickers} manicures={manicures}
+        onSelectPolish={(idx) => { setView("collection"); setSelected(idx); }}
+        onSelectStickers={() => setView("stickers")}
+        onSelectDiary={() => setView("diary")} /></main>}
 
       {/* ── Diary Page ── */}
       {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes} stickers={stickers}

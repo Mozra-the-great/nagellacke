@@ -284,3 +284,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v2.1.6 | Kamera-Fix: Foto-Inputs von `display:none` auf opacity-basiertes Hiding umgestellt (`position:absolute; width:0.1px; opacity:0`); `.click()` vor `setOpen(false)` für korrekte User-Gesture-Behandlung auf Android |
 | v2.1.7 | PhotoPicker (Kamera/Galerie-Dropdown) auch in PolishForm: Farbpicker-Foto und Flaschenfoto nutzen jetzt beide den einheitlichen Picker mit expliziter Kamera- und Galerie-Option |
 | v2.1.8 | Tagebuch: 4 Foto-Slots pro Eintrag (Finger rechts/links, Daumen rechts/links); `photos`-Objekt ersetzt `photo`-Feld; Rückwärtskompatibilität für alte Einträge mit `photo` |
+| v2.1.9 | Statistiken: Sticker- und Tagebuch-Auswertung (nach Typ, nach Marke, häufigste Lacke/Sticker); Suche/Filter nur noch in Nagellack-Ansicht sichtbar; aktive View bleibt nach Browser-Refresh erhalten (localStorage) |

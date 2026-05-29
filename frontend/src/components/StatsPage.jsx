@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { FINISH_OPTIONS } from "../constants.js";
+import { FINISH_OPTIONS, STICKER_TYPE_OPTIONS } from "../constants.js";
 import { hexToHue } from "../utils.js";
 
 function Bar({ t, value, max, color }) {
@@ -26,7 +26,7 @@ function CardLabel({ t, children }) {
   return <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "3px", textTransform: "uppercase", color: t.textVeryMuted, marginBottom: "14px" }}>{children}</div>;
 }
 
-export function StatsPage({ t, polishes, customCats, onSelectPolish }) {
+export function StatsPage({ t, polishes, customCats, stickers = [], manicures = [], onSelectPolish, onSelectStickers, onSelectDiary }) {
   const [clickedColor, setClickedColor] = useState(null);
   const total        = polishes.length;
   const totalBottles = polishes.reduce((a, p) => a + (p.count || 1), 0);
@@ -58,6 +58,42 @@ export function StatsPage({ t, polishes, customCats, onSelectPolish }) {
     const unique = [...new Set(polishes.map(p => p.color))];
     return unique.sort((a, b) => hexToHue(a) - hexToHue(b));
   }, [polishes]);
+
+  const stickerByType = useMemo(() => {
+    const map = {};
+    stickers.forEach(s => { const k = s.type || "accent"; map[k] = (map[k] || 0) + 1; });
+    return STICKER_TYPE_OPTIONS.filter(o => map[o.value]).map(o => ({ ...o, count: map[o.value] }));
+  }, [stickers]);
+
+  const stickerByBrand = useMemo(() => {
+    const map = {};
+    stickers.forEach(s => { const b = s.brand || "—"; map[b] = (map[b] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [stickers]);
+
+  const diaryTopPolishes = useMemo(() => {
+    const map = {};
+    manicures.forEach(m => (m.polishRefs || []).forEach(r => {
+      const key = r.name + "|" + (r.brand || "");
+      if (!map[key]) map[key] = { name: r.name, brand: r.brand, color: r.color, count: 0 };
+      map[key].count++;
+    }));
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [manicures]);
+
+  const diaryTopStickers = useMemo(() => {
+    const map = {};
+    manicures.forEach(m => (m.stickerRefs || []).forEach(r => {
+      const key = r.name + "|" + (r.brand || "");
+      if (!map[key]) map[key] = { name: r.name, brand: r.brand, count: 0 };
+      map[key].count++;
+    }));
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [manicures]);
+
+  const lastEntry = manicures.length > 0
+    ? [...manicures].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0].date
+    : null;
 
   const bigNum = { fontFamily: t.fontDisplay, fontSize: "42px", fontWeight: 300, lineHeight: 1, color: t.text };
   const bigLabel = { fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", color: t.textVeryMuted, marginTop: "6px" };
@@ -208,6 +244,119 @@ export function StatsPage({ t, polishes, customCats, onSelectPolish }) {
           </StatCard>
         );
       })()}
+
+      {stickers.length > 0 && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "14px", marginTop: "20px", marginBottom: "14px" }}>
+            {[
+              { value: stickers.length,                                                    label: "Sticker gesamt",  color: t.text },
+              { value: stickers.filter(s => (s.status || "ok") === "ok").length,           label: "Vorhanden",       color: t.dark ? "rgba(150,255,180,0.85)" : "#1a6b2a" },
+              { value: stickers.filter(s => s.status === "wish").length,                   label: "Wunschliste",     color: t.dark ? "rgba(180,160,255,0.85)" : "#5040a0" },
+              { value: stickers.filter(s => s.status === "empty").length,                  label: "Leer",            color: t.dark ? "rgba(255,180,80,0.85)"  : "#804000" },
+            ].filter(s => s.value > 0 || s.label === "Sticker gesamt").map(({ value, label, color }) => (
+              <StatCard t={t} key={label}>
+                <div style={{ ...bigNum, color }}>{value}</div>
+                <div style={bigLabel}>{label}</div>
+              </StatCard>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
+            <StatCard t={t}>
+              <CardLabel t={t}>Sticker nach Typ</CardLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {stickerByType.map(({ icon, label, count }) => (
+                  <div key={label}>
+                    <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted, marginBottom: "3px" }}>{icon} {label}</div>
+                    <Bar t={t} value={count} max={stickers.length} color="rgba(220,180,255,0.55)" />
+                  </div>
+                ))}
+              </div>
+            </StatCard>
+
+            <StatCard t={t}>
+              <CardLabel t={t}>
+                Sticker nach Marke
+                {onSelectStickers && (
+                  <button onClick={onSelectStickers}
+                    style={{ float: "right", background: "transparent", border: `1px solid ${t.filterBorder}`, color: t.filterColor,
+                             borderRadius: t.filterRadius, padding: "1px 8px", cursor: "pointer",
+                             fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
+                    → Sticker
+                  </button>
+                )}
+              </CardLabel>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {stickerByBrand.map(([brand, count]) => (
+                  <div key={brand}>
+                    <div style={{ marginBottom: "4px" }}>
+                      <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted, letterSpacing: "1px" }}>{brand}</span>
+                    </div>
+                    <Bar t={t} value={count} max={stickers.length} color="rgba(220,180,255,0.55)" />
+                  </div>
+                ))}
+              </div>
+            </StatCard>
+          </div>
+        </>
+      )}
+
+      {manicures.length > 0 && (
+        <StatCard t={t} style={{ marginBottom: "20px" }}>
+          <CardLabel t={t}>
+            Tagebuch
+            {onSelectDiary && (
+              <button onClick={onSelectDiary}
+                style={{ float: "right", background: "transparent", border: `1px solid ${t.filterBorder}`, color: t.filterColor,
+                         borderRadius: t.filterRadius, padding: "1px 8px", cursor: "pointer",
+                         fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "1.5px", textTransform: "uppercase" }}>
+                → Tagebuch
+              </button>
+            )}
+          </CardLabel>
+          <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", marginBottom: diaryTopPolishes.length > 0 ? "16px" : 0 }}>
+            <div>
+              <div style={{ ...bigNum, fontSize: "32px" }}>{manicures.length}</div>
+              <div style={bigLabel}>Einträge</div>
+            </div>
+            {lastEntry && (
+              <div>
+                <div style={{ fontFamily: t.fontDisplay, fontSize: "20px", color: t.text, lineHeight: 1 }}>
+                  {lastEntry.split("-").reverse().join(".")}
+                </div>
+                <div style={bigLabel}>Letzter Eintrag</div>
+              </div>
+            )}
+          </div>
+          {diaryTopPolishes.length > 0 && (
+            <>
+              <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", color: t.textVeryMuted, marginBottom: "8px" }}>
+                Häufigste Lacke
+              </div>
+              {diaryTopPolishes.map((p, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", borderBottom: i < diaryTopPolishes.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontFamily: t.fontBody, fontSize: "12px", color: t.textMuted }}>{p.name}{p.brand ? ` · ${p.brand}` : ""}</div>
+                  <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textVeryMuted }}>{p.count}×</span>
+                </div>
+              ))}
+            </>
+          )}
+          {diaryTopStickers.length > 0 && (
+            <>
+              <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", color: t.textVeryMuted, marginTop: "14px", marginBottom: "8px" }}>
+                Häufigste Sticker
+              </div>
+              {diaryTopStickers.map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", borderBottom: i < diaryTopStickers.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
+                  <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textMuted, flex: 1 }}>◌ {s.name}{s.brand ? ` · ${s.brand}` : ""}</span>
+                  <span style={{ fontFamily: t.fontBody, fontSize: "11px", color: t.textVeryMuted }}>{s.count}×</span>
+                </div>
+              ))}
+            </>
+          )}
+        </StatCard>
+      )}
     </div>
   );
 }
