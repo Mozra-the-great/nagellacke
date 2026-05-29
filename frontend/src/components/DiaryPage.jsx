@@ -81,8 +81,9 @@ function formatDate(iso) {
   return `${d}.${m}.${y}`;
 }
 
-export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, apiKey }) {
+export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onDelete, apiKey }) {
   const [showForm, setShowForm]           = useState(false);
+  const [editId, setEditId]               = useState(null);
   const [form, setForm]                   = useState({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photos: { ...EMPTY_PHOTOS } });
   const [search, setSearch]               = useState("");
   const [stickerSearch, setStickerSearch] = useState("");
@@ -154,13 +155,37 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = () => {
-    if (!form.date) return;
-    onAdd({ date: form.date, polishRefs: form.polishRefs, stickerRefs: form.stickerRefs, notes: form.notes, photos: form.photos });
+  const openEdit = (m) => {
+    setEditId(m.id);
+    setForm({
+      date: m.date || todayISO(),
+      polishRefs: m.polishRefs || [],
+      stickerRefs: m.stickerRefs || [],
+      notes: m.notes || "",
+      photos: m.photos ? { ...EMPTY_PHOTOS, ...m.photos } : { ...EMPTY_PHOTOS },
+    });
+    setSearch(""); setStickerSearch("");
+    setUploading({}); setErrors({});
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditId(null);
     setForm({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photos: { ...EMPTY_PHOTOS } });
     setSearch(""); setStickerSearch("");
     setUploading({}); setErrors({});
-    setShowForm(false);
+  };
+
+  const handleSubmit = () => {
+    if (!form.date) return;
+    const data = { date: form.date, polishRefs: form.polishRefs, stickerRefs: form.stickerRefs, notes: form.notes, photos: form.photos };
+    if (editId) {
+      onSave(editId, data);
+    } else {
+      onAdd(data);
+    }
+    closeForm();
   };
 
   const btnBase = {
@@ -182,7 +207,7 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
           {manicures.length} Einträge
         </span>
         <button style={{ ...btnBase, borderColor: t.filterBorderActive, color: t.filterColorActive }}
-          onClick={() => setShowForm(v => !v)}>
+          onClick={() => showForm ? closeForm() : setShowForm(true)}>
           {showForm ? "✕ Abbrechen" : "+ Neuer Eintrag"}
         </button>
       </div>
@@ -331,7 +356,7 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
               style={{ resize: "vertical", minHeight: "58px", lineHeight: "1.5" }} />
           </div>
 
-          <button className="add-btn" onClick={handleSubmit} disabled={!form.date}>Eintrag speichern</button>
+          <button className="add-btn" onClick={handleSubmit} disabled={!form.date}>{editId ? "Änderungen speichern" : "Eintrag speichern"}</button>
         </div>
       )}
 
@@ -401,6 +426,12 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
                     </div>
                   )}
                 </div>
+                <button onClick={e => { e.stopPropagation(); openEdit(m); }}
+                  style={{ background: "transparent", border: "none", color: t.textVeryMuted,
+                           cursor: "pointer", fontSize: "14px", lineHeight: 1, padding: "2px", flexShrink: 0,
+                           transition: "color 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.color = t.textMuted}
+                  onMouseLeave={e => e.currentTarget.style.color = t.textVeryMuted}>✎</button>
                 <button onClick={e => { e.stopPropagation(); onDelete(m.id); }}
                   style={{ background: "transparent", border: "none", color: t.textVeryMuted,
                            cursor: "pointer", fontSize: "16px", lineHeight: 1, padding: "2px", flexShrink: 0,

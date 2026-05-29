@@ -243,6 +243,12 @@ export default function App() {
     saveToBackend(polishes, customCats, next);
   };
 
+  const handleSaveManicure = (id, entry) => {
+    const next = manicures.map(m => m.id === id ? { ...m, ...entry, updatedAt: Date.now() } : m);
+    setManicures(next);
+    saveToBackend(polishes, customCats, next);
+  };
+
   const handleDeleteManicure = (id) => {
     const entry = manicures.find(m => m.id === id);
     if (entry?.photo) fetch(`/api/photos/${entry.photo}`, { method: "DELETE", headers: { "X-Api-Key": apiKey || "" } });
@@ -605,7 +611,7 @@ export default function App() {
 
       {/* ── Diary Page ── */}
       {view === "diary" && <main><DiaryPage t={t} manicures={manicures} polishes={polishes} stickers={stickers}
-        onAdd={handleAddManicure} onDelete={handleDeleteManicure} apiKey={apiKey} /></main>}
+        onAdd={handleAddManicure} onSave={handleSaveManicure} onDelete={handleDeleteManicure} apiKey={apiKey} /></main>}
 
       {/* ── Sticker Page ── */}
       {view === "stickers" && <main><StickerPage t={t} stickers={stickers}
