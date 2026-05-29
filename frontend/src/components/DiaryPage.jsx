@@ -39,7 +39,7 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove, btnBase }) {
     <div data-photo-picker style={{ position: "relative", display: "block" }}>
       <button type="button" disabled={uploading} onClick={() => !uploading && setOpen(v => !v)}
         style={{ ...btnBase, display: "block", width: "100%", textAlign: "center" }}>
-        {uploading ? "⟳ Wird hochgeladen…" : "📷 Foto wählen"}
+        {uploading ? "⟳ Wird hochgeladen…" : hasPhoto ? "📷 Foto ändern" : "📷 Foto"}
       </button>
       {open && (
         <div style={menuStyle}>
@@ -56,6 +56,21 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove, btnBase }) {
   );
 }
 
+const PHOTO_SLOTS = [
+  { key: "fingerRight", label: "Finger rechts" },
+  { key: "fingerLeft",  label: "Finger links"  },
+  { key: "thumbRight",  label: "Daumen rechts" },
+  { key: "thumbLeft",   label: "Daumen links"  },
+];
+
+const EMPTY_PHOTOS = { fingerRight: null, fingerLeft: null, thumbRight: null, thumbLeft: null };
+
+function firstPhoto(m) {
+  if (m.photo) return m.photo;
+  if (m.photos) return Object.values(m.photos).find(Boolean) || null;
+  return null;
+}
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -67,13 +82,13 @@ function formatDate(iso) {
 }
 
 export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, apiKey }) {
-  const [showForm, setShowForm]         = useState(false);
-  const [form, setForm]                 = useState({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photo: null });
-  const [search, setSearch]             = useState("");
+  const [showForm, setShowForm]           = useState(false);
+  const [form, setForm]                   = useState({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photos: { ...EMPTY_PHOTOS } });
+  const [search, setSearch]               = useState("");
   const [stickerSearch, setStickerSearch] = useState("");
-  const [photoUploading, setPhotoUploading] = useState(false);
-  const [photoError, setPhotoError]         = useState(null);
-  const [expandedId, setExpandedId]     = useState(null);
+  const [uploading, setUploading]         = useState({});
+  const [errors, setErrors]               = useState({});
+  const [expandedId, setExpandedId]       = useState(null);
 
   const filtered = (polishes || []).filter(p => {
     const q = search.toLowerCase();
@@ -105,8 +120,8 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
     }));
   };
 
-  const handlePhotoUpload = (file) => {
-    setPhotoError(null);
+  const makeUploader = (slot) => (file) => {
+    setErrors(e => ({ ...e, [slot]: null }));
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -118,7 +133,7 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
         canvas.height = Math.round(img.height * scale);
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
         const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
-        setPhotoUploading(true);
+        setUploading(u => ({ ...u, [slot]: true }));
         fetch("/api/photos", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
@@ -126,24 +141,25 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
         })
           .then(r => r.json())
           .then(d => {
-            if (d.filename) setForm(f => ({ ...f, photo: d.filename }));
-            else setPhotoError("Foto-Upload fehlgeschlagen" + (d.error ? `: ${d.error}` : ""));
+            if (d.filename) setForm(f => ({ ...f, photos: { ...f.photos, [slot]: d.filename } }));
+            else setErrors(e => ({ ...e, [slot]: "Upload fehlgeschlagen" + (d.error ? `: ${d.error}` : "") }));
           })
-          .catch(() => setPhotoError("Foto-Upload fehlgeschlagen — Verbindungsfehler"))
-          .finally(() => setPhotoUploading(false));
+          .catch(() => setErrors(e => ({ ...e, [slot]: "Upload fehlgeschlagen — Verbindungsfehler" })))
+          .finally(() => setUploading(u => ({ ...u, [slot]: false })));
       };
-      img.onerror = () => setPhotoError("Bild konnte nicht gelesen werden");
+      img.onerror = () => setErrors(e => ({ ...e, [slot]: "Bild konnte nicht gelesen werden" }));
       img.src = ev.target.result;
     };
-    reader.onerror = () => setPhotoError("Datei konnte nicht gelesen werden");
+    reader.onerror = () => setErrors(e => ({ ...e, [slot]: "Datei konnte nicht gelesen werden" }));
     reader.readAsDataURL(file);
   };
 
   const handleSubmit = () => {
     if (!form.date) return;
-    onAdd({ date: form.date, polishRefs: form.polishRefs, stickerRefs: form.stickerRefs, notes: form.notes, photo: form.photo });
-    setForm({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photo: null });
+    onAdd({ date: form.date, polishRefs: form.polishRefs, stickerRefs: form.stickerRefs, notes: form.notes, photos: form.photos });
+    setForm({ date: todayISO(), polishRefs: [], stickerRefs: [], notes: "", photos: { ...EMPTY_PHOTOS } });
     setSearch(""); setStickerSearch("");
+    setUploading({}); setErrors({});
     setShowForm(false);
   };
 
@@ -152,6 +168,11 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
     padding: "5px 16px", borderRadius: t.filterRadius, cursor: "pointer",
     fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase",
     transition: "all 0.2s",
+  };
+
+  const slotLabelStyle = {
+    fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "1.5px",
+    color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "4px",
   };
 
   return (
@@ -169,28 +190,34 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
       {showForm && (
         <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius,
                       padding: "22px 24px", marginBottom: "24px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
-            <div>
-              <label className="form-label">Datum</label>
-              <input type="date" className="form-input" value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-            </div>
-            <div>
-              <label className="form-label">Foto (optional)</label>
-              {form.photo && (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                  <img src={`/photos/${form.photo}`} alt=""
-                    style={{ width: 52, height: 39, objectFit: "cover", borderRadius: "6px", border: `1px solid ${t.cardBorder}` }} />
+          <div style={{ marginBottom: "14px" }}>
+            <label className="form-label">Datum</label>
+            <input type="date" className="form-input" value={form.date}
+              onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+          </div>
+
+          <div style={{ marginBottom: "14px" }}>
+            <label className="form-label">Fotos (optional)</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              {PHOTO_SLOTS.map(slot => (
+                <div key={slot.key}>
+                  <div style={slotLabelStyle}>{slot.label}</div>
+                  {form.photos[slot.key] && (
+                    <img src={`/photos/${form.photos[slot.key]}`} alt={slot.label}
+                      style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: "6px",
+                               border: `1px solid ${t.cardBorder}`, marginBottom: "4px", display: "block" }} />
+                  )}
+                  <PhotoPicker t={t} btnBase={btnBase} uploading={!!uploading[slot.key]}
+                    hasPhoto={!!form.photos[slot.key]}
+                    onFile={makeUploader(slot.key)}
+                    onRemove={form.photos[slot.key] ? () => setForm(f => ({ ...f, photos: { ...f.photos, [slot.key]: null } })) : undefined} />
+                  {errors[slot.key] && (
+                    <div style={{ fontFamily: t.fontBody, fontSize: "10px", color: "rgba(255,120,120,0.85)", marginTop: "3px" }}>
+                      ✕ {errors[slot.key]}
+                    </div>
+                  )}
                 </div>
-              )}
-              <PhotoPicker t={t} btnBase={btnBase} uploading={photoUploading} hasPhoto={!!form.photo}
-                onFile={handlePhotoUpload}
-                onRemove={form.photo ? () => setForm(f => ({ ...f, photo: null })) : undefined} />
-              {photoError && (
-                <div style={{ fontFamily: t.fontBody, fontSize: "11px", color: "rgba(255,120,120,0.85)", marginTop: "4px" }}>
-                  ✕ {photoError}
-                </div>
-              )}
+              ))}
             </div>
           </div>
 
@@ -318,14 +345,16 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {manicures.map(m => {
           const expanded = expandedId === m.id;
+          const thumb = firstPhoto(m);
+          const photoSlots = m.photos ? PHOTO_SLOTS.filter(s => m.photos[s.key]) : [];
           return (
             <div key={m.id} style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}`,
                                      borderRadius: t.cardRadius, overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", padding: "16px 18px",
                             cursor: "pointer" }}
                 onClick={() => setExpandedId(expanded ? null : m.id)}>
-                {m.photo && (
-                  <img src={`/photos/${m.photo}`} alt=""
+                {thumb && (
+                  <img src={`/photos/${thumb}`} alt=""
                     style={{ width: 72, height: 54, objectFit: "cover", borderRadius: "8px",
                              flexShrink: 0, border: `1px solid ${t.cardBorder}` }} />
                 )}
@@ -379,10 +408,26 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onDelete, a
                   onMouseEnter={e => e.currentTarget.style.color = "rgba(255,120,120,0.9)"}
                   onMouseLeave={e => e.currentTarget.style.color = t.textVeryMuted}>×</button>
               </div>
-              {expanded && m.photo && (
+              {expanded && (m.photo || photoSlots.length > 0) && (
                 <div style={{ padding: "0 18px 16px" }}>
-                  <img src={`/photos/${m.photo}`} alt=""
-                    style={{ maxWidth: "100%", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
+                  {m.photo && (
+                    <img src={`/photos/${m.photo}`} alt=""
+                      style={{ maxWidth: "100%", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
+                  )}
+                  {photoSlots.length > 0 && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      {photoSlots.map(slot => (
+                        <div key={slot.key}>
+                          <div style={{ fontFamily: t.fontBody, fontSize: "9px", letterSpacing: "1.5px",
+                                        color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "4px" }}>
+                            {slot.label}
+                          </div>
+                          <img src={`/photos/${m.photos[slot.key]}`} alt={slot.label}
+                            style={{ width: "100%", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

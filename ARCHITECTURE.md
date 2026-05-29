@@ -283,3 +283,4 @@ Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags ges
 | v2.1.5 | Mobile Bug-Fixes: PhotoPicker-Komponente (ein Button → Dropdown „📷 Kamera" / „🖼 Galerie") in StickerPage + DiaryPage; Fehler-Feedback bei fehlgeschlagenem Foto-Upload; `type="button"` auf alle Buttons in StickerFormFields; API-Schlüssel-Warnung in Sticker-Formularen |
 | v2.1.6 | Kamera-Fix: Foto-Inputs von `display:none` auf opacity-basiertes Hiding umgestellt (`position:absolute; width:0.1px; opacity:0`); `.click()` vor `setOpen(false)` für korrekte User-Gesture-Behandlung auf Android |
 | v2.1.7 | PhotoPicker (Kamera/Galerie-Dropdown) auch in PolishForm: Farbpicker-Foto und Flaschenfoto nutzen jetzt beide den einheitlichen Picker mit expliziter Kamera- und Galerie-Option |
+| v2.1.8 | Tagebuch: 4 Foto-Slots pro Eintrag (Finger rechts/links, Daumen rechts/links); `photos`-Objekt ersetzt `photo`-Feld; Rückwärtskompatibilität für alte Einträge mit `photo` |
