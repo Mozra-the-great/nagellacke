@@ -1,0 +1,61 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.nav {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  background: var(--md-surface-variant);
+  border-top: 1px solid var(--md-outline-variant);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  z-index: 100;
+}
+
+.navBtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  color: var(--md-on-surface-variant);
+  transition: color 0.15s;
+  border-radius: var(--radius-md);
+  margin: 4px;
+}
+
+.navBtnActive {
+  color: var(--md-primary);
+  background: var(--md-primary-container);
+}
+
+.navIcon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.navLabel {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 64px;
+}
+
+@media (max-width: 380px) {
+  .navLabel { font-size: 9px; max-width: 52px; }
+  .navBtn   { padding: 8px 2px; gap: 2px; }
+  .navIcon  { font-size: 18px; }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { V3UpgradePanel } from "./V3UpgradePanel.jsx";
 
 const UPDATE_CACHE_TTL = 10 * 60 * 1000;
 
@@ -71,23 +72,26 @@ export function UpdatePanel({ t, apiKey }) {
   const textStyle = { fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase" };
 
   return (
-    <div style={{ textAlign: "center", padding: "0 0 36px" }}>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
-        {version && <span style={{ ...textStyle, color: t.textFaint }}>v{version}</span>}
-        {status === "idle"       && <button style={btnStyle} onMouseEnter={e => { e.currentTarget.style.color = t.textMuted; e.currentTarget.style.borderColor = t.filterBorderActive; }} onMouseLeave={e => { e.currentTarget.style.color = t.textVeryMuted; e.currentTarget.style.borderColor = t.filterBorder; }} onClick={check}>Updates prüfen</button>}
-        {status === "checking"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>Prüfe…</span>}
-        {status === "uptodate"   && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.55)" : "#2a7a2a" }}>✓ Aktuell</span>}
-        {status === "available"  && <>
-          <span style={{ ...textStyle, color: "rgba(255,210,60,0.75)" }}>↑ v{latestVersion} verfügbar</span>
-          <button style={updateBtnStyle} onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,210,60,1)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.75)"; e.currentTarget.style.background = "rgba(255,210,60,0.07)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,210,60,0.75)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.45)"; e.currentTarget.style.background = "transparent"; }} onClick={applyUpdate}>Jetzt updaten</button>
-        </>}
-        {status === "updating"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>⟳ Installiere Update…</span>}
-        {status === "restarting" && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.6)" : "#2a7a2a" }}>✓ Update installiert · warte auf Neustart…</span>}
-        {status === "error"      && <>
-          <span style={{ ...textStyle, color: "rgba(255,120,120,0.7)" }}>✕ {errorMsg}</span>
-          <button style={btnStyle} onClick={() => setStatus("idle")}>Zurück</button>
-        </>}
+    <>
+      <div style={{ textAlign: "center", padding: "0 0 12px" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "12px", flexWrap: "wrap", justifyContent: "center" }}>
+          {version && <span style={{ ...textStyle, color: t.textFaint }}>v{version}</span>}
+          {status === "idle"       && <button style={btnStyle} onMouseEnter={e => { e.currentTarget.style.color = t.textMuted; e.currentTarget.style.borderColor = t.filterBorderActive; }} onMouseLeave={e => { e.currentTarget.style.color = t.textVeryMuted; e.currentTarget.style.borderColor = t.filterBorder; }} onClick={check}>Updates prüfen</button>}
+          {status === "checking"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>Prüfe…</span>}
+          {status === "uptodate"   && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.55)" : "#2a7a2a" }}>✓ Aktuell</span>}
+          {status === "available"  && <>
+            <span style={{ ...textStyle, color: "rgba(255,210,60,0.75)" }}>↑ v{latestVersion} verfügbar</span>
+            <button style={updateBtnStyle} onMouseEnter={e => { e.currentTarget.style.color = "rgba(255,210,60,1)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.75)"; e.currentTarget.style.background = "rgba(255,210,60,0.07)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(255,210,60,0.75)"; e.currentTarget.style.borderColor = "rgba(255,210,60,0.45)"; e.currentTarget.style.background = "transparent"; }} onClick={applyUpdate}>Jetzt updaten</button>
+          </>}
+          {status === "updating"   && <span style={{ ...textStyle, color: t.textVeryMuted }}>⟳ Installiere Update…</span>}
+          {status === "restarting" && <span style={{ ...textStyle, color: t.dark ? "rgba(150,255,180,0.6)" : "#2a7a2a" }}>✓ Update installiert · warte auf Neustart…</span>}
+          {status === "error"      && <>
+            <span style={{ ...textStyle, color: "rgba(255,120,120,0.7)" }}>✕ {errorMsg}</span>
+            <button style={btnStyle} onClick={() => setStatus("idle")}>Zurück</button>
+          </>}
+        </div>
       </div>
-    </div>
+      <V3UpgradePanel t={t} apiKey={apiKey} />
+    </>
   );
 }

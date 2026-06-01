@@ -1,0 +1,23 @@
+{
+  "name": "nagellacke-v3",
+  "version": "3.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "server"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:android": "npm run start --workspace=apps/android",
+    "build:core": "npm run build --workspace=packages/core",
+    "build:sync": "npm run build --workspace=packages/sync",
+    "build:server": "npm run build --workspace=server",
+    "build:web": "npm run build --workspace=apps/web",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

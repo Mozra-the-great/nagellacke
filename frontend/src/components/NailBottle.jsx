@@ -21,7 +21,7 @@ export function NailBottle({ color, finish, selected, status, brand, photoUrl })
   const brandLabel = (brand || "").toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? "3" : "4";
   return (
-    <svg width="64" height="130" viewBox="0 0 64 130" fill="none" aria-hidden="true" focusable="false"
+    <svg width="64" height="130" viewBox="0 0 64 130" fill="none" aria-hidden="true"
       style={{ filter: selected ? `drop-shadow(0 0 14px ${color}bb)` : "drop-shadow(0 4px 10px rgba(0,0,0,0.55))", transition: "filter 0.3s, opacity 0.3s", opacity: faded ? 0.38 : isWish ? 0.62 : 1 }}>
       <defs>
         <linearGradient id={gId} x1="0%" y1="0%" x2="100%" y2="100%">

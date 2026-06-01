@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@nagellacke/core": ["../../packages/core/src/index.ts"],
+      "@nagellacke/sync": ["../../packages/sync/src/index.ts"]
+    }
+  }
+}

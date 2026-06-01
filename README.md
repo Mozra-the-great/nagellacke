@@ -6,6 +6,17 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 
 ---
 
+## Versionen
+
+| Version | Status | Beschreibung |
+|---------|--------|-------------|
+| **v2** (aktuell) | ✅ Stabil | Self-hosted Web-App, kein Sync |
+| **v3** (in Entwicklung) | 🚧 Beta | + Sync-Server für Android-App, per Knopfdruck aus v2 installierbar |
+
+**Upgrade v2 → v3:** Einstellungen → „Updates prüfen" → Button **„Upgrade auf v3 (mit Sync)"** erscheint nach dem Update. Alle Daten und Fotos werden automatisch übernommen.
+
+---
+
 ## Features
 
 - **Kollektion verwalten** — Lacke anlegen, bearbeiten, löschen mit Name, Marke, Nummer, Farbe, Finish und Status
@@ -15,25 +26,21 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Notizen** — freies Textfeld pro Lack (Kaufdatum, Bewertung, …)
 - **Suche & Filter** — nach Name, Marke, Nummer, Finish, Kategorie, Status, Notizen
 - **Sortierung** — nach Eingabereihenfolge, Name, Marke oder Farbton
-- **Multi-Brand-Filter** — Marken-Schnellfilter bei mehr als einer Marke
 - **Stapelaktionen** — mehrere Lacke gleichzeitig auswählen, Status setzen oder löschen
 - **Undo** — Löschungen 5 Sekunden rückgängig machen
 - **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien und Farbpalette
-- **Foto-Farbpicker** — 📷 Kamera oder 🖼 Galerie öffnen, auf die Farbe tippen → wird direkt übernommen (kein Upload, rein clientseitig)
-- **Export / Import** — vollständiges Backup als JSON
+- **Foto-Farbpicker** — Kamera oder Galerie öffnen, auf die Farbe tippen → wird direkt übernommen
+- **Export / Import** — vollständiges Backup als JSON inkl. aller Fotos (base64-eingebettet)
 - **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
 - **System-Logs** — journalctl-Ausgabe live in der App abrufbar
 - **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
-- **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark — jedes mit eigenem Font, Shapes, Farben und Vibe; Auswahl wird im Browser gespeichert
-- **Sternebewertung** — 1–5 Sterne pro Lack, sortierbar, filterbar, Top-Bewertet-Liste in Statistik
-- **Farbklick in Statistik** — Klick auf Farb-Dot zeigt welcher Lack diese Farbe hat; direkter Sprung zur Kollektion
-- **Timestamps** — jeder Lack speichert `createdAt`/`updatedAt`; Sortierung „Neueste/Älteste zuerst"
-- **Batch-Marke/Finish/Kategorie** — im Batch-Modus Marke setzen, Finish ändern oder Kategorie zu mehreren Lacken gleichzeitig hinzufügen
-- **Import Merge-Modus** — beim Import wählen zwischen Ersetzen (Kollektion überschreiben) oder Zusammenführen (nur neue Lacke hinzufügen, Duplikate überspringen)
-- **PWA** — installierbar als App (manifest.json + Service Worker mit Cache-First-Strategie)
-- **Flaschenfoto** — pro Lack ein Foto hochladen; Karte zwischen SVG-Grafik und echtem Foto umschalten
-- **Maniküre-Tagebuch** — Einträge mit Datum, Lacken aus der Kollektion, Notizen und optionalem Foto; eigene Ansicht neben Kollektion und Statistiken
-- **Nail-Sticker-Inventar** — Sticker inventarisieren mit Name, Marke, Stil, Typ (Full Cover, Akzent, Wrap, 3D, Folie, Slider), mehreren Farben inkl. Transparent-Option, Status, Bewertung und Foto; eigener „Sticker"-Tab
+- **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark
+- **Sternebewertung** — 1–5 Sterne pro Lack, sortierbar, Top-Bewertet-Liste in Statistik
+- **Timestamps** — `createdAt`/`updatedAt`; Sortierung „Neueste/Älteste zuerst"
+- **PWA** — installierbar als App (manifest.json + Service Worker)
+- **Flaschenfoto** — pro Lack ein Foto hochladen; zwischen SVG-Grafik und echtem Foto umschalten
+- **Maniküre-Tagebuch** — Einträge mit Datum, Lacken, Notizen und Foto
+- **Nail-Sticker-Inventar** — Sticker mit Typ, Farben, Status, Bewertung und Foto
 
 ---
 
@@ -65,15 +72,13 @@ Diesen Schlüssel in der App unter dem **⚙-Button** (Footer) eintragen. Er wir
 Schlüssel später abrufen:
 ```bash
 cat /opt/nagellacke/backend/data/.api_key
-# oder
-journalctl -u nagellacke -n 100 | grep "API-Schlüssel"
 ```
 
 ---
 
 ## Update einspielen
 
-**Variante A — In der App:** Einstellungen → „Updates prüfen" → „Jetzt updaten"
+**Variante A — In der App:** Footer → „Updates prüfen" → „Jetzt updaten"
 
 **Variante B — Manuell:**
 ```bash
@@ -84,29 +89,72 @@ Daten bleiben dabei **immer erhalten**.
 
 ---
 
+## Upgrade auf v3 (mit Sync-Server)
+
+v3 ersetzt v2 auf dem gleichen Port (3000) und bringt einen **Sync-Server** für die Android-App mit.
+
+**Per Knopfdruck aus v2:**
+1. v2 auf dem neuesten Stand bringen (Update-Knopf)
+2. Footer → **„Upgrade auf v3 (mit Sync)"** klicken
+3. Warten (~3 Min.) — die App startet automatisch neu
+4. Daten und Fotos werden automatisch übernommen, API-Schlüssel bleibt gleich
+
+**Manuell auf dem Server:**
+```bash
+sudo bash /opt/nagellacke/v3/server/install.sh
+```
+
+**Nach dem Upgrade — Sync-Account anlegen (einmalig):**
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"ich","password":"meinPasswort"}'
+```
+Den zurückgegebenen Token in der Android-App unter Einstellungen → Sync eintragen.
+
+---
+
 ## Datenspeicherung
 
+**v2:**
 ```
-/opt/nagellacke/backend/data/data.json    ← Kollektion (Lacke + Kategorien)
-/opt/nagellacke/backend/data/.api_key     ← API-Schlüssel (nur root lesbar)
+/opt/nagellacke/backend/data/data.json    ← Kollektion
+/opt/nagellacke/backend/data/.api_key     ← API-Schlüssel
+/opt/nagellacke/backend/data/photos/      ← Fotos
+```
+
+**v3 (nach Upgrade):**
+```
+/opt/nagellacke/v3/server/data/data.json  ← Kollektion (von v2 migriert)
+/opt/nagellacke/v3/server/data/.api_key   ← API-Schlüssel (von v2 übernommen)
+/opt/nagellacke/v3/server/data/photos/    ← Fotos (von v2 kopiert)
 ```
 
 Backup erstellen:
 ```bash
+# v2
 cp /opt/nagellacke/backend/data/data.json ~/backup-$(date +%F).json
+
+# v3
+cp /opt/nagellacke/v3/server/data/data.json ~/backup-$(date +%F).json
 ```
 
-Oder direkt in der App: Footer → **↓ Export**
+Oder direkt in der App: Footer → **↓ Export** (enthält alle Fotos eingebettet)
 
 ---
 
 ## Nützliche Befehle
 
 ```bash
-systemctl status nagellacke        # Dienst-Status
-systemctl restart nagellacke       # Neustart
-journalctl -u nagellacke -f        # Live-Logs
-cat /opt/nagellacke/backend/data/data.json   # Rohdaten
+# v2
+systemctl status nagellacke
+systemctl restart nagellacke
+journalctl -u nagellacke -f
+
+# v3
+systemctl status nagellacke-v3
+systemctl restart nagellacke-v3
+journalctl -u nagellacke-v3 -f
 ```
 
 ---
@@ -114,39 +162,50 @@ cat /opt/nagellacke/backend/data/data.json   # Rohdaten
 ## Lokale Entwicklung
 
 ```bash
-# Terminal 1 – Backend
+# v2 (Terminal 1 – Backend)
 cd backend && npm install && node server.js
 
-# Terminal 2 – Frontend (Hot Reload)
+# v2 (Terminal 2 – Frontend)
 cd frontend && npm install && npm run dev
+
+# v3 (Terminal 1 – Server)
+cd v3 && npm install && npm run build:core && npm run dev:server
+
+# v3 (Terminal 2 – Web-App)
+cd v3 && npm run dev:web
 ```
 
-Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an `:3000` weitergeleitet (Vite-Proxy).
+Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an `:3000` (v2) bzw. `:3001` (v3 dev) weitergeleitet.
 
 ---
 
-## Technik (Kurzfassung)
+## Repo-Struktur
 
-| Schicht | Technologie | Begründung |
-|--------|------------|------------|
-| Frontend | React 18 + Vite | Reaktive UI, schneller Build |
-| Backend | Node.js + Express | Minimal, keine Abhängigkeiten |
-| Speicher | JSON-Datei | Kein Datenbankserver nötig |
-| Deployment | systemd | Autostart + Restart bei Absturz |
-| Auth | API-Key (Header) | Einfach, ausreichend für Heimnetz |
+```
+nagellacke/
+├── backend/          ← v2 Node.js/Express Server
+├── frontend/         ← v2 React/Vite Frontend (auch von v3 ausgeliefert)
+├── install.sh        ← v2 Installer
+└── v3/               ← v3 (Sync-Server + Android-App)
+    ├── packages/core/     Typen, Business-Logik, Merge-Algorithmus
+    ├── packages/sync/     Sync-Adapter (Server, GDrive, OneDrive, Nextcloud, Dropbox)
+    ├── server/            Fastify-Server (ersetzt v2 nach Upgrade)
+    ├── apps/web/          v3 Web-App (React, noch in Entwicklung)
+    └── apps/android/      Expo React Native Android-App
+```
+
+---
+
+## Technik
+
+| Schicht | v2 | v3 |
+|--------|----|----|
+| Frontend | React 18 + Vite | React 18 + Vite (identisch) |
+| Backend | Express | Fastify |
+| Speicher | JSON-Datei | JSON-Datei |
+| Auth | API-Key | API-Key (Web) + JWT (Sync) |
+| Sync | — | Server / GDrive / OneDrive / Nextcloud / Dropbox |
+| Mobile | PWA | Expo React Native (Play Store) |
+| Deployment | systemd | systemd |
 
 Vollständige Architektur-Dokumentation: [ARCHITECTURE.md](ARCHITECTURE.md)
-
----
-
-## Entwicklung
-
-Dieses Projekt wurde vollständig mit Hilfe von KI (Claude von Anthropic) entwickelt. Kein einzige Zeile Code wurde manuell geschrieben — alle Entscheidungen, Anforderungen und Reviews liefen über Konversationen mit dem Modell.
-
-Mehr dazu: [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md)
-
----
-
-## Lizenz
-
-[MIT](LICENSE) — mach damit was du willst, ich hafte für nichts.

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.expo/
+*.local
+*.env
+*.tsbuildinfo
+google-service-account.json
+server/data/
+server/public/
