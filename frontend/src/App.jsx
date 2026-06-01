@@ -7,7 +7,6 @@ import { PolishForm } from "./components/PolishForm.jsx";
 import { StatsPage } from "./components/StatsPage.jsx";
 import { LogPanel } from "./components/LogPanel.jsx";
 import { UpdatePanel } from "./components/UpdatePanel.jsx";
-import { V3Panel } from "./components/V3Panel.jsx";
 import { DiaryPage } from "./components/DiaryPage.jsx";
 import { StickerPage } from "./components/StickerPage.jsx";
 
@@ -414,10 +413,15 @@ export default function App() {
       try {
         const res = await fetch(`/photos/${encodeURIComponent(name)}`);
         if (!res.ok) return;
-        const buf  = await res.arrayBuffer();
-        const b64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const buf   = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        // Chunk to avoid call-stack overflow on large files
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        }
         const mime = res.headers.get("content-type") || "image/jpeg";
-        photos[name] = `data:${mime};base64,${b64}`;
+        photos[name] = `data:${mime};base64,${btoa(binary)}`;
       } catch { /* skip unreadable photos */ }
     }));
 
@@ -1171,7 +1175,6 @@ export default function App() {
 
       <LogPanel t={t} apiKey={apiKey} />
       <UpdatePanel t={t} apiKey={apiKey} />
-      <V3Panel t={t} apiKey={apiKey} />
 
       {/* ── Toast (replaces window.alert) ── */}
       {toast && (
