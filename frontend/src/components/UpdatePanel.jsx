@@ -51,18 +51,25 @@ export function UpdatePanel({ t, apiKey }) {
         if (!d) return;
         if (d.error) { setErrorMsg(d.error); setStatus("error"); return; }
         setStatus("restarting");
+        const hardReload = async () => {
+          try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          } catch { /* ignore if caches API unavailable */ }
+          window.location.reload();
+        };
         let downCount = 0;
         pollRef.current = setInterval(() => {
           fetch("/api/version").then(r => r.json()).then(d => {
             if (!d.version) return;
             if (d.version !== version || downCount >= 2) {
               clearInterval(pollRef.current);
-              window.location.reload();
+              void hardReload();
             }
             downCount = 0;
           }).catch(() => { downCount++; });
         }, 2000);
-        setTimeout(() => { clearInterval(pollRef.current); window.location.reload(); }, 45000);
+        setTimeout(() => { clearInterval(pollRef.current); void hardReload(); }, 45000);
       }).catch(e => { setErrorMsg(e.message); setStatus("error"); });
   };
 

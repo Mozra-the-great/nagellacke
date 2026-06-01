@@ -396,7 +396,10 @@ export default function App() {
   };
 
   // ── Export / Import ──
+  const [exporting, setExporting] = useState(false);
   const exportData = async () => {
+    if (exporting) return;
+    setExporting(true);
     // Collect all photo filenames referenced anywhere
     const filenames = new Set([
       ...polishes.flatMap(p => p.photo ? [p.photo] : []),
@@ -433,6 +436,7 @@ export default function App() {
     a.download = `nagellacke-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    setExporting(false);
   };
 
   const importData = (e) => {
@@ -1149,11 +1153,11 @@ export default function App() {
       {/* ── Footer ── */}
       <div style={{ textAlign: "center", padding: "0 0 20px", display: "flex", justifyContent: "center", gap: "14px", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "4px", color: t.textFaint, textTransform: "uppercase" }}>Nail Lacquer Kollektion</span>
-        <button aria-label="Kollektion als JSON exportieren" onClick={exportData}
-          style={{ background: "transparent", border: `1px solid ${t.cardBorder}`, color: t.textFaint, borderRadius: t.chipRadius, padding: "3px 12px", cursor: "pointer", fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}
-          onMouseEnter={e => { e.currentTarget.style.color = t.textMuted; e.currentTarget.style.borderColor = t.cardBorderHover; }}
+        <button aria-label="Kollektion als JSON exportieren" onClick={exportData} disabled={exporting}
+          style={{ background: "transparent", border: `1px solid ${t.cardBorder}`, color: t.textFaint, borderRadius: t.chipRadius, padding: "3px 12px", cursor: exporting ? "default" : "pointer", fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s", opacity: exporting ? 0.5 : 1 }}
+          onMouseEnter={e => { if (!exporting) { e.currentTarget.style.color = t.textMuted; e.currentTarget.style.borderColor = t.cardBorderHover; } }}
           onMouseLeave={e => { e.currentTarget.style.color = t.textFaint; e.currentTarget.style.borderColor = t.cardBorder; }}>
-          ↓ Export
+          {exporting ? "⟳ Exportiere…" : "↓ Export"}
         </button>
         <button aria-label="Kollektion aus JSON importieren" onClick={() => importRef.current?.click()}
           style={{ background: "transparent", border: `1px solid ${t.cardBorder}`, color: t.textFaint, borderRadius: t.chipRadius, padding: "3px 12px", cursor: "pointer", fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", textTransform: "uppercase", transition: "all 0.2s" }}

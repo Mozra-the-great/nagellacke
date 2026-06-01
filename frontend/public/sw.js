@@ -1,4 +1,4 @@
-const CACHE = "nagellacke-v2.1.9";
+const CACHE = "nagellacke-v__APP_VERSION__";
 
 self.addEventListener("install", e => e.waitUntil(self.skipWaiting()));
 self.addEventListener("activate", e => e.waitUntil(
@@ -8,6 +8,8 @@ self.addEventListener("activate", e => e.waitUntil(
 ));
 self.addEventListener("fetch", e => {
   if (e.request.url.includes("/api/")) return;
+  // HTML always fetch from network so updated JS bundle hashes are always used
+  if (e.request.headers.get("accept")?.includes("text/html")) return;
   e.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(e.request).then(cached =>
