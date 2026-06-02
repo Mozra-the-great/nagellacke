@@ -1,6 +1,6 @@
 {
   "name": "nagellacke-backend",
-  "version": "2.2.3",
+  "version": "2.2.5",
   "description": "Catrice Nagellack Kollektion - Backend",
   "main": "server.js",
   "scripts": {
