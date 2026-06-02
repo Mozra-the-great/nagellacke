@@ -72,10 +72,36 @@ export default function App() {
     fetch("/api/data")
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(data => {
-        setPolishes(data.polishes || []);
-        setCustomCats(data.customCats || []);
-        setManicures(data.manicures || []);
-        setStickers(data.stickers || []);
+        const ensureFields = (item, prefix) => {
+          const now = Date.now();
+          const needsId = !item.id;
+          const needsUpdatedAt = !item.updatedAt;
+          if (!needsId && !needsUpdatedAt) return { item, patched: false };
+          return {
+            item: {
+              ...item,
+              id: needsId ? `${prefix}-${item.createdAt || now}-${(item.name || item.label || '').replace(/\W/g, '').slice(0, 12)}-${Math.random().toString(36).slice(2, 6)}` : item.id,
+              updatedAt: needsUpdatedAt ? (item.createdAt || now) : item.updatedAt,
+            },
+            patched: true,
+          };
+        };
+        let anyPatched = false;
+        const polishes   = (data.polishes   || []).map(p => { const r = ensureFields(p, 'p'); if (r.patched) anyPatched = true; return r.item; });
+        const customCats = (data.customCats || []).map(p => { const r = ensureFields(p, 'c'); if (r.patched) anyPatched = true; return r.item; });
+        const manicures  = (data.manicures  || []).map(p => { const r = ensureFields(p, 'm'); if (r.patched) anyPatched = true; return r.item; });
+        const stickers   = (data.stickers   || []).map(p => { const r = ensureFields(p, 's'); if (r.patched) anyPatched = true; return r.item; });
+        setPolishes(polishes);
+        setCustomCats(customCats);
+        setManicures(manicures);
+        setStickers(stickers);
+        if (anyPatched) {
+          fetch("/api/data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Api-Key": localStorage.getItem("nagellacke_api_key") || "" },
+            body: JSON.stringify({ polishes, customCats, manicures, stickers }),
+          }).catch(() => {});
+        }
       })
       .catch(e => setLoadError(e.message || "Verbindungsfehler"))
       .finally(() => setLoading(false));
@@ -228,6 +254,7 @@ export default function App() {
     setDupeWarning(null);
     const now = Date.now();
     const newPolishes = [...polishes, {
+      id: `p-${now}-${Math.random().toString(36).slice(2, 8)}`,
       name: formData.name.trim(), brand: formData.brand.trim() || undefined,
       color: formData.color, finish: formData.finish,
       categories: formData.categories, status: formData.status,
@@ -297,7 +324,8 @@ export default function App() {
   });
 
   const handleAddManicure = (entry) => {
-    const m = { ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, createdAt: Date.now() };
+    const now = Date.now();
+    const m = { ...entry, id: `m-${now}-${Math.random().toString(36).slice(2)}`, createdAt: now, updatedAt: now };
     const next = [m, ...manicures];
     setManicures(next);
     saveToBackend(polishes, customCats, next, stickers);
@@ -323,7 +351,7 @@ export default function App() {
   // ── Stickers ──
   const handleAddSticker = (s) => {
     const now = Date.now();
-    const next = [{ ...s, createdAt: now, updatedAt: now }, ...stickers];
+    const next = [{ ...s, id: `s-${now}-${Math.random().toString(36).slice(2, 8)}`, createdAt: now, updatedAt: now }, ...stickers];
     setStickers(next);
     saveToBackend(polishes, customCats, manicures, next);
   };
@@ -353,8 +381,9 @@ export default function App() {
   const addCategory = (label) => {
     if (!label.trim()) return;
     if (customCats.some(c => c.label.toLowerCase() === label.trim().toLowerCase())) return;
-    const id = label.trim().toLowerCase().replace(/\s+/g, "_") + "_" + Date.now();
-    updateCats([...customCats, { id, label: label.trim() }]);
+    const now = Date.now();
+    const id = label.trim().toLowerCase().replace(/\s+/g, "_") + "_" + now;
+    updateCats([...customCats, { id, label: label.trim(), updatedAt: now }]);
   };
 
   const deleteCategory = (catId) => {
