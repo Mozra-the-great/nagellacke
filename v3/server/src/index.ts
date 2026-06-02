@@ -218,43 +218,48 @@ async function main() {
   });
 
   // POST /api/update/apply — git pull + rebuild + restart
+  // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
   app.post('/api/update/apply', {
     preHandler: [requireApiKey, rateLimit(3, 300_000)],
   }, async (request, reply) => {
-    const frontendDir = path.join(APP_ROOT, 'frontend');
-    const v3Dir       = path.join(APP_ROOT, 'v3');
-
-    const steps = [
-      { cmd: 'git', args: ['pull', 'origin', 'main'],    cwd: APP_ROOT,    timeout: 30_000 },
-      { cmd: 'npm', args: ['install', '--omit=dev'],      cwd: process.cwd(), timeout: 60_000 },
-      { cmd: 'npm', args: ['run', 'build:core'],          cwd: v3Dir,       timeout: 60_000 },
-      { cmd: 'npm', args: ['run', 'build:server'],        cwd: v3Dir,       timeout: 60_000 },
-      { cmd: 'npm', args: ['install'],                    cwd: frontendDir, timeout: 60_000 },
-      { cmd: 'npm', args: ['run', 'build'],               cwd: frontendDir, timeout: 120_000 },
-    ];
-
-    for (const { cmd, args, cwd, timeout } of steps) {
-      const r = spawnSync(cmd, args, { cwd, stdio: 'pipe', timeout });
-      if (r.status !== 0) {
-        const msg = (r.stderr?.toString() ?? `${cmd} fehlgeschlagen`).split('\n')[0];
-        return reply.code(500).send({ error: msg });
-      }
-    }
-
-    // Copy v2 built frontend to v3 server's public/
-    const builtFrontend = path.join(APP_ROOT, 'backend', 'public');
-    const v3Public      = path.join(process.cwd(), 'public');
-    if (fs.existsSync(builtFrontend)) {
-      if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
-      fs.cpSync(builtFrontend, v3Public, { recursive: true });
-    }
-
     reply.send({ ok: true });
 
-    setTimeout(() => {
-      const r = spawnSync('systemctl', ['restart', SERVICE_NAME], { stdio: 'pipe' });
-      if (r.status !== 0) process.exit(0);
-    }, 300);
+    setImmediate(() => {
+      try {
+        const v3Dir = path.join(APP_ROOT, 'v3');
+        const steps = [
+          { cmd: 'git', args: ['pull', 'origin', 'main'],    cwd: APP_ROOT,      timeout: 30_000 },
+          { cmd: 'npm', args: ['install', '--omit=dev'],      cwd: process.cwd(), timeout: 60_000 },
+          { cmd: 'npm', args: ['run', 'build:core'],          cwd: v3Dir,         timeout: 60_000 },
+          { cmd: 'npm', args: ['run', 'build:sync'],          cwd: v3Dir,         timeout: 60_000 },
+          { cmd: 'npm', args: ['run', 'build:server'],        cwd: v3Dir,         timeout: 60_000 },
+          { cmd: 'npm', args: ['run', 'build:web'],           cwd: v3Dir,         timeout: 120_000 },
+        ];
+
+        for (const { cmd, args, cwd, timeout } of steps) {
+          const r = spawnSync(cmd, args, { cwd, stdio: 'pipe', timeout });
+          if (r.status !== 0) {
+            console.error('Update step failed:', r.stderr?.toString());
+            return;
+          }
+        }
+
+        // v3-Web-App nach public/ kopieren
+        const v3WebDist = path.join(v3Dir, 'apps', 'web', 'dist');
+        const v3Public  = path.join(process.cwd(), 'public');
+        if (fs.existsSync(v3WebDist)) {
+          if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
+          fs.cpSync(v3WebDist, v3Public, { recursive: true });
+        }
+
+        setTimeout(() => {
+          const r = spawnSync('systemctl', ['restart', SERVICE_NAME], { stdio: 'pipe' });
+          if (r.status !== 0) process.exit(0);
+        }, 300);
+      } catch (e: unknown) {
+        console.error('Update failed:', e instanceof Error ? e.message : e);
+      }
+    });
   });
 
   // GET /api/logs — systemd journal

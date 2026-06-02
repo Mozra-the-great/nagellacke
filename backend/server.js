@@ -431,14 +431,13 @@ app.post("/api/v3/install", requireApiKey, rateLimit(2, 300_000), (req, res) => 
 
   setImmediate(() => {
     try {
-      // 1. v2-Frontend neu bauen (wird von v3 ausgeliefert)
-      const frontendDir = path.join(APP_ROOT, "frontend");
+      // 1. v3 bauen (core, sync, server, web-app)
       const buildSteps = [
-        { cmd: "npm", args: ["install"],             cwd: V3_ROOT,     timeout: 120_000 },
-        { cmd: "npm", args: ["run", "build:core"],   cwd: V3_ROOT,     timeout:  60_000 },
-        { cmd: "npm", args: ["run", "build:server"], cwd: V3_ROOT,     timeout:  60_000 },
-        { cmd: "npm", args: ["install"],             cwd: frontendDir, timeout:  60_000 },
-        { cmd: "npm", args: ["run", "build"],        cwd: frontendDir, timeout: 120_000 },
+        { cmd: "npm", args: ["install"],             cwd: V3_ROOT, timeout: 120_000 },
+        { cmd: "npm", args: ["run", "build:core"],   cwd: V3_ROOT, timeout:  60_000 },
+        { cmd: "npm", args: ["run", "build:sync"],   cwd: V3_ROOT, timeout:  60_000 },
+        { cmd: "npm", args: ["run", "build:server"], cwd: V3_ROOT, timeout:  60_000 },
+        { cmd: "npm", args: ["run", "build:web"],    cwd: V3_ROOT, timeout: 120_000 },
       ];
       for (const { cmd, args, cwd, timeout } of buildSteps) {
         const r = spawnSync(cmd, args, { cwd, stdio: "pipe", timeout });
@@ -449,12 +448,12 @@ app.post("/api/v3/install", requireApiKey, rateLimit(2, 300_000), (req, res) => 
         }
       }
 
-      // 2. v2-Frontend nach v3/server/public/ kopieren
-      const v2Public  = path.join(__dirname, "public");
+      // 2. v3-Web-App nach v3/server/public/ kopieren
+      const v3WebDist = path.join(V3_ROOT, "apps", "web", "dist");
       const v3Public  = path.join(V3_SERVER_DIR, "public");
-      if (fs.existsSync(v2Public)) {
+      if (fs.existsSync(v3WebDist)) {
         if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
-        fs.cpSync(v2Public, v3Public, { recursive: true });
+        fs.cpSync(v3WebDist, v3Public, { recursive: true });
       }
 
       // 3. Datenmigration: v2-Daten nach v3 übernehmen
