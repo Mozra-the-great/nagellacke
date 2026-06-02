@@ -196,21 +196,24 @@ async function main() {
 
   // GET /api/update/check — prüft GitHub auf neue Version
   app.get('/api/update/check', {
-    preHandler: [requireApiKey, rateLimit(10, 60_000)],
+    preHandler: [requireApiKeyOrJwt, rateLimit(10, 60_000)],
   }, async () => {
     const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
       .stdout?.toString().trim() ?? '';
     const match = remoteUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
-    if (!match) return { error: 'Kein GitHub-Remote gefunden' };
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')) as { version: string };
+    const current = pkg.version;
+    if (!match) return { current, latestVersion: null, updateAvailable: false };
     const [owner, repo] = match[1].split('/');
 
-    let latestVersion: string | null = null;
-    try {
-      const rel = JSON.parse(await httpsGet(`https://api.github.com/repos/${owner}/${repo}/releases/latest`)) as { tag_name?: string };
-      latestVersion = rel.tag_name?.replace(/^v/, '') ?? null;
-    } catch { /* fallback to tags */ }
+    // Harter Gesamt-Timeout: antwortet spätestens nach 8s um Nginx-Timeout zu vermeiden
+    const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000));
 
-    if (!latestVersion) {
+    const fetchLatest = async (): Promise<string | null> => {
+      try {
+        const rel = JSON.parse(await httpsGet(`https://api.github.com/repos/${owner}/${repo}/releases/latest`)) as { tag_name?: string };
+        return rel.tag_name?.replace(/^v/, '') ?? null;
+      } catch { /* ignore */ }
       try {
         const tags = JSON.parse(await httpsGet(`https://api.github.com/repos/${owner}/${repo}/tags`)) as { name: string }[];
         const semver = tags.map(t => t.name).filter(t => /^v?\d+\.\d+\.\d+$/.test(t));
@@ -220,12 +223,12 @@ async function main() {
           const [mb, mi2, pb] = parse(b);
           return mb - ma || mi2 - mi || pb - pa;
         });
-        latestVersion = semver[0]?.replace(/^v/, '') ?? null;
+        return semver[0]?.replace(/^v/, '') ?? null;
       } catch { /* ignore */ }
-    }
+      return null;
+    };
 
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')) as { version: string };
-    const current = pkg.version;
+    const latestVersion = await Promise.race([fetchLatest(), deadline]);
     const updateAvailable = latestVersion ? latestVersion !== current : false;
     return { current, latestVersion, updateAvailable };
   });
@@ -233,7 +236,7 @@ async function main() {
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
   app.post('/api/update/apply', {
-    preHandler: [requireApiKey, rateLimit(3, 300_000)],
+    preHandler: [requireApiKeyOrJwt, rateLimit(3, 300_000)],
   }, async (request, reply) => {
     reply.send({ ok: true });
 
@@ -276,7 +279,7 @@ async function main() {
 
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
-    preHandler: [requireApiKey, rateLimit(30, 60_000)],
+    preHandler: [requireApiKeyOrJwt, rateLimit(30, 60_000)],
   }, async (request) => {
     const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
     const r = spawnSync(

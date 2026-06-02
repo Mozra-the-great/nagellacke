@@ -16,6 +16,11 @@ export function UpdatePanel({ t, apiKey }) {
     return () => clearInterval(pollRef.current);
   }, []);
 
+  const authHeaders = () => {
+    const syncToken = localStorage.getItem("nagellacke_sync_token") || "";
+    return { "X-Api-Key": apiKey || "", ...(syncToken ? { "Authorization": `Bearer ${syncToken}` } : {}) };
+  };
+
   const check = () => {
     setStatus("checking"); setErrorMsg("");
     const cached = JSON.parse(localStorage.getItem("nagellacke_update_cache") || "null");
@@ -24,7 +29,7 @@ export function UpdatePanel({ t, apiKey }) {
       else { setStatus("uptodate"); setTimeout(() => setStatus("idle"), 3500); }
       return;
     }
-    fetch("/api/update/check", { headers: { "X-Api-Key": apiKey || "" } })
+    fetch("/api/update/check", { headers: authHeaders() })
       .then(r => {
         if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
         return r.json();
@@ -42,7 +47,7 @@ export function UpdatePanel({ t, apiKey }) {
   const applyUpdate = () => {
     setStatus("updating");
     localStorage.removeItem("nagellacke_update_cache");
-    fetch("/api/update/apply", { method: "POST", headers: { "X-Api-Key": apiKey || "" } })
+    fetch("/api/update/apply", { method: "POST", headers: authHeaders() })
       .then(r => {
         if (r.status === 401) { setErrorMsg("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setStatus("error"); return null; }
         return r.json();
@@ -76,7 +81,7 @@ export function UpdatePanel({ t, apiKey }) {
   const upgradeToV3 = () => {
     if (!window.confirm("Jetzt auf Nagellacke v3 upgraden?\n\nDie App wird neu gestartet. Deine Daten bleiben erhalten.")) return;
     setV3Status("upgrading"); setV3Error("");
-    fetch("/api/v3/install", { method: "POST", headers: { "X-Api-Key": apiKey || "" } })
+    fetch("/api/v3/install", { method: "POST", headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         if (d.error) { setV3Error(d.error); setV3Status("error"); return; }
@@ -84,7 +89,7 @@ export function UpdatePanel({ t, apiKey }) {
         let attempts = 0;
         const poll = setInterval(() => {
           attempts++;
-          fetch("/api/v3/status", { headers: { "X-Api-Key": apiKey || "" } })
+          fetch("/api/v3/status", { headers: authHeaders() })
             .then(r => r.json())
             .then(s => {
               if (s.installState === "error") {

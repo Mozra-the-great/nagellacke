@@ -13,7 +13,9 @@ export function LogPanel({ t, apiKey }) {
   const fetchLogs = useCallback((n) => {
     const count = n ?? lines;
     setLoading(true);
-    fetch(`/api/logs?lines=${count}`, { headers: { "X-Api-Key": apiKey || "" } })
+    const syncToken = localStorage.getItem("nagellacke_sync_token") || "";
+    const headers = { "X-Api-Key": apiKey || "", ...(syncToken ? { "Authorization": `Bearer ${syncToken}` } : {}) };
+    fetch(`/api/logs?lines=${count}`, { headers })
       .then(r => {
         if (r.status === 401) { setLogs("API-Schlüssel fehlt — bitte in den Einstellungen (⚙) eintragen."); setHasError(true); setLoading(false); return null; }
         return r.json();
