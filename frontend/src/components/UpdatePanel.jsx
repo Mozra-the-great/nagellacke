@@ -84,12 +84,21 @@ export function UpdatePanel({ t, apiKey }) {
         let attempts = 0;
         const poll = setInterval(() => {
           attempts++;
-          fetch("/api/version").then(r => r.json()).then(v => {
-            if (String(v.version || "").startsWith("3.") || attempts > 20) {
-              clearInterval(poll); setV3Status("done");
-              setTimeout(() => window.location.reload(), 1500);
-            }
-          }).catch(() => { if (attempts > 25) { clearInterval(poll); window.location.reload(); } });
+          fetch("/api/v3/status", { headers: { "X-Api-Key": apiKey || "" } })
+            .then(r => r.json())
+            .then(s => {
+              if (s.installState === "error") {
+                clearInterval(poll);
+                setV3Error(s.installError || "Build fehlgeschlagen");
+                setV3Status("error");
+                return;
+              }
+              if (s.running || attempts > 30) {
+                clearInterval(poll); setV3Status("done");
+                setTimeout(() => window.location.reload(), 1500);
+              }
+            })
+            .catch(() => { if (attempts > 35) { clearInterval(poll); window.location.reload(); } });
         }, 2000);
       })
       .catch(e => { setV3Error(e.message); setV3Status("error"); });

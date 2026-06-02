@@ -386,9 +386,12 @@ app.get("/api/logs", requireApiKey, rateLimit(30, 60_000), (req, res) => {
 
 // ── v3 Sync-Server Management ─────────────────────────────────────────────────
 
-const V3_ROOT    = path.join(APP_ROOT, "v3");
-const V3_SERVICE = "nagellacke-v3";
+const V3_ROOT       = path.join(APP_ROOT, "v3");
+const V3_SERVICE    = "nagellacke-v3";
 const V3_SERVER_DIR = path.join(V3_ROOT, "server");
+
+let v3InstallState = "idle"; // "idle" | "building" | "done" | "error"
+let v3InstallError = "";
 
 // GET /api/v3/status — Installation und Laufstatus des v3-Servers
 app.get("/api/v3/status", requireApiKey, (req, res) => {
@@ -408,110 +411,121 @@ app.get("/api/v3/status", requireApiKey, (req, res) => {
     if (fs.existsSync(pkgPath)) version = JSON.parse(fs.readFileSync(pkgPath, "utf-8")).version;
   } catch {}
 
-  res.json({ built, svcInstalled, running, version });
+  res.json({ built, svcInstalled, running, version, installState: v3InstallState, installError: v3InstallError });
 });
 
 // POST /api/v3/install — v2→v3 Upgrade: baut v3, migriert Daten, übernimmt Port 3000
+// Antwortet sofort mit { ok: true }, führt den Build im Hintergrund aus (verhindert Nginx-Proxy-Timeout).
 app.post("/api/v3/install", requireApiKey, rateLimit(2, 300_000), (req, res) => {
   if (!fs.existsSync(V3_ROOT)) {
     return res.status(404).json({ error: "v3/-Ordner nicht gefunden. Bitte erst git pull ausführen." });
   }
-  try {
-    // 1. v2-Frontend neu bauen (wird von v3 ausgeliefert)
-    const frontendDir = path.join(APP_ROOT, "frontend");
-    const buildSteps = [
-      { cmd: "npm", args: ["install"],             cwd: V3_ROOT,     timeout: 120_000 },
-      { cmd: "npm", args: ["run", "build:core"],   cwd: V3_ROOT,     timeout:  60_000 },
-      { cmd: "npm", args: ["run", "build:server"], cwd: V3_ROOT,     timeout:  60_000 },
-      { cmd: "npm", args: ["install"],             cwd: frontendDir, timeout:  60_000 },
-      { cmd: "npm", args: ["run", "build"],        cwd: frontendDir, timeout: 120_000 },
-    ];
-    for (const { cmd, args, cwd, timeout } of buildSteps) {
-      const r = spawnSync(cmd, args, { cwd, stdio: "pipe", timeout });
-      if (r.status !== 0) {
-        const msg = (r.stderr?.toString() || `${cmd} ${args.join(" ")} fehlgeschlagen`).split("\n")[0];
-        return res.status(500).json({ error: msg });
-      }
-    }
-
-    // 2. v2-Frontend nach v3/server/public/ kopieren
-    const v2Public  = path.join(__dirname, "public");
-    const v3Public  = path.join(V3_SERVER_DIR, "public");
-    if (fs.existsSync(v2Public)) {
-      if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
-      fs.cpSync(v2Public, v3Public, { recursive: true });
-    }
-
-    // 3. Datenmigration: v2-Daten nach v3 übernehmen
-    const v2DataDir  = path.join(__dirname, "data");
-    const v3DataDir  = path.join(V3_SERVER_DIR, "data");
-    fs.mkdirSync(path.join(v3DataDir, "photos"), { recursive: true });
-
-    // data.json kopieren (v3-Format ist rückwärtskompatibel)
-    const v2DataFile = path.join(v2DataDir, "data.json");
-    const v3DataFile = path.join(v3DataDir, "data.json");
-    if (fs.existsSync(v2DataFile) && !fs.existsSync(v3DataFile)) {
-      fs.copyFileSync(v2DataFile, v3DataFile);
-    }
-
-    // Fotos kopieren
-    const v2PhotosDir = path.join(v2DataDir, "photos");
-    const v3PhotosDir = path.join(v3DataDir, "photos");
-    if (fs.existsSync(v2PhotosDir)) {
-      for (const f of fs.readdirSync(v2PhotosDir)) {
-        const dest = path.join(v3PhotosDir, f);
-        if (!fs.existsSync(dest)) fs.copyFileSync(path.join(v2PhotosDir, f), dest);
-      }
-    }
-
-    // API-Key übernehmen (gleicher Key → Browser muss nichts neu eingeben)
-    const v2KeyFile = path.join(v2DataDir, ".api_key");
-    const v3KeyFile = path.join(v3DataDir, ".api_key");
-    if (fs.existsSync(v2KeyFile) && !fs.existsSync(v3KeyFile)) {
-      fs.copyFileSync(v2KeyFile, v3KeyFile);
-    }
-
-    // 4. .env anlegen: v3 übernimmt Port 3000
-    const envFile = path.join(V3_SERVER_DIR, ".env");
-    if (!fs.existsSync(envFile)) {
-      const secret = crypto.randomBytes(32).toString("hex");
-      fs.writeFileSync(envFile,
-        `PORT=${PORT}\nSERVICE_NAME=${V3_SERVICE}\nJWT_SECRET=${secret}\nDATA_DIR=${v3DataDir}\n`,
-        { mode: 0o600 }
-      );
-    }
-
-    // 5. systemd-Service für v3 anlegen
-    const svc = [
-      "[Unit]",
-      "Description=Nagellacke v3",
-      "After=network.target",
-      "",
-      "[Service]",
-      "Type=simple",
-      `WorkingDirectory=${V3_SERVER_DIR}`,
-      `EnvironmentFile=${envFile}`,
-      "ExecStart=/usr/bin/node dist/index.js",
-      "Restart=always",
-      "RestartSec=5",
-      "",
-      "[Install]",
-      "WantedBy=multi-user.target",
-    ].join("\n");
-    fs.writeFileSync(`/etc/systemd/system/${V3_SERVICE}.service`, svc);
-    spawnSync("systemctl", ["daemon-reload"],       { stdio: "pipe" });
-    spawnSync("systemctl", ["enable",  V3_SERVICE], { stdio: "pipe" });
-
-    // 6. Antwort senden, dann v2 stoppen und v3 starten (Port 3000 übernehmen)
-    res.json({ ok: true });
-    setTimeout(() => {
-      spawnSync("systemctl", ["start", V3_SERVICE], { stdio: "pipe" });
-      spawnSync("systemctl", ["stop",  SERVICE_NAME], { stdio: "pipe" });
-      spawnSync("systemctl", ["disable", SERVICE_NAME], { stdio: "pipe" });
-    }, 500);
-  } catch (e) {
-    res.status(500).json({ error: e.message || "Installation fehlgeschlagen" });
+  if (v3InstallState === "building") {
+    return res.json({ ok: true, status: "building" });
   }
+
+  v3InstallState = "building";
+  v3InstallError = "";
+  res.json({ ok: true });
+
+  setImmediate(() => {
+    try {
+      // 1. v2-Frontend neu bauen (wird von v3 ausgeliefert)
+      const frontendDir = path.join(APP_ROOT, "frontend");
+      const buildSteps = [
+        { cmd: "npm", args: ["install"],             cwd: V3_ROOT,     timeout: 120_000 },
+        { cmd: "npm", args: ["run", "build:core"],   cwd: V3_ROOT,     timeout:  60_000 },
+        { cmd: "npm", args: ["run", "build:server"], cwd: V3_ROOT,     timeout:  60_000 },
+        { cmd: "npm", args: ["install"],             cwd: frontendDir, timeout:  60_000 },
+        { cmd: "npm", args: ["run", "build"],        cwd: frontendDir, timeout: 120_000 },
+      ];
+      for (const { cmd, args, cwd, timeout } of buildSteps) {
+        const r = spawnSync(cmd, args, { cwd, stdio: "pipe", timeout });
+        if (r.status !== 0) {
+          v3InstallError = (r.stderr?.toString() || `${cmd} ${args.join(" ")} fehlgeschlagen`).split("\n")[0];
+          v3InstallState = "error";
+          return;
+        }
+      }
+
+      // 2. v2-Frontend nach v3/server/public/ kopieren
+      const v2Public  = path.join(__dirname, "public");
+      const v3Public  = path.join(V3_SERVER_DIR, "public");
+      if (fs.existsSync(v2Public)) {
+        if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
+        fs.cpSync(v2Public, v3Public, { recursive: true });
+      }
+
+      // 3. Datenmigration: v2-Daten nach v3 übernehmen
+      const v2DataDir  = path.join(__dirname, "data");
+      const v3DataDir  = path.join(V3_SERVER_DIR, "data");
+      fs.mkdirSync(path.join(v3DataDir, "photos"), { recursive: true });
+
+      const v2DataFile = path.join(v2DataDir, "data.json");
+      const v3DataFile = path.join(v3DataDir, "data.json");
+      if (fs.existsSync(v2DataFile) && !fs.existsSync(v3DataFile)) {
+        fs.copyFileSync(v2DataFile, v3DataFile);
+      }
+
+      const v2PhotosDir = path.join(v2DataDir, "photos");
+      const v3PhotosDir = path.join(v3DataDir, "photos");
+      if (fs.existsSync(v2PhotosDir)) {
+        for (const f of fs.readdirSync(v2PhotosDir)) {
+          const dest = path.join(v3PhotosDir, f);
+          if (!fs.existsSync(dest)) fs.copyFileSync(path.join(v2PhotosDir, f), dest);
+        }
+      }
+
+      const v2KeyFile = path.join(v2DataDir, ".api_key");
+      const v3KeyFile = path.join(v3DataDir, ".api_key");
+      if (fs.existsSync(v2KeyFile) && !fs.existsSync(v3KeyFile)) {
+        fs.copyFileSync(v2KeyFile, v3KeyFile);
+      }
+
+      // 4. .env anlegen
+      const envFile = path.join(V3_SERVER_DIR, ".env");
+      if (!fs.existsSync(envFile)) {
+        const secret = crypto.randomBytes(32).toString("hex");
+        fs.writeFileSync(envFile,
+          `PORT=${PORT}\nSERVICE_NAME=${V3_SERVICE}\nJWT_SECRET=${secret}\nDATA_DIR=${v3DataDir}\n`,
+          { mode: 0o600 }
+        );
+      }
+
+      // 5. systemd-Service anlegen
+      const svc = [
+        "[Unit]",
+        "Description=Nagellacke v3",
+        "After=network.target",
+        "",
+        "[Service]",
+        "Type=simple",
+        `WorkingDirectory=${V3_SERVER_DIR}`,
+        `EnvironmentFile=${envFile}`,
+        "ExecStart=/usr/bin/node dist/index.js",
+        "Restart=always",
+        "RestartSec=5",
+        "",
+        "[Install]",
+        "WantedBy=multi-user.target",
+      ].join("\n");
+      fs.writeFileSync(`/etc/systemd/system/${V3_SERVICE}.service`, svc);
+      spawnSync("systemctl", ["daemon-reload"],       { stdio: "pipe" });
+      spawnSync("systemctl", ["enable",  V3_SERVICE], { stdio: "pipe" });
+
+      v3InstallState = "done";
+
+      // 6. v2 stoppen, v3 starten
+      setTimeout(() => {
+        spawnSync("systemctl", ["start",   V3_SERVICE],  { stdio: "pipe" });
+        spawnSync("systemctl", ["stop",    SERVICE_NAME], { stdio: "pipe" });
+        spawnSync("systemctl", ["disable", SERVICE_NAME], { stdio: "pipe" });
+      }, 500);
+    } catch (e) {
+      v3InstallError = e.message || "Installation fehlgeschlagen";
+      v3InstallState = "error";
+    }
+  });
 });
 
 // GET /api/v3/logs — systemd-Journal des v3-Servers
