@@ -123,15 +123,15 @@ export function UpdatePanel({ t, apiKey }) {
         {status === "error"      && <><span style={{ ...s, color: "rgba(255,120,120,0.7)" }}>✕ {errorMsg}</span><button style={btn} onClick={() => setStatus("idle")}>Zurück</button></>}
       </div>
 
-      {/* v3 upgrade row — immer sichtbar */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+      {/* v3 upgrade row — nur wenn noch nicht auf v3 */}
+      {!String(version || "").startsWith("3.") && <div style={{ display: "flex", alignItems: "center", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
         <span style={{ ...s, color: t.textFaint, opacity: 0.45 }}>v2 → v3</span>
         {v3Status === "idle"       && <button style={blue} onMouseEnter={e => { e.currentTarget.style.color = "rgba(120,200,255,1)"; e.currentTarget.style.borderColor = "rgba(120,200,255,0.75)"; }} onMouseLeave={e => { e.currentTarget.style.color = "rgba(120,200,255,0.8)"; e.currentTarget.style.borderColor = "rgba(120,200,255,0.45)"; }} onClick={upgradeToV3}>Upgrade auf v3 (mit Sync)</button>}
         {v3Status === "upgrading"  && <span style={{ ...s, color: t.textVeryMuted }}>⟳ Baue v3…</span>}
         {v3Status === "restarting" && <span style={{ ...s, color: t.textVeryMuted }}>⟳ Starte neu…</span>}
         {v3Status === "done"       && <span style={{ ...s, color: "rgba(150,255,180,0.7)" }}>✓ v3 aktiv — lade neu…</span>}
         {v3Status === "error"      && <><span style={{ ...s, color: "rgba(255,120,120,0.7)" }}>✕ {v3Error}</span><button style={btn} onClick={() => setV3Status("idle")}>Zurück</button></>}
-      </div>
+      </div>}
     </div>
   );
 }
