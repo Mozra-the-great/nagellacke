@@ -502,7 +502,7 @@ app.post("/api/v3/install", requireApiKey, rateLimit(2, 300_000), (req, res) => 
         "Type=simple",
         `WorkingDirectory=${V3_SERVER_DIR}`,
         `EnvironmentFile=${envFile}`,
-        "ExecStart=/usr/bin/node dist/index.js",
+        "ExecStart=/usr/bin/node dist/server/src/index.js",
         "Restart=always",
         "RestartSec=5",
         "",
