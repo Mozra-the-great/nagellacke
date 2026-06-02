@@ -69,7 +69,7 @@ export function UpdatePanel({ t, apiKey }) {
             downCount = 0;
           }).catch(() => { downCount++; });
         }, 2000);
-        setTimeout(() => { clearInterval(pollRef.current); void hardReload(); }, 45000);
+        setTimeout(() => { clearInterval(pollRef.current); void hardReload(); }, 180000);
       }).catch(e => { setErrorMsg(e.message); setStatus("error"); });
   };
 

@@ -336,35 +336,36 @@ app.get("/api/update/check", requireApiKey, rateLimit(10, 60_000), async (req, r
 });
 
 // POST /api/update/apply — git pull + build + restart (requires key, rate-limited)
-// SEC-2: All shell commands use spawnSync with explicit argument arrays
+// Antwortet sofort, führt Build im Hintergrund aus (verhindert Nginx-Proxy-Timeout).
 app.post("/api/update/apply", requireApiKey, rateLimit(3, 300_000), (req, res) => {
-  const frontendDir = path.join(APP_ROOT, "frontend");
-  try {
-    const steps = [
-      { cmd: "git", args: ["pull", "origin", "main"],   cwd: APP_ROOT,    timeout: 30_000 },
-      { cmd: "npm", args: ["install", "--omit=dev"],     cwd: __dirname,   timeout: 60_000 },
-      { cmd: "npm", args: ["install"],                   cwd: frontendDir, timeout: 60_000 },
-      { cmd: "npm", args: ["run", "build"],              cwd: frontendDir, timeout: 120_000 },
-    ];
-    for (const { cmd, args, cwd, timeout } of steps) {
-      const r = spawnSync(cmd, args, { cwd, stdio: "pipe", timeout });
-      if (r.status !== 0) {
-        const msg = (r.stderr?.toString() || `${cmd} ${args.join(" ")} fehlgeschlagen`).split("\n")[0];
-        return res.status(500).json({ error: msg });
+  res.json({ ok: true });
+  setImmediate(() => {
+    try {
+      const frontendDir = path.join(APP_ROOT, "frontend");
+      const steps = [
+        { cmd: "git", args: ["pull", "origin", "main"],   cwd: APP_ROOT,    timeout: 30_000 },
+        { cmd: "npm", args: ["install", "--omit=dev"],     cwd: __dirname,   timeout: 60_000 },
+        { cmd: "npm", args: ["install"],                   cwd: frontendDir, timeout: 60_000 },
+        { cmd: "npm", args: ["run", "build"],              cwd: frontendDir, timeout: 120_000 },
+      ];
+      for (const { cmd, args, cwd, timeout } of steps) {
+        const r = spawnSync(cmd, args, { cwd, stdio: "pipe", timeout });
+        if (r.status !== 0) {
+          console.error("Update step failed:", r.stderr?.toString());
+          return;
+        }
       }
+      setTimeout(() => {
+        const r = spawnSync("systemctl", ["restart", SERVICE_NAME], { stdio: "pipe" });
+        if (r.status !== 0) {
+          console.debug("systemctl restart failed, falling back to process.exit");
+          process.exit(0);
+        }
+      }, 300);
+    } catch (e) {
+      console.error("Update failed:", e.message);
     }
-    res.json({ ok: true });
-    setTimeout(() => {
-      const r = spawnSync("systemctl", ["restart", SERVICE_NAME], { stdio: "pipe" });
-      if (r.status !== 0) {
-        console.debug("systemctl restart failed, falling back to process.exit");
-        process.exit(0);
-      }
-    }, 300);
-  } catch (e) {
-    console.error("Update failed:", e.message);
-    res.status(500).json({ error: e.message || "Update fehlgeschlagen" });
-  }
+  });
 });
 
 // GET /api/logs — systemd journal (requires key, rate-limited)
