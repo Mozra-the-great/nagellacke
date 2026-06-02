@@ -435,7 +435,6 @@ app.post("/api/v3/install", requireApiKey, rateLimit(2, 300_000), (req, res) => 
       const buildSteps = [
         { cmd: "npm", args: ["install"],             cwd: V3_ROOT, timeout: 120_000 },
         { cmd: "npm", args: ["run", "build:core"],   cwd: V3_ROOT, timeout:  60_000 },
-        { cmd: "npm", args: ["run", "build:sync"],   cwd: V3_ROOT, timeout:  60_000 },
         { cmd: "npm", args: ["run", "build:server"], cwd: V3_ROOT, timeout:  60_000 },
         { cmd: "npm", args: ["run", "build:web"],    cwd: V3_ROOT, timeout: 120_000 },
       ];
