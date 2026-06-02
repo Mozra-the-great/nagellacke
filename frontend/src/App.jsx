@@ -109,9 +109,10 @@ export default function App() {
 
   const saveToBackend = useCallback((newPolishes, newCats, newManicures, newStickers) => {
     setSaveStatus("saving");
+    const syncToken = localStorage.getItem("nagellacke_sync_token") || "";
     fetch("/api/data", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "", ...(syncToken ? { "Authorization": `Bearer ${syncToken}` } : {}) },
       body: JSON.stringify({ polishes: newPolishes, customCats: newCats, manicures: newManicures, stickers: newStickers ?? stickers }),
     })
       .then(r => {

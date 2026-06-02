@@ -130,6 +130,18 @@ async function main() {
     }
   }
 
+  // Akzeptiert API-Key ODER gültigen JWT — so funktioniert POST /api/data auch
+  // ohne konfigurierten API-Key, wenn der Nutzer via SyncPanel eingeloggt ist.
+  async function requireApiKeyOrJwt(request: FastifyRequest, reply: FastifyReply) {
+    const key = request.headers['x-api-key'];
+    if (key && key === API_KEY) return;
+    try {
+      await request.jwtVerify();
+    } catch {
+      reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
+    }
+  }
+
   // ── v2-kompatible Endpoints (X-Api-Key) ───────────────────────────────────────
 
   // GET /api/data — liefert die komplette Sammlung
@@ -139,7 +151,7 @@ async function main() {
   });
 
   // POST /api/data — speichert die komplette Sammlung
-  app.post('/api/data', { preHandler: requireApiKey }, async (request, reply) => {
+  app.post('/api/data', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const body = request.body as Partial<AppData>;
     if (!Array.isArray(body.polishes)) return reply.code(400).send({ error: 'polishes array required' });
     const current = getData();
@@ -154,7 +166,7 @@ async function main() {
   });
 
   // POST /api/photos — Foto hochladen (v2-Format: base64 body)
-  app.post('/api/photos', { preHandler: requireApiKey }, async (request, reply) => {
+  app.post('/api/photos', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
     const buf = Buffer.from(b64, 'base64');
@@ -168,7 +180,7 @@ async function main() {
   });
 
   // DELETE /api/photos/:filename
-  app.delete('/api/photos/:filename', { preHandler: requireApiKey }, async (request, reply) => {
+  app.delete('/api/photos/:filename', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { filename } = request.params as { filename: string };
     if (!/^[\w\-.]+$/.test(filename)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
     const p = path.join(PHOTOS_DIR, filename);
