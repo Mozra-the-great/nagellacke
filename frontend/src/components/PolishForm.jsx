@@ -59,6 +59,7 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
   const [showNewCat, setShowNewCat]     = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError]     = useState(null);   // BUG-2: surface upload errors
   const photoCanvasRef = useRef(null);
 
   const toggleCat = (catId) => setForm(f => ({
@@ -119,14 +120,19 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
         const base64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
         setPhotoUploading(true);
+        setPhotoError(null);
         fetch("/api/photos", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Api-Key": apiKey || "" },
           body: JSON.stringify({ data: base64, ext: "jpg" }),
         })
           .then(r => r.json())
-          .then(d => { if (d.filename) setForm(f => ({ ...f, photo: d.filename })); })
-          .catch(() => {})
+          .then(d => {
+            // BUG-2: Surface upload errors instead of silently swallowing them
+            if (d.filename) setForm(f => ({ ...f, photo: d.filename }));
+            else setPhotoError("Upload fehlgeschlagen" + (d.error ? `: ${d.error}` : ""));
+          })
+          .catch(() => setPhotoError("Upload fehlgeschlagen — Verbindungsfehler"))
           .finally(() => setPhotoUploading(false));
       };
       img.src = ev.target.result;
@@ -197,8 +203,24 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
               <div style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "2px", color: t.textVeryMuted, textTransform: "uppercase", marginBottom: "6px" }}>
                 Auf die gewünschte Farbe tippen
               </div>
+              {/* A11Y-7: Canvas color picker with keyboard fallback (Enter picks center pixel) */}
               <canvas ref={photoCanvasRef} onClick={handleCanvasClick}
-                style={{ display: "block", cursor: "crosshair", borderRadius: t.inputRadius, border: `1px solid ${t.cardBorder}`, maxWidth: "100%" }} />
+                tabIndex={0}
+                role="img"
+                aria-label="Farbbild — auf die gewünschte Farbe tippen oder Enter für Mitte"
+                onKeyDown={e => {
+                  if (e.key !== "Enter") return;
+                  const canvas = photoCanvasRef.current;
+                  if (!canvas) return;
+                  const x = Math.floor(canvas.width / 2), y = Math.floor(canvas.height / 2);
+                  const [r, g, b] = canvas.getContext("2d").getImageData(x, y, 1, 1).data;
+                  const hex = "#" + [r, g, b].map(v => v.toString(16).padStart(2, "0")).join("");
+                  setForm(f => ({ ...f, color: hex }));
+                  setPhotoPreview(null);
+                }}
+                style={{ display: "block", cursor: "crosshair", borderRadius: t.inputRadius, border: `1px solid ${t.cardBorder}`, maxWidth: "100%", outline: "none" }}
+                onFocus={e => { e.currentTarget.style.boxShadow = `0 0 0 3px ${t.inputBorderFocus}88`; }}
+                onBlur={e => { e.currentTarget.style.boxShadow = "none"; }} />
               <button aria-label="Foto schließen" onClick={() => setPhotoPreview(null)}
                 style={{ position: "absolute", top: "26px", right: "6px", background: "rgba(0,0,0,0.55)", border: "none", color: "rgba(255,255,255,0.7)", borderRadius: "50%", width: "22px", height: "22px", cursor: "pointer", fontSize: "12px", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ✕
@@ -245,6 +267,12 @@ export function PolishForm({ t, form, setForm, customCats, allBrands, allColors,
             </button>
           )}
         </div>
+        {/* BUG-2: Show upload error inline */}
+        {photoError && (
+          <div role="alert" style={{ fontFamily: t.fontBody, fontSize: "10px", color: "rgba(255,120,120,0.85)", marginTop: "4px" }}>
+            ✕ {photoError}
+          </div>
+        )}
       </div>
       <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Status</label>

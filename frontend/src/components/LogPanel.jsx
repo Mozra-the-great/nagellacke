@@ -61,8 +61,15 @@ export function LogPanel({ t, apiKey }) {
     <div style={{ maxWidth: "900px", margin: "0 auto 40px", padding: "0 18px" }}>
       <div style={{ background: t.dark ? "rgba(0,0,0,0.55)" : t.cardBg, border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px", borderBottom: `1px solid ${t.textFaint}`, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", color: t.textVeryMuted, textTransform: "uppercase", flexShrink: 0 }}>
-            ≡ System Logs {loading && <span style={{ marginLeft: "8px", opacity: 0.5 }}>⟳</span>}
+          {/* UX-7: CSS-animated spinner instead of static ⟳ glyph */}
+          <span style={{ fontFamily: t.fontBody, fontSize: "10px", letterSpacing: "3px", color: t.textVeryMuted, textTransform: "uppercase", flexShrink: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            ≡ System Logs
+            {loading && (
+              <>
+                <style>{`@keyframes logSpin{to{transform:rotate(360deg);}}`}</style>
+                <span aria-label="Lade…" style={{ display: "inline-block", width: 10, height: 10, border: "2px solid rgba(180,180,180,0.2)", borderTopColor: t.textVeryMuted, borderRadius: "50%", animation: "logSpin 0.7s linear infinite" }} />
+              </>
+            )}
           </span>
           <div style={{ display: "flex", gap: "6px", marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
             {[50, 100, 200].map(n => (

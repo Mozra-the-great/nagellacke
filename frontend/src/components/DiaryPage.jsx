@@ -22,7 +22,8 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove, btnBase }) {
   };
 
   const menuStyle = {
-    position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+    /* UX-4: right:0 instead of left:0 prevents overflow on right edge of screen */
+    position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
     background: t.dark ? "rgba(18,12,30,0.97)" : t.cardBg,
     border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius,
     minWidth: "150px", boxShadow: "0 4px 20px rgba(0,0,0,0.35)", overflow: "hidden",
@@ -274,18 +275,24 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onD
                   Keine Lacke gefunden
                 </div>
               )}
+              {/* A11Y-3: Use role=option in a listbox for keyboard accessibility */}
               {filtered.map((p, i) => {
                 const sel = form.polishRefs.some(r => r.name === p.name && r.brand === p.brand);
                 return (
-                  <div key={i} onClick={() => togglePolish(p)}
+                  <div key={i}
+                    role="button" tabIndex={0}
+                    aria-pressed={sel}
+                    onClick={() => togglePolish(p)}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePolish(p); } }}
                     style={{ display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px",
                              cursor: "pointer", background: sel ? (t.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)") : "transparent",
                              borderBottom: i < filtered.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
                     <span style={{ width: 14, height: 14, borderRadius: "50%", background: p.color,
-                                   border: `1px solid ${t.cardBorder}`, flexShrink: 0 }} />
+                                   border: `1px solid ${t.cardBorder}`, flexShrink: 0 }}
+                      aria-label={p.color.toUpperCase()} />
                     <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.text, flex: 1 }}>{p.name}</span>
                     {p.brand && <span style={{ fontFamily: t.fontBody, fontSize: "10px", color: t.textVeryMuted }}>{p.brand}</span>}
-                    {sel && <span style={{ color: t.filterColorActive, fontSize: "12px" }}>✓</span>}
+                    {sel && <span style={{ color: t.filterColorActive, fontSize: "12px" }} aria-hidden="true">✓</span>}
                   </div>
                 );
               })}
@@ -323,16 +330,22 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onD
                     Keine Sticker gefunden
                   </div>
                 )}
+                {/* A11Y-3: Keyboard accessible sticker selection rows */}
                 {filteredStickers.map((s, i) => {
                   const sel = form.stickerRefs.some(r => r.name === s.name && r.brand === s.brand);
                   const firstColor = (s.colors || []).find(c => c !== "transparent");
                   return (
-                    <div key={i} onClick={() => toggleSticker(s)}
+                    <div key={i}
+                      role="button" tabIndex={0}
+                      aria-pressed={sel}
+                      onClick={() => toggleSticker(s)}
+                      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleSticker(s); } }}
                       style={{ display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px",
                                cursor: "pointer", background: sel ? (t.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)") : "transparent",
                                borderBottom: i < filteredStickers.length - 1 ? `1px solid ${t.textFaint}` : "none" }}>
                       {firstColor
-                        ? <span style={{ width: 14, height: 14, borderRadius: "50%", background: firstColor, border: `1px solid ${t.cardBorder}`, flexShrink: 0 }} />
+                        ? <span style={{ width: 14, height: 14, borderRadius: "50%", background: firstColor, border: `1px solid ${t.cardBorder}`, flexShrink: 0 }}
+                            aria-label={firstColor} />
                         : <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1px solid ${t.cardBorder}`, flexShrink: 0, opacity: 0.4 }} />
                       }
                       <span style={{ fontFamily: t.fontBody, fontSize: "12px", color: t.text, flex: 1 }}>{s.name}</span>
@@ -341,7 +354,7 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onD
                           {[s.brand, s.style].filter(Boolean).join(" · ")}
                         </span>
                       )}
-                      {sel && <span style={{ color: t.filterColorActive, fontSize: "12px" }}>✓</span>}
+                      {sel && <span style={{ color: t.filterColorActive, fontSize: "12px" }} aria-hidden="true">✓</span>}
                     </div>
                   );
                 })}
@@ -378,8 +391,9 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onD
               <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", padding: "16px 18px",
                             cursor: "pointer" }}
                 onClick={() => setExpandedId(expanded ? null : m.id)}>
+                {/* A11Y-4: Descriptive alt text for diary entry thumbnail */}
                 {thumb && (
-                  <img src={`/photos/${thumb}`} alt=""
+                  <img src={`/photos/${thumb}`} alt={`Maniküre ${formatDate(m.date)}`}
                     style={{ width: 72, height: 54, objectFit: "cover", borderRadius: "8px",
                              flexShrink: 0, border: `1px solid ${t.cardBorder}` }} />
                 )}
@@ -442,7 +456,7 @@ export function DiaryPage({ t, manicures, polishes, stickers, onAdd, onSave, onD
               {expanded && (m.photo || photoSlots.length > 0) && (
                 <div style={{ padding: "0 18px 16px" }}>
                   {m.photo && (
-                    <img src={`/photos/${m.photo}`} alt=""
+                    <img src={`/photos/${m.photo}`} alt={`Maniküre ${formatDate(m.date)}`}
                       style={{ maxWidth: "100%", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
                   )}
                   {photoSlots.length > 0 && (

@@ -35,7 +35,8 @@ function PhotoPicker({ t, onFile, uploading, hasPhoto, onRemove }) {
     opacity: uploading ? 0.6 : 1,
   };
   const menuStyle = {
-    position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+    /* UX-4: right:0 prevents overflow on right edge of screen */
+    position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 100,
     background: t.dark ? "rgba(18,12,30,0.97)" : t.cardBg,
     border: `1px solid ${t.cardBorder}`, borderRadius: t.cardRadius,
     minWidth: "150px", boxShadow: "0 4px 20px rgba(0,0,0,0.35)", overflow: "hidden",
@@ -221,8 +222,9 @@ function StickerFormFields({ t, f, setF, allBrands, apiKey, photoUploading, uplo
       <div style={{ marginBottom: "14px" }}>
         <label className="form-label">Foto</label>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {/* A11Y-4: Descriptive alt text using sticker name */}
           {f.photo && (
-            <img src={`/photos/${f.photo}`} alt="Sticker-Foto"
+            <img src={`/photos/${f.photo}`} alt={`Foto von ${f.name || "Sticker"}`}
               style={{ width: 72, height: 54, objectFit: "cover", borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
           )}
           <PhotoPicker t={t} uploading={photoUploading} hasPhoto={!!f.photo}
@@ -428,7 +430,8 @@ export function StickerPage({ t, stickers, onAdd, onSave, onDelete, apiKey }) {
                   </div>
                   {showPhoto && (
                     <div style={{ marginBottom: "10px" }}>
-                      <img src={`/photos/${s.photo}`} alt="Sticker"
+                      {/* A11Y-4: Use sticker name as alt text */}
+                    <img src={`/photos/${s.photo}`} alt={s.name}
                         style={{ maxWidth: "100%", maxHeight: "220px", objectFit: "contain",
                                  borderRadius: "8px", border: `1px solid ${t.cardBorder}` }} />
                     </div>
