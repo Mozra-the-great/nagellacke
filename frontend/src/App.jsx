@@ -7,6 +7,7 @@ import { PolishForm } from "./components/PolishForm.jsx";
 import { StatsPage } from "./components/StatsPage.jsx";
 import { LogPanel } from "./components/LogPanel.jsx";
 import { UpdatePanel } from "./components/UpdatePanel.jsx";
+import { SyncPanel } from "./components/SyncPanel.jsx";
 import { DiaryPage } from "./components/DiaryPage.jsx";
 import { StickerPage } from "./components/StickerPage.jsx";
 
@@ -94,6 +95,15 @@ export default function App() {
       .then(d => { if (!d) return; setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 1800); })
       .catch(() => { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 3000); });
   }, [apiKey, stickers]);
+
+  const handleSyncComplete = useCallback((data) => {
+    const p = data.polishes   || [];
+    const c = data.customCats || [];
+    const m = data.manicures  || [];
+    const s = data.stickers   || [];
+    setPolishes(p); setCustomCats(c); setManicures(m); setStickers(s);
+    saveToBackend(p, c, m, s);
+  }, [saveToBackend]);
 
   // BUG-1: Always pass stickers explicitly to prevent stale-closure data loss
   const updatePolishes = useCallback((np) => { setPolishes(np); saveToBackend(np, customCats, manicures, stickers); }, [customCats, manicures, stickers, saveToBackend]);
@@ -1177,6 +1187,14 @@ export default function App() {
         </button>
       </div>
 
+      <SyncPanel
+        t={t}
+        polishes={polishes}
+        customCats={customCats}
+        manicures={manicures}
+        stickers={stickers}
+        onSyncComplete={handleSyncComplete}
+      />
       <LogPanel t={t} apiKey={apiKey} />
       <UpdatePanel t={t} apiKey={apiKey} />
 
