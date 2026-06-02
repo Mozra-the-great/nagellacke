@@ -88,7 +88,7 @@ function verifyPassword(password: string, stored: string): boolean {
 // ── GitHub version check helper ───────────────────────────────────────────────
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'nagellacke-v3' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'nagellacke-v3' } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         return httpsGet(res.headers.location!).then(resolve).catch(reject);
       }
@@ -96,6 +96,7 @@ function httpsGet(url: string): Promise<string> {
       res.on('data', (c: string) => { data += c; });
       res.on('end', () => resolve(data));
     }).on('error', reject);
+    req.setTimeout(10_000, () => { req.destroy(); reject(new Error('GitHub API Timeout')); });
   });
 }
 
