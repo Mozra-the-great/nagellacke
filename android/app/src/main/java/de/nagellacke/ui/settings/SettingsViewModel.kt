@@ -1,0 +1,82 @@
+package de.nagellacke.ui.settings
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.SyncConfig
+import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.AuthRepository
+import de.nagellacke.data.sync.SyncManager
+import de.nagellacke.data.sync.SyncProvider
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+data class SettingsUiState(
+    val polishCount: Int = 0,
+    val stickerCount: Int = 0,
+    val manicureCount: Int = 0,
+    val syncConfig: SyncConfig? = null,
+    val syncing: Boolean = false,
+    val syncError: String? = null,
+    val lastSyncAt: Long? = null,
+    val httpWarning: Boolean = false,
+)
+
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
+    private val repo: NagellackeRepository,
+    private val configStore: SyncConfigStore,
+    private val syncManager: SyncManager,
+    @ApplicationContext private val context: Context,
+) : ViewModel() {
+    private val _syncState = MutableStateFlow(Triple(false, null as String?, null as Long?))
+
+    val uiState = combine(repo.observeData(), _syncState) { data, (syncing, error, lastSync) ->
+        val cfg = configStore.getConfig()
+        SettingsUiState(
+            polishCount   = data.polishes.count { it.deletedAt == null },
+            stickerCount  = data.stickers.count { it.deletedAt == null },
+            manicureCount = data.manicures.count { it.deletedAt == null },
+            syncConfig    = cfg,
+            syncing       = syncing,
+            syncError     = error,
+            lastSyncAt    = lastSync,
+            httpWarning   = cfg?.serverUrl?.startsWith("http://") == true,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
+
+    fun saveServerConfig(url: String, token: String) {
+        configStore.saveConfig(SyncConfig(provider = SyncProvider.Server, serverUrl = url, serverToken = token))
+    }
+
+    fun saveNextcloudConfig(url: String, user: String, pass: String) {
+        configStore.saveConfig(SyncConfig(provider = SyncProvider.Nextcloud, nextcloudUrl = url, nextcloudUser = user, nextcloudPassword = pass))
+    }
+
+    fun saveOAuthConfig(provider: SyncProvider, accessToken: String, refreshToken: String, expiry: Long) {
+        configStore.saveTokens(provider, accessToken, refreshToken, expiry)
+    }
+
+    fun clearConfig() = configStore.clearConfig()
+
+    fun syncNow() = viewModelScope.launch {
+        _syncState.update { it.copy(first = true, second = null) }
+        val result = syncManager.syncNow()
+        _syncState.update { Triple(false, result.error, if (result.success) System.currentTimeMillis() else null) }
+    }
+
+    suspend fun serverLogin(url: String, username: String, password: String): Result<String> =
+        runCatching { AuthRepository(url).login(username, password) }
+
+    suspend fun serverRegister(url: String, username: String, password: String): Result<String> =
+        runCatching { AuthRepository(url).register(username, password) }
+}

@@ -1,0 +1,5 @@
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
+-keep class de.nagellacke.data.sync.** { *; }
+-keep class de.nagellacke.domain.model.** { *; }
+-dontwarn net.openid.appauth.**
