@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, createUser, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, PHOTOS_DIR, DATA_DIR } from './db';
 
 const PORT         = Number(process.env.PORT ?? 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
@@ -196,7 +196,7 @@ async function main() {
 
   // GET /api/update/check — prüft GitHub auf neue Version
   app.get('/api/update/check', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(10, 60_000)],
+    preHandler: [requireApiKey, rateLimit(10, 60_000)],
   }, async () => {
     const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
       .stdout?.toString().trim() ?? '';
@@ -236,7 +236,7 @@ async function main() {
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
   app.post('/api/update/apply', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(3, 300_000)],
+    preHandler: [requireApiKey, rateLimit(3, 300_000)],
   }, async (request, reply) => {
     reply.send({ ok: true });
 
@@ -279,7 +279,7 @@ async function main() {
 
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(30, 60_000)],
+    preHandler: [requireApiKey, rateLimit(30, 60_000)],
   }, async (request) => {
     const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
     const r = spawnSync(
@@ -294,7 +294,13 @@ async function main() {
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
 
   // POST /api/auth/register
+  // Open only for the very first user (bootstrap) or when ALLOW_REGISTRATION=true.
   app.post('/api/auth/register', async (request, reply) => {
+    const allowRegistration = process.env.ALLOW_REGISTRATION === 'true';
+    const isFirstUser = getUserCount() === 0;
+    if (!allowRegistration && !isFirstUser) {
+      return reply.code(403).send({ error: 'Registrierung deaktiviert' });
+    }
     const { username, password } = request.body as { username?: string; password?: string };
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
