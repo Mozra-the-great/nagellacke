@@ -1,8 +1,8 @@
-.page { padding: 0 0 24px; }
+.page { padding: 0 0 40px; }
 
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 16px 12px;
+  padding: 20px 24px 12px;
 }
 
 .title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
@@ -14,9 +14,9 @@
   box-shadow: 0 2px 8px var(--md-shadow);
 }
 
-.count { padding: 0 16px 12px; font-size: 13px; color: var(--md-on-surface-variant); }
+.count { padding: 0 24px 12px; font-size: 13px; color: var(--md-on-surface-variant); }
 
-.timeline { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.timeline { display: flex; flex-direction: column; gap: 10px; padding: 0 24px; }
 
 .entry {
   background: var(--md-surface-variant); border-radius: var(--radius-md);

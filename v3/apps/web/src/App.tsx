@@ -9,12 +9,44 @@ import styles from './App.module.css';
 
 type Tab = 'collection' | 'stickers' | 'diary' | 'stats' | 'settings';
 
+const NAV_ITEMS: { id: Tab; label: string }[] = [
+  { id: 'collection', label: '◈ Nagellack' },
+  { id: 'stickers',   label: '◈ Sticker' },
+  { id: 'stats',      label: '◈ Statistiken' },
+  { id: 'diary',      label: '◈ Tagebuch' },
+  { id: 'settings',   label: '◈ Mehr' },
+];
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
   const appData = useAppData();
 
+  const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
+  const activeCount = polishes.filter((p) => p.status === 'ok').length;
+  const totalCount = polishes.reduce((a, p) => a + (p.count ?? 1), 0);
+
   return (
     <div className={styles.app}>
+      <header className={styles.header}>
+        <div className={styles.titleArea}>
+          <h1 className={styles.appTitle}>Nail Lacquer</h1>
+          <p className={styles.appSubtitle}>
+            {activeCount} vorhanden · {totalCount} Flaschen gesamt
+          </p>
+        </div>
+        <nav className={styles.navRow}>
+          {NAV_ITEMS.map(({ id, label }) => (
+            <button
+              key={id}
+              className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
       <main className={styles.main}>
         {tab === 'collection' && <CollectionPage appData={appData} />}
         {tab === 'stickers'   && <StickersPage appData={appData} />}
@@ -22,23 +54,6 @@ export default function App() {
         {tab === 'stats'      && <StatsPage appData={appData} />}
         {tab === 'settings'   && <SettingsPage appData={appData} />}
       </main>
-
-      <nav className={styles.nav}>
-        <NavBtn active={tab === 'collection'} onClick={() => setTab('collection')} icon="💅" label="Lacke" />
-        <NavBtn active={tab === 'stickers'}   onClick={() => setTab('stickers')}   icon="✨" label="Sticker" />
-        <NavBtn active={tab === 'diary'}      onClick={() => setTab('diary')}      icon="📖" label="Tagebuch" />
-        <NavBtn active={tab === 'stats'}      onClick={() => setTab('stats')}      icon="📊" label="Statistik" />
-        <NavBtn active={tab === 'settings'}   onClick={() => setTab('settings')}   icon="⚙️" label="Mehr" />
-      </nav>
     </div>
-  );
-}
-
-function NavBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: string; label: string }) {
-  return (
-    <button className={`${styles.navBtn} ${active ? styles.navBtnActive : ''}`} onClick={onClick}>
-      <span className={styles.navIcon}>{icon}</span>
-      <span className={styles.navLabel}>{label}</span>
-    </button>
   );
 }

@@ -1,9 +1,9 @@
-.page { padding: 0 0 24px; }
+.page { padding: 0 0 40px; }
 
-.header { padding: 20px 16px 12px; }
+.header { padding: 20px 24px 12px; }
 .title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
 
-.section { padding: 16px; border-bottom: 1px solid var(--md-outline-variant); }
+.section { padding: 16px 24px; border-bottom: 1px solid var(--md-outline-variant); }
 .sectionTitle { font-size: 16px; font-weight: 600; color: var(--md-on-surface); margin-bottom: 14px; }
 
 .statsGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }

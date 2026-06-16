@@ -1,14 +1,14 @@
-.page { padding: 0 0 24px; }
+.page { padding: 0 0 40px; }
 
-.header { padding: 20px 16px 12px; }
+.header { padding: 20px 24px 12px; }
 .title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
 
-.kpiRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 16px 20px; }
+.kpiRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 0 24px 20px; }
 .kpi { background: var(--md-surface-variant); border-radius: var(--radius-md); padding: 16px 8px; text-align: center; }
 .kpiNum { font-size: 32px; font-weight: 700; color: var(--md-primary); }
 .kpiLabel { font-size: 12px; color: var(--md-on-surface-variant); margin-top: 4px; }
 
-.section { padding: 0 16px 20px; }
+.section { padding: 0 24px 20px; }
 .sectionTitle { font-size: 16px; font-weight: 600; margin-bottom: 14px; }
 
 .palette { display: flex; flex-wrap: wrap; gap: 5px; }
