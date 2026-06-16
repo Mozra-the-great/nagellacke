@@ -1,6 +1,10 @@
 node_modules/
-backend/public/
-backend/data/
-frontend/dist/
+v3/server/data/
+v3/server/public/
+v3/apps/web/dist/
+android/app/build/
+android/.gradle/
+android/local.properties
 .env
 *.log
+CLAUDE.local.md

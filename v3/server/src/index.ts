@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, createUser, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, PHOTOS_DIR, DATA_DIR } from './db';
 
 const PORT         = Number(process.env.PORT ?? 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
@@ -107,7 +107,7 @@ async function main() {
   await app.register(jwt, { secret: JWT_SECRET });
   await app.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
 
-  // Serve v2 frontend (built to ./public by install.sh)
+  // Serve web app (built to public/ by install.sh or update/apply)
   const publicDir = path.join(process.cwd(), 'public');
   if (fs.existsSync(publicDir)) {
     await app.register(staticFiles, { root: publicDir, prefix: '/', decorateReply: false });
@@ -130,8 +130,6 @@ async function main() {
     }
   }
 
-  // Akzeptiert API-Key ODER gültigen JWT — so funktioniert POST /api/data auch
-  // ohne konfigurierten API-Key, wenn der Nutzer via SyncPanel eingeloggt ist.
   async function requireApiKeyOrJwt(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
     if (key && key === API_KEY) return;
@@ -142,30 +140,9 @@ async function main() {
     }
   }
 
-  // ── v2-kompatible Endpoints (X-Api-Key) ───────────────────────────────────────
+  // ── Photo endpoints ────────────────────────────────────────────────────────────
 
-  // GET /api/data — liefert die komplette Sammlung
-  app.get('/api/data', async () => {
-    const d = getData();
-    return { polishes: d.polishes, customCats: d.customCats, manicures: d.manicures, stickers: d.stickers };
-  });
-
-  // POST /api/data — speichert die komplette Sammlung
-  app.post('/api/data', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
-    const body = request.body as Partial<AppData>;
-    if (!Array.isArray(body.polishes)) return reply.code(400).send({ error: 'polishes array required' });
-    const current = getData();
-    const next: AppData = {
-      polishes:   body.polishes   ?? current.polishes,
-      customCats: body.customCats ?? current.customCats,
-      manicures:  body.manicures  ?? current.manicures,
-      stickers:   body.stickers   ?? current.stickers,
-    };
-    setData(next);
-    return { ok: true };
-  });
-
-  // POST /api/photos — Foto hochladen (v2-Format: base64 body)
+  // POST /api/photos — Foto hochladen (base64 body)
   app.post('/api/photos', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
@@ -196,7 +173,7 @@ async function main() {
 
   // GET /api/update/check — prüft GitHub auf neue Version
   app.get('/api/update/check', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(10, 60_000)],
+    preHandler: [requireApiKey, rateLimit(10, 60_000)],
   }, async () => {
     const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
       .stdout?.toString().trim() ?? '';
@@ -236,7 +213,7 @@ async function main() {
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
   app.post('/api/update/apply', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(3, 300_000)],
+    preHandler: [requireApiKey, rateLimit(3, 300_000)],
   }, async (request, reply) => {
     reply.send({ ok: true });
 
@@ -279,7 +256,7 @@ async function main() {
 
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
-    preHandler: [requireApiKeyOrJwt, rateLimit(30, 60_000)],
+    preHandler: [requireApiKey, rateLimit(30, 60_000)],
   }, async (request) => {
     const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
     const r = spawnSync(
@@ -294,7 +271,13 @@ async function main() {
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
 
   // POST /api/auth/register
+  // Open only for the very first user (bootstrap) or when ALLOW_REGISTRATION=true.
   app.post('/api/auth/register', async (request, reply) => {
+    const allowRegistration = process.env.ALLOW_REGISTRATION === 'true';
+    const isFirstUser = getUserCount() === 0;
+    if (!allowRegistration && !isFirstUser) {
+      return reply.code(403).send({ error: 'Registrierung deaktiviert' });
+    }
     const { username, password } = request.body as { username?: string; password?: string };
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });

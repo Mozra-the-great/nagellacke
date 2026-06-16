@@ -56,6 +56,10 @@ export function getUser(username: string): User | undefined {
   return readUsers().find((u) => u.username === username);
 }
 
+export function getUserCount(): number {
+  return readUsers().length;
+}
+
 export function createUser(username: string, passwordHash: string): void {
   const users = readUsers();
   users.push({ username, password_hash: passwordHash, created_at: Date.now() });
