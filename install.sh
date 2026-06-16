@@ -86,7 +86,15 @@ fi
 mkdir -p "$INSTALL_DIR/v3/server/data"
 chown -R root:root "$INSTALL_DIR"
 
-# ── 8. Systemd service ──
+# ── 8. Stop old v2 service if running ──
+if systemctl is-active --quiet nagellacke.service 2>/dev/null; then
+  info "Alten v2-Service stoppen…"
+  systemctl stop nagellacke
+  systemctl disable nagellacke
+  success "v2-Service gestoppt"
+fi
+
+# ── 9. Systemd service ──
 info "Systemd-Service einrichten ($SERVICE_NAME)…"
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
@@ -111,7 +119,7 @@ systemctl daemon-reload
 systemctl enable --quiet "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 
-# ── 9. Done ──
+# ── 10. Done ──
 sleep 1
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP=$(hostname -I | awk '{print $1}')

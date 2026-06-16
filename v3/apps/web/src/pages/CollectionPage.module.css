@@ -8,10 +8,12 @@
 }
 
 .title {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-display);
   font-size: 28px;
-  font-weight: 600;
+  font-weight: 300;
+  font-style: italic;
   color: var(--md-primary);
+  letter-spacing: 0.03em;
 }
 
 .addBtn {
@@ -70,7 +72,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
   padding: 0 16px;
 }
