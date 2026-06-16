@@ -222,7 +222,7 @@ async function main() {
         const v3Dir = path.join(APP_ROOT, 'v3');
         const steps = [
           { cmd: 'git', args: ['pull', 'origin', 'main'],    cwd: APP_ROOT,      timeout: 30_000 },
-          { cmd: 'npm', args: ['install', '--omit=dev'],      cwd: process.cwd(), timeout: 60_000 },
+          { cmd: 'npm', args: ['install'],                    cwd: v3Dir,         timeout: 120_000 },
           { cmd: 'npm', args: ['run', 'build:core'],          cwd: v3Dir, timeout: 60_000 },
           { cmd: 'npm', args: ['run', 'build:server'],        cwd: v3Dir, timeout: 60_000 },
           { cmd: 'npm', args: ['run', 'build:web'],           cwd: v3Dir, timeout: 120_000 },

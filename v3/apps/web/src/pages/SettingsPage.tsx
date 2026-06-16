@@ -8,6 +8,14 @@ import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
 
+const APIKEY_STORAGE = 'nagellacke_v3_apikey';
+
+interface UpdateInfo {
+  current: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+}
+
 export default function SettingsPage({ appData }: { appData: AppData }) {
   const [config, setConfig] = useState<SyncConfig | null>(loadSyncConfig);
   const [provider, setProvider] = useState<SyncProviderType | 'none'>(config?.provider ?? 'none');
@@ -18,6 +26,45 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [ncPass, setNcPass] = useState(config?.nextcloudPassword ?? '');
   const [saved, setSaved] = useState(false);
   const [newCatLabel, setNewCatLabel] = useState('');
+
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateError, setUpdateError] = useState('');
+
+  const saveApiKey = (key: string) => {
+    setApiKey(key);
+    if (key) localStorage.setItem(APIKEY_STORAGE, key);
+    else localStorage.removeItem(APIKEY_STORAGE);
+  };
+
+  const checkUpdate = async () => {
+    setUpdateStatus('checking');
+    setUpdateError('');
+    try {
+      const res = await fetch('/api/update/check', { headers: { 'X-Api-Key': apiKey } });
+      if (res.status === 401) { setUpdateError('API-Schlüssel ungültig'); setUpdateStatus('error'); return; }
+      const data = await res.json() as UpdateInfo;
+      setUpdateInfo(data);
+      setUpdateStatus('idle');
+    } catch (e) {
+      setUpdateError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setUpdateStatus('error');
+    }
+  };
+
+  const applyUpdate = async () => {
+    if (!confirm('Update installieren und Server neu starten?\n\nDer Server ist danach ~2 Minuten nicht erreichbar.')) return;
+    setUpdateStatus('updating');
+    setUpdateError('');
+    try {
+      await fetch('/api/update/apply', { method: 'POST', headers: { 'X-Api-Key': apiKey } });
+      setUpdateStatus('done');
+    } catch (e) {
+      setUpdateError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setUpdateStatus('error');
+    }
+  };
 
   const saveConfig = () => {
     if (provider === 'none') {
@@ -210,6 +257,53 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             Import JSON
             <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
           </label>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Admin</h2>
+        <label className={styles.field}>
+          <span>API-Schlüssel</span>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => saveApiKey(e.target.value)}
+            placeholder="Aus data/.api_key auf dem Server"
+          />
+        </label>
+
+        {updateInfo && updateStatus !== 'error' && (
+          <div className={styles.infoText}>
+            Version {updateInfo.current}
+            {updateInfo.latestVersion && updateInfo.latestVersion !== updateInfo.current
+              ? ` → ${updateInfo.latestVersion} verfügbar`
+              : ' — aktuell'}
+          </div>
+        )}
+        {updateStatus === 'done' && (
+          <div className={styles.infoText}>Update gestartet — Server startet in ~2 Min. neu.</div>
+        )}
+        {updateStatus === 'error' && (
+          <div className={styles.errorBanner}>{updateError}</div>
+        )}
+
+        <div className={styles.btnRow}>
+          <button
+            className={styles.syncBtn}
+            onClick={checkUpdate}
+            disabled={!apiKey || updateStatus === 'checking' || updateStatus === 'updating'}
+          >
+            {updateStatus === 'checking' ? 'Prüfe…' : 'Update prüfen'}
+          </button>
+          {updateInfo?.updateAvailable && updateStatus !== 'done' && (
+            <button
+              className={styles.saveBtn}
+              onClick={applyUpdate}
+              disabled={updateStatus === 'updating'}
+            >
+              {updateStatus === 'updating' ? 'Wird installiert…' : 'Update installieren'}
+            </button>
+          )}
         </div>
       </section>
     </div>
