@@ -1,7 +1,7 @@
 .page { padding: 0 0 24px; }
 
 .header { padding: 20px 16px 12px; }
-.title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; color: var(--md-primary); }
+.title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
 
 .section { padding: 16px; border-bottom: 1px solid var(--md-outline-variant); }
 .sectionTitle { font-size: 16px; font-weight: 600; color: var(--md-on-surface); margin-bottom: 14px; }

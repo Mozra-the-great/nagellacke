@@ -9,7 +9,7 @@
     "rootDir": "./src",
     "skipLibCheck": true,
     "paths": {
-      "@nagellacke/core": ["../core/src/index.ts"]
+      "@nagellacke/core": ["../core/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"],

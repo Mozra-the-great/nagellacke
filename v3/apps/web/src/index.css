@@ -1,41 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@200;300;400&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --md-primary: #e91e8c;
-  --md-primary-container: #ffd8ec;
-  --md-on-primary: #fff;
-  --md-surface: #fffbfe;
-  --md-surface-variant: #f3edf7;
-  --md-on-surface: #1c1b1f;
-  --md-on-surface-variant: #49454f;
-  --md-outline: #79747e;
-  --md-outline-variant: #cac4d0;
-  --md-error: #b3261e;
-  --md-shadow: rgba(0,0,0,0.12);
+  --md-primary: rgba(255,200,230,0.9);
+  --md-primary-container: rgba(255,255,255,0.08);
+  --md-on-primary: #0a080f;
+  --md-surface: #0a080f;
+  --md-surface-variant: rgba(255,255,255,0.04);
+  --md-on-surface: #ffffff;
+  --md-on-surface-variant: rgba(255,255,255,0.65);
+  --md-outline: rgba(255,255,255,0.35);
+  --md-outline-variant: rgba(255,255,255,0.12);
+  --md-error: rgba(255,120,120,0.85);
+  --md-shadow: rgba(0,0,0,0.6);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 28px;
-  font-family: 'Inter', system-ui, sans-serif;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --md-primary: #f48fb1;
-    --md-primary-container: #880e4f;
-    --md-on-primary: #1a0010;
-    --md-surface: #141218;
-    --md-surface-variant: #2b2930;
-    --md-on-surface: #e6e0e9;
-    --md-on-surface-variant: #cac4d0;
-    --md-outline: #938f99;
-    --md-outline-variant: #49454f;
-  }
+  --radius-xl: 20px;
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'Jost', sans-serif;
+  font-family: var(--font-body);
+  font-weight: 300;
 }
 
 body {
-  background: var(--md-surface);
+  background: linear-gradient(135deg, #0a080f 0%, #12091a 50%, #080c18 100%);
+  background-attachment: fixed;
   color: var(--md-on-surface);
   min-height: 100dvh;
 }

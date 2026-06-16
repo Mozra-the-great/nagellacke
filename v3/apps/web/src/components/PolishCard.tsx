@@ -1,4 +1,5 @@
 import type { Polish } from '@nagellacke/core';
+import NailBottle from './NailBottle';
 import styles from './PolishCard.module.css';
 
 export default function PolishCard({
@@ -12,18 +13,19 @@ export default function PolishCard({
 }) {
   return (
     <div className={styles.card} onClick={onEdit}>
-      <div className={styles.swatch} style={{ background: polish.color }}>
-        {polish.photo && (
-          <img src={`/photos/${polish.photo}`} alt="" className={styles.photo} />
-        )}
+      <div className={styles.bottle}>
+        <NailBottle
+          color={polish.color}
+          finish={polish.finish}
+          status={polish.status}
+          brand={polish.brand}
+          photoUrl={polish.photo ? `/photos/${polish.photo}` : undefined}
+        />
       </div>
       <div className={styles.info}>
         <div className={styles.name}>{polish.name}</div>
-        <div className={styles.brand}>{polish.brand}</div>
-        <div className={styles.meta}>
-          <span className={styles.finish}>{polish.finish}</span>
-          {polish.rating ? <span className={styles.rating}>{'★'.repeat(polish.rating)}</span> : null}
-        </div>
+        {polish.brand && <div className={styles.brand}>{polish.brand}</div>}
+        {polish.rating ? <div className={styles.rating}>{'★'.repeat(polish.rating)}</div> : null}
       </div>
       <button
         className={styles.deleteBtn}

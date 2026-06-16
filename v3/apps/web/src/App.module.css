@@ -16,10 +16,12 @@
   position: sticky;
   bottom: 0;
   display: flex;
-  background: var(--md-surface-variant);
-  border-top: 1px solid var(--md-outline-variant);
+  background: rgba(8,6,18,0.92);
+  border-top: 1px solid rgba(255,255,255,0.08);
   padding-bottom: env(safe-area-inset-bottom, 0);
   z-index: 100;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .navBtn {
@@ -29,15 +31,15 @@
   align-items: center;
   gap: 4px;
   padding: 12px 4px;
-  color: var(--md-on-surface-variant);
+  color: rgba(255,255,255,0.42);
   transition: color 0.15s;
   border-radius: var(--radius-md);
   margin: 4px;
 }
 
 .navBtnActive {
-  color: var(--md-primary);
-  background: var(--md-primary-container);
+  color: rgba(255,200,230,0.9);
+  background: rgba(255,255,255,0.06);
 }
 
 .navIcon {
