@@ -24,7 +24,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
   const openEdit = (m: Manicure) => {
     setEditing(m);
-    setForm({ date: m.date, polishes: [...m.polishes], notes: m.notes ?? '' });
+    setForm({ date: m.date, polishes: [...(m.polishes ?? [])], notes: m.notes ?? '' });
     setShowForm(true);
   };
 
@@ -55,7 +55,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
       <div className={styles.timeline}>
         {entries.map((m) => {
-          const usedPolishes = appData.data.polishes.filter((p) => m.polishes.includes(p.name));
+          const usedPolishes = appData.data.polishes.filter((p) => (m.polishes ?? []).includes(p.name));
           return (
             <div key={m.id} className={styles.entry} onClick={() => openEdit(m)}>
               <div className={styles.entryDate}>{formatDate(m.date)}</div>
