@@ -37,7 +37,7 @@
 
 .btnRow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
 
-.saveBtn, .syncBtn, .catList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.catList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .catItem {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--md-surface-variant); border-radius: var(--radius-md);
@@ -61,8 +61,16 @@
   flex: 1; min-width: 130px; padding: 13px 16px; border-radius: var(--radius-xl);
   font-size: 14px; font-weight: 600; text-align: center; cursor: pointer;
 }
-.saveBtn { background: var(--md-primary); color: var(--md-on-primary); }
-.syncBtn { background: var(--md-surface-variant); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); }
-.syncBtn:disabled { opacity: 0.6; }
+.saveBtn {
+  padding: 13px 16px; border-radius: var(--radius-xl); font-size: 14px; font-weight: 600;
+  background: var(--md-primary); color: var(--md-on-primary); cursor: pointer;
+}
+.saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+.syncBtn {
+  padding: 13px 16px; border-radius: var(--radius-xl); font-size: 14px; font-weight: 600;
+  background: var(--md-surface-variant); color: var(--md-on-surface);
+  border: 1px solid var(--md-outline-variant); cursor: pointer;
+}
+.syncBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 .exportBtn { background: var(--md-surface-variant); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); }
 .importBtn { background: var(--md-surface-variant); color: var(--md-on-surface); border: 1px solid var(--md-outline-variant); display: flex; align-items: center; justify-content: center; }
