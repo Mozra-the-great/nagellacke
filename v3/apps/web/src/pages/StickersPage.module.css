@@ -6,8 +6,8 @@
 }
 
 .title {
-  font-family: 'Playfair Display', serif;
-  font-size: 28px; font-weight: 600; color: var(--md-primary);
+  font-family: var(--font-display);
+  font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em;
 }
 
 .addBtn {
@@ -67,7 +67,10 @@
   display: flex; align-items: flex-end; z-index: 200;
 }
 .modal {
-  background: var(--md-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  background: var(--md-surface);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   width: 100%; max-height: 90dvh; display: flex; flex-direction: column;
 }
 .modalHeader {

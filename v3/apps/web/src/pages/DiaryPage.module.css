@@ -5,7 +5,7 @@
   padding: 20px 16px 12px;
 }
 
-.title { font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 600; color: var(--md-primary); }
+.title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
 
 .addBtn {
   width: 52px; height: 52px; border-radius: 16px;
@@ -40,8 +40,14 @@
 .entry:hover .deleteBtn { opacity: 1; }
 
 /* Modal */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-end; z-index: 200; }
-.modal { background: var(--md-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; width: 100%; max-height: 90dvh; display: flex; flex-direction: column; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-end; z-index: 200; }
+.modal {
+  background: var(--md-surface);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  width: 100%; max-height: 90dvh; display: flex; flex-direction: column;
+}
 .modalHeader { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 12px; border-bottom: 1px solid var(--md-outline-variant); }
 .modalHeader h2 { font-size: 18px; font-weight: 600; }
 .modalHeader button { font-size: 20px; color: var(--md-on-surface-variant); }
