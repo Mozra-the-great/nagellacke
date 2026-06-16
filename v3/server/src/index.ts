@@ -107,7 +107,7 @@ async function main() {
   await app.register(jwt, { secret: JWT_SECRET });
   await app.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
 
-  // Serve v2 frontend (built to ./public by install.sh)
+  // Serve web app (built to public/ by install.sh or update/apply)
   const publicDir = path.join(process.cwd(), 'public');
   if (fs.existsSync(publicDir)) {
     await app.register(staticFiles, { root: publicDir, prefix: '/', decorateReply: false });
@@ -130,8 +130,6 @@ async function main() {
     }
   }
 
-  // Akzeptiert API-Key ODER gültigen JWT — so funktioniert POST /api/data auch
-  // ohne konfigurierten API-Key, wenn der Nutzer via SyncPanel eingeloggt ist.
   async function requireApiKeyOrJwt(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
     if (key && key === API_KEY) return;
@@ -142,30 +140,9 @@ async function main() {
     }
   }
 
-  // ── v2-kompatible Endpoints (X-Api-Key) ───────────────────────────────────────
+  // ── Photo endpoints ────────────────────────────────────────────────────────────
 
-  // GET /api/data — liefert die komplette Sammlung
-  app.get('/api/data', async () => {
-    const d = getData();
-    return { polishes: d.polishes, customCats: d.customCats, manicures: d.manicures, stickers: d.stickers };
-  });
-
-  // POST /api/data — speichert die komplette Sammlung
-  app.post('/api/data', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
-    const body = request.body as Partial<AppData>;
-    if (!Array.isArray(body.polishes)) return reply.code(400).send({ error: 'polishes array required' });
-    const current = getData();
-    const next: AppData = {
-      polishes:   body.polishes   ?? current.polishes,
-      customCats: body.customCats ?? current.customCats,
-      manicures:  body.manicures  ?? current.manicures,
-      stickers:   body.stickers   ?? current.stickers,
-    };
-    setData(next);
-    return { ok: true };
-  });
-
-  // POST /api/photos — Foto hochladen (v2-Format: base64 body)
+  // POST /api/photos — Foto hochladen (base64 body)
   app.post('/api/photos', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });

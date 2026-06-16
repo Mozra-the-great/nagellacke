@@ -2,14 +2,14 @@
 set -e
 
 # ─────────────────────────────────────────────
-#  Nagellack Kollektion – Installer
-#  Usage: bash <(curl -fsSL https://raw.githubusercontent.com/DEIN_USER/nagellacke/main/install.sh)
+#  Nagellack Kollektion – Installer (v3)
+#  Usage: sudo bash install.sh
 # ─────────────────────────────────────────────
 
 INSTALL_DIR="/opt/nagellacke"
-SERVICE_NAME="nagellacke"
+SERVICE_NAME="nagellacke-v3"
 PORT=3000
-REPO_URL="https://github.com/Mozra-the-great/nagellacke"   # <-- anpassen!
+REPO_URL="https://github.com/Mozra-the-great/nagellacke"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()    { echo -e "${CYAN}[•]${NC} $1"; }
@@ -19,7 +19,7 @@ error()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║   💅  Nagellack Kollektion Setup      ║${NC}"
+echo -e "${CYAN}║   💅  Nagellack Kollektion v3 Setup   ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
 echo ""
 
@@ -37,7 +37,7 @@ apt-get install -y -qq git curl ca-certificates
 
 # ── 2. Node.js 20 ──
 NODE_MAJOR=$(node --version 2>/dev/null | grep -oP '(?<=v)\d+' || echo 0)
-if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt 18 ]]; then
+if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt 20 ]]; then
   info "Installiere Node.js 20…"
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
   apt-get install -y -qq nodejs
@@ -54,39 +54,54 @@ else
   git clone --quiet "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# ── 4. Backend dependencies ──
-info "Backend-Abhängigkeiten installieren…"
-cd "$INSTALL_DIR/backend"
-npm install --silent --omit=dev
-
-# ── 5. Frontend build ──
-info "Frontend-Abhängigkeiten installieren…"
-cd "$INSTALL_DIR/frontend"
+# ── 4. Install dependencies ──
+info "Abhängigkeiten installieren (v3 monorepo)…"
+cd "$INSTALL_DIR/v3"
 npm install --silent
 
-info "Frontend bauen…"
-npm run build --silent
-success "Frontend gebaut → $INSTALL_DIR/backend/public"
+# ── 5. Build ──
+info "Core-Paket bauen…"
+npm run build:core --silent
 
-# ── 6. Data directory ──
-mkdir -p "$INSTALL_DIR/backend/data"
+info "Sync-Paket bauen…"
+npm run build:sync --silent
+
+info "Server bauen…"
+npm run build:server --silent
+
+info "Web-App bauen…"
+npm run build:web --silent
+
+# ── 6. Deploy web app to server public/ ──
+WEB_DIST="$INSTALL_DIR/v3/apps/web/dist"
+SERVER_PUBLIC="$INSTALL_DIR/v3/server/public"
+if [ -d "$WEB_DIST" ]; then
+  info "Web-App nach public/ kopieren…"
+  rm -rf "$SERVER_PUBLIC"
+  cp -r "$WEB_DIST" "$SERVER_PUBLIC"
+  success "Web-App deployed → $SERVER_PUBLIC"
+fi
+
+# ── 7. Data directory ──
+mkdir -p "$INSTALL_DIR/v3/server/data"
 chown -R root:root "$INSTALL_DIR"
 
-# ── 7. Systemd service ──
-info "Systemd-Service einrichten…"
+# ── 8. Systemd service ──
+info "Systemd-Service einrichten ($SERVICE_NAME)…"
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
-Description=Nagellack Kollektion
+Description=Nagellack Kollektion v3
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${INSTALL_DIR}/backend
-ExecStart=/usr/bin/node server.js
+WorkingDirectory=${INSTALL_DIR}/v3/server
+ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5
 Environment=PORT=${PORT}
-# Daten bleiben in: ${INSTALL_DIR}/backend/data/data.json
+Environment=SERVICE_NAME=${SERVICE_NAME}
+# Daten: ${INSTALL_DIR}/v3/server/data/
 
 [Install]
 WantedBy=multi-user.target
@@ -96,7 +111,7 @@ systemctl daemon-reload
 systemctl enable --quiet "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 
-# ── 8. Done ──
+# ── 9. Done ──
 sleep 1
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP=$(hostname -I | awk '{print $1}')
@@ -106,13 +121,13 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
   echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
   echo ""
   echo -e "  🌐  Erreichbar unter:  ${CYAN}http://${IP}:${PORT}${NC}"
-  echo -e "  💾  Daten gespeichert: ${CYAN}${INSTALL_DIR}/backend/data/data.json${NC}"
+  echo -e "  💾  Daten gespeichert: ${CYAN}${INSTALL_DIR}/v3/server/data/${NC}"
   echo ""
   echo -e "  Nützliche Befehle:"
-  echo -e "  ${YELLOW}systemctl status ${SERVICE_NAME}${NC}   – Status anzeigen"
-  echo -e "  ${YELLOW}systemctl restart ${SERVICE_NAME}${NC}  – Neu starten"
-  echo -e "  ${YELLOW}journalctl -u ${SERVICE_NAME} -f${NC}   – Logs ansehen"
-  echo -e "  ${YELLOW}bash install.sh${NC}                   – Update einspielen"
+  echo -e "  ${YELLOW}systemctl status ${SERVICE_NAME}${NC}    – Status anzeigen"
+  echo -e "  ${YELLOW}systemctl restart ${SERVICE_NAME}${NC}   – Neu starten"
+  echo -e "  ${YELLOW}journalctl -u ${SERVICE_NAME} -f${NC}    – Logs ansehen"
+  echo -e "  ${YELLOW}sudo bash install.sh${NC}               – Update einspielen"
   echo ""
 else
   error "Service konnte nicht gestartet werden. Logs: journalctl -u $SERVICE_NAME"
