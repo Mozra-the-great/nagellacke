@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Polish, Category } from '@nagellacke/core';
 import { FINISH_OPTIONS, STATUS_OPTIONS, DEFAULT_POLISH } from '@nagellacke/core';
+import PhotoField from './PhotoField';
 import styles from './PolishFormModal.module.css';
 
 type FormData = Omit<Polish, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
@@ -111,6 +112,11 @@ export default function PolishFormModal({
               </div>
             </label>
           )}
+
+          <div className={styles.field}>
+            <span>Foto</span>
+            <PhotoField value={form.photo} onChange={(f) => set('photo', f)} />
+          </div>
 
           <label className={styles.field}>
             <span>Notizen</span>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import type { Manicure, Polish, PolishRef } from '@nagellacke/core';
+import type { Manicure, Polish, PolishRef, ManicurePhotos } from '@nagellacke/core';
 import { filterManicures } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
+import PhotoField from '../components/PhotoField';
 import styles from './DiaryPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -37,10 +38,12 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
     date: string;
     polishRefs: PolishRef[];
     notes: string;
+    photos: ManicurePhotos;
   }>({
     date: new Date().toISOString().slice(0, 10),
     polishRefs: [],
     notes: '',
+    photos: {},
   });
 
   const entries = filterManicures(appData.data.manicures)
@@ -52,7 +55,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], notes: '' });
+    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], notes: '', photos: {} });
     setShowForm(true);
   };
 
@@ -62,6 +65,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
       date: m.date,
       polishRefs: [...(m.polishRefs ?? [])],
       notes: m.notes ?? '',
+      photos: { ...(m.photos ?? {}) },
     });
     setShowForm(true);
   };
@@ -146,25 +150,24 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                 />
               </label>
 
-              {/* Photos from existing entry (read-only) */}
-              {editing && (editing.photo || (editing.photos && Object.values(editing.photos).some(Boolean))) && (
-                <div className={styles.field}>
-                  <span>Fotos</span>
-                  <div className={styles.photoGrid}>
-                    {editing.photo && (
-                      <div className={styles.photoSlot}>
-                        <img src={`/photos/${editing.photo}`} alt="Foto" className={styles.photoImg} />
-                      </div>
-                    )}
-                    {PHOTO_SLOTS.filter((s) => editing.photos?.[s.key]).map((s) => (
-                      <div key={s.key} className={styles.photoSlot}>
-                        <img src={`/photos/${editing.photos![s.key]}`} alt={s.label} className={styles.photoImg} />
-                        <span className={styles.photoLabel}>{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
+              {/* Photo upload slots */}
+              <div className={styles.field}>
+                <span>Fotos</span>
+                <div className={styles.photoSlots}>
+                  {PHOTO_SLOTS.map((slot) => (
+                    <div key={slot.key} className={styles.photoSlotWrap}>
+                      <span className={styles.photoLabel}>{slot.label}</span>
+                      <PhotoField
+                        value={form.photos[slot.key] ?? undefined}
+                        onChange={(filename) =>
+                          setForm((f) => ({ ...f, photos: { ...f.photos, [slot.key]: filename ?? null } }))
+                        }
+                        label={slot.label}
+                      />
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div className={styles.field}>
                 <span>Verwendete Lacke</span>

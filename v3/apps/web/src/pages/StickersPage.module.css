@@ -42,8 +42,14 @@
 
 .item:hover { transform: translateX(2px); }
 
-.itemColors { display: flex; gap: 4px; }
-.colorDot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); }
+.itemColors { display: flex; gap: 4px; align-items: center; }
+.colorDot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); flex-shrink: 0; }
+
+.itemThumb {
+  width: 48px; height: 48px; object-fit: cover;
+  border-radius: var(--radius-sm); flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
 
 .itemInfo { flex: 1; }
 .itemName { font-size: 15px; font-weight: 500; }

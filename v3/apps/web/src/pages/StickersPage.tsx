@@ -2,21 +2,29 @@ import { useState } from 'react';
 import type { Sticker } from '@nagellacke/core';
 import { filterStickers, STICKER_TYPE_OPTIONS, STATUS_OPTIONS, DEFAULT_STICKER } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
+import PhotoField from '../components/PhotoField';
 import styles from './StickersPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
+
+type FormState = {
+  name: string; brand: string; style: string;
+  type: Sticker['type']; colors: string[];
+  status: Sticker['status']; notes: string; rating: number;
+  photo?: string;
+};
 
 export default function StickersPage({ appData }: { appData: AppData }) {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Sticker | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ ...DEFAULT_STICKER });
+  const [form, setForm] = useState<FormState>({ ...DEFAULT_STICKER, photo: undefined });
 
   const visible = filterStickers(appData.data.stickers, search);
 
   const openNew = () => {
     setEditing(null);
-    setForm({ ...DEFAULT_STICKER });
+    setForm({ ...DEFAULT_STICKER, photo: undefined });
     setShowForm(true);
   };
 
@@ -26,6 +34,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
       name: s.name, brand: s.brand ?? '', style: s.style ?? '',
       type: s.type, colors: s.colors ?? ['#ff6699'],
       status: s.status, notes: s.notes ?? '', rating: s.rating ?? 0,
+      photo: s.photo,
     });
     setShowForm(true);
   };
@@ -61,11 +70,16 @@ export default function StickersPage({ appData }: { appData: AppData }) {
       <div className={styles.list}>
         {visible.map((s) => (
           <div key={s.id} className={styles.item} onClick={() => openEdit(s)}>
-            <div className={styles.itemColors}>
-              {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
-                <div key={i} className={styles.colorDot} style={{ background: c }} />
-              ))}
-            </div>
+            {s.photo
+              ? <img src={`/photos/${s.photo}`} alt={s.name} className={styles.itemThumb} />
+              : (
+                <div className={styles.itemColors}>
+                  {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
+                    <div key={i} className={styles.colorDot} style={{ background: c }} />
+                  ))}
+                </div>
+              )
+            }
             <div className={styles.itemInfo}>
               <div className={styles.itemName}>{s.name}</div>
               <div className={styles.itemMeta}>
@@ -100,16 +114,23 @@ export default function StickersPage({ appData }: { appData: AppData }) {
               </label>
               <label className={styles.field}>
                 <span>Typ</span>
-                <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as typeof form.type }))}>
+                <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as FormState['type'] }))}>
                   {STICKER_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
                 </select>
               </label>
               <label className={styles.field}>
                 <span>Status</span>
-                <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as typeof form.status }))}>
+                <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as FormState['status'] }))}>
                   {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </label>
+              <div className={styles.field}>
+                <span>Foto</span>
+                <PhotoField
+                  value={form.photo}
+                  onChange={(filename) => setForm((f) => ({ ...f, photo: filename }))}
+                />
+              </div>
               <label className={styles.field}>
                 <span>Notizen</span>
                 <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
