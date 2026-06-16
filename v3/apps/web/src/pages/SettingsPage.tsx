@@ -27,6 +27,36 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [saved, setSaved] = useState(false);
   const [newCatLabel, setNewCatLabel] = useState('');
 
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [loginError, setLoginError] = useState('');
+
+  const login = async () => {
+    setLoginStatus('loading');
+    setLoginError('');
+    const base = serverUrl.replace(/\/$/, '');
+    try {
+      const res = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass }),
+      });
+      const data = await res.json() as { token?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setLoginError(data.error ?? `Fehler ${res.status}`);
+        setLoginStatus('error');
+        return;
+      }
+      setServerToken(data.token);
+      setLoginPass('');
+      setLoginStatus('idle');
+    } catch (e) {
+      setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setLoginStatus('error');
+    }
+  };
+
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -167,13 +197,41 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         {provider === 'server' && (
           <>
             <label className={styles.field}>
-              <span>Server-URL</span>
-              <input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="http://192.168.1.100:3001" />
+              <span>Server-URL <span className={styles.fieldHint}>(leer = diese Seite)</span></span>
+              <input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://mein-server.de" />
             </label>
-            <label className={styles.field}>
-              <span>JWT-Token</span>
-              <input type="password" value={serverToken} onChange={(e) => setServerToken(e.target.value)} placeholder="Token vom Login" />
-            </label>
+
+            {serverToken ? (
+              <div className={styles.tokenRow}>
+                <span className={styles.tokenOk}>✓ Eingeloggt</span>
+                <button className={styles.logoutBtn} onClick={() => setServerToken('')}>Abmelden</button>
+              </div>
+            ) : (
+              <div className={styles.loginBox}>
+                <label className={styles.field}>
+                  <span>Benutzername</span>
+                  <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
+                </label>
+                <label className={styles.field}>
+                  <span>Passwort</span>
+                  <input
+                    type="password"
+                    value={loginPass}
+                    onChange={(e) => setLoginPass(e.target.value)}
+                    autoComplete="current-password"
+                    onKeyDown={(e) => { if (e.key === 'Enter') void login(); }}
+                  />
+                </label>
+                {loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                <button
+                  className={styles.saveBtn}
+                  onClick={login}
+                  disabled={!loginUser || !loginPass || loginStatus === 'loading'}
+                >
+                  {loginStatus === 'loading' ? 'Anmelden…' : 'Anmelden'}
+                </button>
+              </div>
+            )}
           </>
         )}
 

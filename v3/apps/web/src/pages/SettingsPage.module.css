@@ -57,6 +57,21 @@
   color: var(--md-on-primary); font-size: 22px; display: flex; align-items: center; justify-content: center;
 }
 
+.fieldHint { font-size: 11px; font-weight: 300; opacity: 0.55; }
+
+.loginBox { margin-bottom: 4px; }
+
+.tokenRow {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--md-surface-variant);
+  border-radius: var(--radius-md); margin-bottom: 12px;
+}
+.tokenOk { font-size: 13px; color: rgba(150,255,180,0.85); }
+.logoutBtn {
+  font-size: 12px; color: var(--md-on-surface-variant);
+  text-decoration: underline; cursor: pointer;
+}
+
 .exportBtn, .importBtn {
   flex: 1; min-width: 130px; padding: 13px 16px; border-radius: var(--radius-xl);
   font-size: 14px; font-weight: 600; text-align: center; cursor: pointer;
