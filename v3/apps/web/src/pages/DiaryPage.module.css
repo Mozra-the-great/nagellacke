@@ -25,10 +25,20 @@
 }
 .entry:hover { transform: translateX(2px); }
 
+.entryTop { display: flex; gap: 12px; align-items: flex-start; }
+
+.entryThumb {
+  width: 64px; height: 64px; border-radius: var(--radius-sm);
+  object-fit: cover; flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.entryInfo { flex: 1; min-width: 0; }
+
 .entryDate { font-size: 14px; font-weight: 600; color: var(--md-primary); margin-bottom: 8px; }
 
-.entrySwatches { display: flex; gap: 6px; margin-bottom: 6px; }
-.swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); }
+.entrySwatches { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); flex-shrink: 0; }
 
 .entryNotes { font-size: 13px; color: var(--md-on-surface-variant); }
 
@@ -56,6 +66,18 @@
 .field span { font-size: 13px; font-weight: 500; color: var(--md-on-surface-variant); }
 .field input, .field textarea { padding: 10px 14px; border: 1px solid var(--md-outline-variant); border-radius: var(--radius-md); background: var(--md-surface-variant); color: var(--md-on-surface); font-size: 15px; outline: none; }
 .field input:focus, .field textarea:focus { border-color: var(--md-primary); }
+
+.photoGrid { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.photoSlot { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+
+.photoImg {
+  width: 80px; height: 80px; object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.photoLabel { font-size: 10px; color: var(--md-on-surface-variant); text-align: center; }
 
 .polishPicker { display: flex; flex-wrap: wrap; gap: 8px; }
 .polishChip {
