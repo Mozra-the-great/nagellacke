@@ -8,10 +8,11 @@ export class ServerAdapter implements SyncAdapter {
   private token: string;
 
   constructor(config: SyncConfig) {
-    if (!config.serverUrl || !config.serverToken) {
-      throw new Error('ServerAdapter requires serverUrl and serverToken');
+    if (!config.serverToken) {
+      throw new Error('ServerAdapter requires serverToken');
     }
-    this.baseUrl = config.serverUrl.replace(/\/$/, '');
+    // Empty serverUrl = same-origin (app served from the same server)
+    this.baseUrl = (config.serverUrl ?? '').replace(/\/$/, '');
     this.token = config.serverToken;
   }
 
