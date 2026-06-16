@@ -32,12 +32,27 @@ export interface Polish {
   deletedAt?: number;
 }
 
+export interface PolishRef {
+  name: string;
+  brand?: string;
+  color?: string;
+}
+
+export interface ManicurePhotos {
+  fingerRight?: string | null;
+  fingerLeft?: string | null;
+  thumbRight?: string | null;
+  thumbLeft?: string | null;
+}
+
 export interface Manicure {
   id: string;
   date: string;
-  polishes: string[];
+  polishes?: string[];        // v3 legacy: array of polish names
+  polishRefs?: PolishRef[];   // v2 + v3 preferred: inline color for display
   notes?: string;
-  photos?: string[];
+  photos?: ManicurePhotos;    // keyed by finger slot (v2 format)
+  photo?: string;             // v2 legacy: single photo filename
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;

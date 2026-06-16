@@ -1,47 +1,88 @@
 import { useState } from 'react';
-import type { Manicure } from '@nagellacke/core';
+import type { Manicure, Polish, PolishRef } from '@nagellacke/core';
 import { filterManicures } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
 import styles from './DiaryPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
 
+const PHOTO_SLOTS = [
+  { key: 'fingerRight' as const, label: 'Finger rechts' },
+  { key: 'fingerLeft'  as const, label: 'Finger links'  },
+  { key: 'thumbRight'  as const, label: 'Daumen rechts' },
+  { key: 'thumbLeft'   as const, label: 'Daumen links'  },
+];
+
+function firstPhoto(m: Manicure): string | null {
+  if (m.photo) return m.photo;
+  if (m.photos) return Object.values(m.photos).find((v): v is string => !!v) ?? null;
+  return null;
+}
+
+function resolveSwatches(m: Manicure, allPolishes: Polish[]): string[] {
+  if (m.polishRefs?.length) return m.polishRefs.map((r) => r.color ?? '#888888');
+  if (m.polishes?.length) {
+    return m.polishes.flatMap((name) => {
+      const p = allPolishes.find((ap) => ap.name === name && !ap.deletedAt);
+      return p ? [p.color] : [];
+    });
+  }
+  return [];
+}
+
 export default function DiaryPage({ appData }: { appData: AppData }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Manicure | null>(null);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), polishes: [] as string[], notes: '' });
+  const [form, setForm] = useState<{
+    date: string;
+    polishRefs: PolishRef[];
+    notes: string;
+  }>({
+    date: new Date().toISOString().slice(0, 10),
+    polishRefs: [],
+    notes: '',
+  });
 
   const entries = filterManicures(appData.data.manicures)
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const availablePolishes = appData.data.polishes.filter((p) => !p.deletedAt && p.status !== 'wish');
+  const availablePolishes = appData.data.polishes.filter(
+    (p) => !p.deletedAt && p.status !== 'wish',
+  );
 
   const openNew = () => {
     setEditing(null);
-    setForm({ date: new Date().toISOString().slice(0, 10), polishes: [], notes: '' });
+    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], notes: '' });
     setShowForm(true);
   };
 
   const openEdit = (m: Manicure) => {
     setEditing(m);
-    setForm({ date: m.date, polishes: [...(m.polishes ?? [])], notes: m.notes ?? '' });
+    setForm({
+      date: m.date,
+      polishRefs: [...(m.polishRefs ?? [])],
+      notes: m.notes ?? '',
+    });
     setShowForm(true);
+  };
+
+  const togglePolish = (p: Polish) => {
+    const isSelected = (r: PolishRef) => r.name === p.name && r.brand === p.brand;
+    setForm((f) => ({
+      ...f,
+      polishRefs: f.polishRefs.some(isSelected)
+        ? f.polishRefs.filter((r) => !isSelected(r))
+        : [...f.polishRefs, { name: p.name, brand: p.brand, color: p.color }],
+    }));
   };
 
   const save = () => {
     if (editing) {
-      appData.updateManicure(editing.id, form);
+      appData.updateManicure(editing.id, { ...form });
     } else {
-      appData.addManicure(form);
+      appData.addManicure({ ...form });
     }
     setShowForm(false);
-  };
-
-  const togglePolish = (name: string) => {
-    setForm((f) => ({
-      ...f,
-      polishes: f.polishes.includes(name) ? f.polishes.filter((x) => x !== name) : [...f.polishes, name],
-    }));
   };
 
   return (
@@ -55,16 +96,30 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
       <div className={styles.timeline}>
         {entries.map((m) => {
-          const usedPolishes = appData.data.polishes.filter((p) => (m.polishes ?? []).includes(p.name));
+          const swatches = resolveSwatches(m, appData.data.polishes);
+          const thumb = firstPhoto(m);
           return (
             <div key={m.id} className={styles.entry} onClick={() => openEdit(m)}>
-              <div className={styles.entryDate}>{formatDate(m.date)}</div>
-              <div className={styles.entrySwatches}>
-                {usedPolishes.slice(0, 5).map((p) => (
-                  <div key={p.id} className={styles.swatch} style={{ background: p.color }} title={p.name} />
-                ))}
+              <div className={styles.entryTop}>
+                {thumb && (
+                  <img
+                    src={`/photos/${thumb}`}
+                    alt={`Maniküre ${formatDate(m.date)}`}
+                    className={styles.entryThumb}
+                  />
+                )}
+                <div className={styles.entryInfo}>
+                  <div className={styles.entryDate}>{formatDate(m.date)}</div>
+                  {swatches.length > 0 && (
+                    <div className={styles.entrySwatches}>
+                      {swatches.slice(0, 6).map((color, i) => (
+                        <div key={i} className={styles.swatch} style={{ background: color }} />
+                      ))}
+                    </div>
+                  )}
+                  {m.notes && <div className={styles.entryNotes}>{m.notes}</div>}
+                </div>
               </div>
-              {m.notes && <div className={styles.entryNotes}>{m.notes}</div>}
               <button
                 className={styles.deleteBtn}
                 onClick={(e) => { e.stopPropagation(); appData.deleteManicure(m.id); }}
@@ -84,27 +139,60 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
             <div className={styles.modalBody}>
               <label className={styles.field}>
                 <span>Datum</span>
-                <input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                />
               </label>
+
+              {/* Photos from existing entry (read-only) */}
+              {editing && (editing.photo || (editing.photos && Object.values(editing.photos).some(Boolean))) && (
+                <div className={styles.field}>
+                  <span>Fotos</span>
+                  <div className={styles.photoGrid}>
+                    {editing.photo && (
+                      <div className={styles.photoSlot}>
+                        <img src={`/photos/${editing.photo}`} alt="Foto" className={styles.photoImg} />
+                      </div>
+                    )}
+                    {PHOTO_SLOTS.filter((s) => editing.photos?.[s.key]).map((s) => (
+                      <div key={s.key} className={styles.photoSlot}>
+                        <img src={`/photos/${editing.photos![s.key]}`} alt={s.label} className={styles.photoImg} />
+                        <span className={styles.photoLabel}>{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className={styles.field}>
                 <span>Verwendete Lacke</span>
                 <div className={styles.polishPicker}>
-                  {availablePolishes.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`${styles.polishChip} ${form.polishes.includes(p.name) ? styles.polishChipOn : ''}`}
-                      onClick={() => togglePolish(p.name)}
-                    >
-                      <span className={styles.polishDot} style={{ background: p.color }} />
-                      {p.name}
-                    </button>
-                  ))}
+                  {availablePolishes.map((p) => {
+                    const on = form.polishRefs.some((r) => r.name === p.name && r.brand === p.brand);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${styles.polishChip} ${on ? styles.polishChipOn : ''}`}
+                        onClick={() => togglePolish(p)}
+                      >
+                        <span className={styles.polishDot} style={{ background: p.color }} />
+                        {p.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+
               <label className={styles.field}>
                 <span>Notizen</span>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} />
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={3}
+                />
               </label>
             </div>
             <div className={styles.modalFooter}>
