@@ -24,18 +24,16 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Nagellacke</h1>
-        <button className={styles.addBtn} onClick={() => { setEditing(null); setShowForm(true); }}>+</button>
-      </header>
-
-      <div className={styles.searchRow}>
+      <div className={styles.toolbar}>
         <input
           className={styles.searchInput}
           placeholder="Suchen…"
           value={filter.search}
           onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
         />
+        <button className={styles.addBtn} onClick={() => { setEditing(null); setShowForm(true); }}>
+          + Hinzufügen
+        </button>
       </div>
 
       <div className={styles.filters}>

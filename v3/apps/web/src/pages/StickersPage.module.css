@@ -1,8 +1,8 @@
-.page { padding: 0 0 24px; }
+.page { padding: 0 0 40px; }
 
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 16px 12px;
+  padding: 20px 24px 12px;
 }
 
 .title {
@@ -17,7 +17,7 @@
   box-shadow: 0 2px 8px var(--md-shadow);
 }
 
-.searchRow { padding: 0 16px 8px; }
+.searchRow { padding: 0 24px 8px; }
 
 .searchInput {
   width: 100%; padding: 12px 16px;
@@ -27,9 +27,9 @@
   color: var(--md-on-surface); font-size: 15px; outline: none;
 }
 
-.count { padding: 0 16px 8px; font-size: 13px; color: var(--md-on-surface-variant); }
+.count { padding: 0 24px 8px; font-size: 13px; color: var(--md-on-surface-variant); }
 
-.list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; }
+.list { display: flex; flex-direction: column; gap: 8px; padding: 0 24px; }
 
 .item {
   display: flex; align-items: center; gap: 12px;
