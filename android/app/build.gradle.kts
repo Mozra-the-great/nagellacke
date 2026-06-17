@@ -19,6 +19,8 @@ android {
         versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        manifestPlaceholders["appAuthRedirectScheme"] = "nagellacke"
     }
 
     buildTypes {
