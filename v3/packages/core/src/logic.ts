@@ -68,12 +68,12 @@ export function mergeData(local: AppData, remote: AppData): AppData {
 }
 
 function mergeList<T extends { id: string; updatedAt: number }>(
-  local: T[],
-  remote: T[],
+  local: T[] | null | undefined,
+  remote: T[] | null | undefined,
 ): T[] {
   const map = new Map<string, T>();
-  for (const item of local) map.set(item.id, item);
-  for (const item of remote) {
+  for (const item of (local ?? [])) map.set(item.id, item);
+  for (const item of (remote ?? [])) {
     const existing = map.get(item.id);
     if (!existing || item.updatedAt > existing.updatedAt) {
       map.set(item.id, item);
