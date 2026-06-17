@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -46,8 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -91,18 +94,32 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
                 else -> LazyColumn(Modifier.weight(1f)) {
                     items(state.stickers, key = { it.id }) { sticker ->
                         ListItem(
-                            headlineContent = { Text(sticker.name) },
+                            headlineContent   = { Text(sticker.name) },
                             supportingContent = { Text(listOf(sticker.brand, sticker.type.label).filter { it.isNotBlank() }.joinToString(" · ")) },
-                            leadingContent = {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    sticker.colors.take(3).forEach { hex ->
-                                        val c = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color(0xFFff6699) }
-                                        Box(Modifier.size(18.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbe $hex" })
+                            leadingContent    = {
+                                val photoUrl = state.photoBaseUrl?.let { base ->
+                                    sticker.photo?.let { "$base$it" }
+                                }
+                                if (photoUrl != null) {
+                                    AsyncImage(
+                                        model              = photoUrl,
+                                        contentDescription = sticker.name,
+                                        contentScale       = ContentScale.Crop,
+                                        modifier           = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                    )
+                                } else {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        sticker.colors.take(3).forEach { hex ->
+                                            val c = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color(0xFFff6699) }
+                                            Box(Modifier.size(18.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbe $hex" })
+                                        }
                                     }
                                 }
                             },
-                            trailingContent = if (sticker.rating > 0) ({ Text("★".repeat(sticker.rating), color = Color(0xFFf59e0b)) }) else null,
-                            modifier = Modifier.clickable { editing = sticker; showForm = true },
+                            trailingContent   = if (sticker.rating > 0) ({ Text("★".repeat(sticker.rating), color = Color(0xFFf59e0b)) }) else null,
+                            modifier          = Modifier.clickable { editing = sticker; showForm = true },
                         )
                     }
                 }

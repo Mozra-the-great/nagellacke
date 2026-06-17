@@ -100,6 +100,32 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
 
             HorizontalDivider(Modifier.padding(vertical = 16.dp))
 
+            // Display preferences
+            Text("Darstellung", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text("Lack-Ansicht", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.bottleStyle,
+                    onClick  = { vm.setBottleStyle(true) },
+                    label    = { Text("◎ Flasche") },
+                )
+                FilterChip(
+                    selected = !state.bottleStyle,
+                    onClick  = { vm.setBottleStyle(false) },
+                    label    = { Text("⬤ Farb-Swatch") },
+                )
+            }
+            Text(
+                "Gilt für Lacke ohne Foto-Ansicht.",
+                style    = MaterialTheme.typography.bodySmall,
+                color    = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+
             // Sync
             Text("Synchronisation", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))

@@ -5,6 +5,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.nagellacke.data.sync.SyncProvider
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +34,10 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
+
+    // Reactive config flow so ViewModels can react to server-URL changes without polling.
+    private val _configFlow = MutableStateFlow(getConfig())
+    val configFlow: StateFlow<SyncConfig?> = _configFlow.asStateFlow()
 
     fun getConfig(): SyncConfig? {
         val provider = prefs.getString("provider", null)?.let {
@@ -65,6 +72,7 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
                 putLong("tokenExpiry",    config.tokenExpiry)
             }
         }.apply()
+        _configFlow.value = config
     }
 
     fun saveTokens(provider: SyncProvider, accessToken: String, refreshToken: String, expiry: Long) {
