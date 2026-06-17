@@ -5,6 +5,50 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [3.0.4] – 2026-06-17
+
+### Sicherheit
+- **Auth-Bypass geschlossen**: `requireApiKey` / `requireJwt` / `requireApiKeyOrJwt` fehlten `return` vor `reply.send()` — Fastify-Lifecycle konnte nach 401 weiterlaufen (K-2)
+- **Rate-Limiting repariert**: `request.routerPath` war in Fastify 4 `undefined` → alle Routes teilten ein Bucket (H-1)
+- **Foto-Upload: Body-Limit auf 15 MB** angehoben; Fastify-Default (1 MB) hat Handy-Fotos blockiert (H-5)
+- **CORS-Warning** beim Start wenn `ALLOWED_ORIGIN` nicht gesetzt; `install.sh` enthält nun Platzhalter mit Hinweis (H-4)
+
+### Behoben
+- **React-Hook-Crash**: `useMemo` in NailBottle stand nach Early-Return → "Rendered fewer hooks" beim Foto-Toggle (K-1)
+- **Datenverlust**: v2-Maniküreeinträge mit `polishes: string[]` hatten beim Bearbeiten leere Lackauswahl (H-3)
+- **Sync-Push**: Fehlgeschlagener Push meldete trotzdem `success: true` (H-2)
+- **Orphan-Fotos**: Gelöschte Lacke/Sticker/Maniküren räumen ihre Fotos jetzt serverseitig auf (M-4)
+- **hexToHue**: Kurze Hex-Codes (`#fff`), leere Strings und `rgba()`-Werte crashten die Farbsortierung (M-3)
+- **SVG-Gradient-IDs**: `Math.random()` erzeugte bei jedem Render neue IDs → Gradients in StrictMode instabil (M-1)
+- **git pull --autostash** in `install.sh` verhindert Fehler bei lokalen Änderungen (L-11)
+- Korrupte `data.json`/`users.json` werden jetzt geloggt statt still ignoriert (L-12)
+
+### Hinzugefügt
+- **Undo-Snackbar**: Löschen von Lacken, Stickern und Tagebucheinträgen ist 3 Sekunden lang rückgängig machbar (K-4)
+- **Leere-Zustände**: Kollektion, Sticker, Tagebuch zeigen freundliche Meldung bei 0 Einträgen (H-8)
+- **Sync-Fehler-Indikator**: Roter Punkt auf „◈ Mehr"-Button wenn Auto-Sync fehlschlägt (H-9)
+- **Such-Clear-Button**: × in Kollektion- und Sticker-Suche (H-10)
+
+### Barrierefreiheit / UX
+- Alle drei Modals: `role="dialog"`, `aria-modal`, `aria-labelledby`, Escape-Taste, Focus-Trap (K-5)
+- Modal-Schließ-Buttons: `aria-label="Schließen"` (K-6)
+- Delete-Buttons auf Touch-Screens sichtbar (`@media hover:none`, Opacity 55 %) (K-3)
+- Karten, Tagebucheinträge, Sticker-Items per Tastatur erreichbar (`role="button"`, `tabIndex`, `onKeyDown`) (M-2)
+- Nav-Pills auf Mobilgeräten ≥ 44 px Höhe; kein Overflow auf 320-px-Screens (H-6)
+- WCAG-AA-Kontrast: `appSubtitle`, `navBtn`, Placeholder, `.count`, `.brand` angehoben (H-7)
+- Filter-Selects und Such-Inputs mit `aria-label` (H-10, H-11)
+- Stern-Bewertung: `role="group"`, `aria-label`, `aria-pressed` (M-8)
+- Nur noch ein `<h1>` pro Seite (App-Titel); Seitentitel auf `<h2>` geändert (M-6)
+- Import-Button als echtes `<button>` statt `<label>` (M-11)
+- `confirm()` / `alert()` in Settings durch Inline-Dialoge ersetzt (M-5)
+- `aria-required` + Hilfstext für Nextcloud-App-Token (M-12)
+- `aria-live`-Region für Login-Status in Settings (M-9)
+- Focus-visible-Ringe auf Nav-Buttons und Formular-Inputs (L-2, L-3)
+- `background-attachment: fixed` entfernt (iOS Safari Repaints) (L-1)
+- Alle Schließen-Icons auf `✕` (U+2715) vereinheitlicht (L-10)
+
+---
+
 ## [3.0.1] – 2026-06-03
 
 ### Geändert
