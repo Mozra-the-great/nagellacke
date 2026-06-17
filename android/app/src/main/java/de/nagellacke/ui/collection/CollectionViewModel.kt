@@ -3,7 +3,11 @@ package de.nagellacke.ui.collection
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.nagellacke.data.repo.DisplayPrefsStore
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.SyncConfig
+import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.SyncProvider
 import de.nagellacke.domain.filterPolishes
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FilterState
@@ -26,32 +30,54 @@ data class CollectionUiState(
     val filter: FilterState = FilterState(),
     val loading: Boolean = true,
     val error: String? = null,
+    /** true = show nail-bottle SVG, false = plain colour swatch */
+    val bottleStyle: Boolean = true,
+    /** Base URL prefix for photo filenames, e.g. "https://server.com/photos/".
+     *  null when no Server provider is configured (Nextcloud, local-only, etc.). */
+    val photoBaseUrl: String? = null,
 )
 
 @HiltViewModel
 class CollectionViewModel @Inject constructor(
     private val repo: NagellackeRepository,
+    private val displayPrefsStore: DisplayPrefsStore,
+    private val configStore: SyncConfigStore,
 ) : ViewModel() {
     private val _filter = MutableStateFlow(FilterState())
 
-    val uiState = combine(repo.observeData(), _filter) { data, filter ->
+    val uiState = combine(
+        repo.observeData(),
+        _filter,
+        displayPrefsStore.bottleStyle,
+        configStore.configFlow,
+    ) { data, filter, bottleStyle, cfg ->
         val visible = sortPolishes(filterPolishes(data.polishes, filter), filter.sort)
         CollectionUiState(
-            polishes   = visible,
-            categories = data.customCats.filter { it.deletedAt == null },
-            filter     = filter,
-            loading    = false,
+            polishes     = visible,
+            categories   = data.customCats.filter { it.deletedAt == null },
+            filter       = filter,
+            loading      = false,
+            bottleStyle  = bottleStyle,
+            photoBaseUrl = cfg.photoBaseUrl(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionUiState())
 
-    fun setSearch(q: String)          = _filter.update { it.copy(search = q) }
-    fun setStatus(s: PolishStatus?)   = _filter.update { it.copy(status = s) }
-    fun setFinish(f: FinishType?)     = _filter.update { it.copy(finish = f) }
-    fun setCategory(c: String)        = _filter.update { it.copy(category = c) }
-    fun setSort(s: SortOption)        = _filter.update { it.copy(sort = s) }
+    fun setSearch(q: String)         = _filter.update { it.copy(search = q) }
+    fun setStatus(s: PolishStatus?)  = _filter.update { it.copy(status = s) }
+    fun setFinish(f: FinishType?)    = _filter.update { it.copy(finish = f) }
+    fun setCategory(c: String)       = _filter.update { it.copy(category = c) }
+    fun setSort(s: SortOption)       = _filter.update { it.copy(sort = s) }
 
-    fun addPolish(p: Polish)          = viewModelScope.launch { repo.addPolish(p) }
-    fun updatePolish(p: Polish)       = viewModelScope.launch { repo.updatePolish(p) }
-    fun deletePolish(id: String)      = viewModelScope.launch { repo.deletePolish(id) }
-    fun addCategory(label: String)    = viewModelScope.launch { repo.addCategory(label) }
+    fun addPolish(p: Polish)         = viewModelScope.launch { repo.addPolish(p) }
+    fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
+    fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }
+    fun addCategory(label: String)   = viewModelScope.launch { repo.addCategory(label) }
+}
+
+/** Returns the base URL for photo filenames, or null if photos cannot be loaded. */
+internal fun SyncConfig?.photoBaseUrl(): String? {
+    if (this == null) return null
+    if (provider != SyncProvider.Server) return null
+    if (serverUrl.isBlank()) return null
+    return "${serverUrl.trimEnd('/')}/photos/"
 }

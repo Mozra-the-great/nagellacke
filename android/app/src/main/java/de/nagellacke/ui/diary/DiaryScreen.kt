@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -47,8 +48,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -85,14 +88,28 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                 else -> LazyColumn(Modifier.weight(1f)) {
                     items(state.entries, key = { it.id }) { entry ->
                         val polishes = state.polishes.filter { entry.polishIds.contains(it.id) }
+                        val photoUrl = state.photoBaseUrl?.let { base ->
+                            entry.photo?.let { "$base$it" }
+                        }
                         ListItem(
-                            headlineContent = { Text(formatDate(entry.date), color = MaterialTheme.colorScheme.primary) },
+                            headlineContent   = { Text(formatDate(entry.date), color = MaterialTheme.colorScheme.primary) },
                             supportingContent = { Text(entry.notes.ifBlank { polishes.joinToString(", ") { it.name }.take(60) }) },
-                            leadingContent = {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    polishes.take(4).forEach { p ->
-                                        val c = runCatching { Color(android.graphics.Color.parseColor(p.color)) }.getOrElse { Color(0xFFff6699) }
-                                        Box(Modifier.size(20.dp).clip(CircleShape).background(c).semantics { contentDescription = p.name })
+                            leadingContent    = {
+                                if (photoUrl != null) {
+                                    AsyncImage(
+                                        model              = photoUrl,
+                                        contentDescription = "Maniküre vom ${formatDate(entry.date)}",
+                                        contentScale       = ContentScale.Crop,
+                                        modifier           = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp)),
+                                    )
+                                } else {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        polishes.take(4).forEach { p ->
+                                            val c = runCatching { Color(android.graphics.Color.parseColor(p.color)) }.getOrElse { Color(0xFFff6699) }
+                                            Box(Modifier.size(20.dp).clip(CircleShape).background(c).semantics { contentDescription = p.name })
+                                        }
                                     }
                                 }
                             },
