@@ -36,7 +36,7 @@
 .appSubtitle {
   font-family: var(--font-display);
   font-style: italic;
-  color: rgba(255,255,255,0.52);
+  color: rgba(255,255,255,0.70);
   font-size: 15px;
   margin-top: 7px;
   letter-spacing: 2px;
@@ -60,8 +60,7 @@
   border-radius: 20px;
   border: 1px solid rgba(255,255,255,0.18);
   background: transparent;
-  color: rgba(255,255,255,0.68);
-  opacity: 0.6;
+  color: rgba(255,255,255,0.70);
   transition: all 0.2s;
 }
 
@@ -69,7 +68,21 @@
   background: rgba(255,255,255,0.1);
   border-color: rgba(255,255,255,0.4);
   color: white;
-  opacity: 1;
+}
+
+.navBtnSettings {
+  position: relative;
+}
+
+.syncErrorDot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  display: block;
 }
 
 .main {
@@ -77,11 +90,13 @@
 }
 
 @media (max-width: 600px) {
-  .header {
-    padding: 0 16px;
-  }
+  .header { padding: 0 12px; }
+  .titleArea { padding: 12px 0 6px; }
+  .appTitle { font-size: clamp(24px, 6vw, 34px); }
+  .appSubtitle { display: none; }
   .navBtn {
-    padding: 5px 9px;
+    padding: 8px 10px;
+    min-height: 44px;
     font-size: 10px;
     letter-spacing: 1px;
   }

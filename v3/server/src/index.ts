@@ -14,6 +14,10 @@ import { getData, setData, getUser, getUserCount, createUser, PHOTOS_DIR, DATA_D
 
 const PORT         = Number(process.env.PORT ?? 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
+
+if (ALLOWED_ORIGIN === '*') {
+  console.warn('[WARN] ALLOWED_ORIGIN is not set — CORS is open to all origins');
+}
 const SERVICE_NAME = process.env.SERVICE_NAME ?? 'nagellacke-v3';
 const APP_ROOT     = path.resolve(process.cwd(), '..', '..');  // /opt/nagellacke
 
@@ -51,7 +55,7 @@ const JWT_SECRET = loadOrCreateSecret();
 const rateLimitMap = new Map<string, number[]>();
 function rateLimit(limit: number, windowMs: number) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const key = `${request.routerPath}:${request.ip}`;
+    const key = `${request.routeOptions?.url ?? request.url}:${request.ip}`;
     const now = Date.now();
     const hits = (rateLimitMap.get(key) ?? []).filter(t => now - t < windowMs);
     if (hits.length >= limit) {
@@ -146,7 +150,7 @@ async function main() {
   // ── Photo endpoints ────────────────────────────────────────────────────────────
 
   // POST /api/photos — Foto hochladen (base64 body)
-  app.post('/api/photos', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
+  app.post('/api/photos', { bodyLimit: 15 * 1024 * 1024, preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
     const buf = Buffer.from(b64, 'base64');

@@ -109,6 +109,9 @@ Restart=always
 RestartSec=5
 Environment=PORT=${PORT}
 Environment=SERVICE_NAME=${SERVICE_NAME}
+# IMPORTANT: Replace the placeholder below with the actual domain of this server.
+# Example: Environment=ALLOWED_ORIGIN=https://nails.example.com
+Environment=ALLOWED_ORIGIN=https://your-domain.example
 # Daten: ${INSTALL_DIR}/v3/server/data/
 
 [Install]

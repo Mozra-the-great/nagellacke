@@ -35,11 +35,12 @@ export class ServerAdapter implements SyncAdapter {
       const merged = mergeData(local, remote);
 
       // Push merged result back
-      await fetch(`${this.baseUrl}/api/sync/push`, {
+      const pushRes = await fetch(`${this.baseUrl}/api/sync/push`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({ data: merged }),
       });
+      if (!pushRes.ok) throw new Error(`Push failed: ${pushRes.status}`);
 
       return { success: true, lastSyncAt: Date.now(), merged };
     } catch (err) {
