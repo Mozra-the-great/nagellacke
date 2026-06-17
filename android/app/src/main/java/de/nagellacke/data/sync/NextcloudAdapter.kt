@@ -4,6 +4,7 @@ import android.util.Base64
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
