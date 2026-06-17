@@ -5,6 +5,7 @@ import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.domain.model.StickerType
+import java.util.UUID
 
 val FINISH_OPTIONS = FinishType.entries
 val STATUS_OPTIONS = PolishStatus.entries
@@ -47,4 +48,4 @@ fun defaultSticker(now: Long): Sticker = Sticker(
     createdAt = now, updatedAt = now,
 )
 
-fun generateId(): String = "${System.currentTimeMillis()}-${(Math.random() * 1_000_000).toLong()}"
+fun generateId(): String = UUID.randomUUID().toString()

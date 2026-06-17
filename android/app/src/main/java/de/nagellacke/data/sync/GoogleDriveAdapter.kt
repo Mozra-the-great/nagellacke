@@ -11,6 +11,7 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.UUID
 
 @Serializable data class DriveFileList(val files: List<DriveFile>)
 @Serializable data class DriveFile(val id: String, val name: String = "")
@@ -96,7 +97,7 @@ class GoogleDriveAdapter(private val config: SyncConfig) : SyncAdapter {
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         val folderId = ensurePhotoFolder()
-        val filename = "${System.currentTimeMillis()}-${(Math.random() * 1_000_000).toLong()}.jpg"
+        val filename = "${UUID.randomUUID()}.jpg"
         val meta = """{"name":"$filename","parents":["$folderId"]}"""
         val multipart = MultipartBody.Builder("boundary")
             .setType(MultipartBody.FORM)

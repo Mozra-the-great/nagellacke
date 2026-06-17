@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
+import java.util.UUID
 
 class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
     override val provider = SyncProvider.Nextcloud
@@ -64,7 +65,7 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         ensureDir("nagellacke/photos")
-        val filename = "${System.currentTimeMillis()}-${(Math.random() * 1_000_000).toLong()}.jpg"
+        val filename = "${UUID.randomUUID()}.jpg"
         val url = "$davBase/nagellacke/photos/$filename"
         client.newCall(
             Request.Builder().url(url).put(data.toRequestBody(mimeType.toMediaType()))
