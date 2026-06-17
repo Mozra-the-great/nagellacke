@@ -19,12 +19,25 @@
 
 .searchRow { padding: 0 24px 8px; }
 
+.searchWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .searchInput {
   width: 100%; padding: 12px 16px;
   border: 1px solid var(--md-outline-variant);
   border-radius: var(--radius-xl);
   background: var(--md-surface-variant);
   color: var(--md-on-surface); font-size: 15px; outline: none;
+}
+
+.clearSearch {
+  position: absolute;
+  right: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 16px;
 }
 
 .count { padding: 0 24px 8px; font-size: 13px; color: var(--md-on-surface-variant); }
@@ -69,6 +82,15 @@
 
 @media (hover: none) {
   .deleteBtn { opacity: 0.55; }
+}
+
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: rgba(255, 255, 255, 0.50);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 20px;
 }
 
 /* Modal shared styles */

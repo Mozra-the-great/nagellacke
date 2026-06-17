@@ -66,9 +66,15 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
   const openEdit = (m: Manicure) => {
     setEditing(m);
+    const resolvedRefs: PolishRef[] = m.polishRefs?.length
+      ? m.polishRefs
+      : (m.polishes ?? []).flatMap((name) => {
+          const p = appData.data.polishes.find((ap) => ap.name === name && !ap.deletedAt);
+          return p ? [{ name: p.name, brand: p.brand, color: p.color }] : [];
+        });
     setForm({
       date: m.date,
-      polishRefs: [...(m.polishRefs ?? [])],
+      polishRefs: resolvedRefs,
       notes: m.notes ?? '',
       photos: { ...(m.photos ?? {}) },
     });
@@ -104,6 +110,9 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
       <div className={styles.count}>{entries.length} Einträge</div>
 
       <div className={styles.timeline}>
+        {entries.length === 0 && (
+          <div className={styles.empty}>Noch keine Einträge — starte dein Maniküre-Tagebuch!</div>
+        )}
         {entries.map((m) => {
           const swatches = resolveSwatches(m, appData.data.polishes);
           const thumb = firstPhoto(m);

@@ -40,9 +40,16 @@ export default function App() {
           {NAV_ITEMS.map(({ id, label }) => (
             <button
               key={id}
-              className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''}`}
+              className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''} ${id === 'settings' ? styles.navBtnSettings : ''}`}
               onClick={() => setTab(id)}
             >
+              {id === 'settings' && appData.syncError && (
+                <span
+                  className={styles.syncErrorDot}
+                  title={`Sync-Fehler: ${appData.syncError}`}
+                  aria-label="Sync-Fehler"
+                />
+              )}
               {label}
             </button>
           ))}

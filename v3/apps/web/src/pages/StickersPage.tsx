@@ -62,17 +62,34 @@ export default function StickersPage({ appData }: { appData: AppData }) {
       </header>
 
       <div className={styles.searchRow}>
-        <input
-          className={styles.searchInput}
-          placeholder="Sticker suchen…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className={styles.searchWrapper}>
+          <input
+            aria-label="Sticker suchen"
+            className={styles.searchInput}
+            placeholder="Sticker suchen…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              className={styles.clearSearch}
+              aria-label="Suche leeren"
+              onClick={() => setSearch('')}
+            >✕</button>
+          )}
+        </div>
       </div>
 
       <div className={styles.count}>{visible.length} Sticker</div>
 
       <div className={styles.list}>
+        {visible.length === 0 && (
+          <div className={styles.empty}>
+            {search
+              ? 'Keine Sticker gefunden — Suche anpassen.'
+              : 'Noch keine Sticker — füge deinen ersten hinzu!'}
+          </div>
+        )}
         {visible.map((s) => (
           <div key={s.id} className={styles.item} onClick={() => openEdit(s)}>
             {s.photo

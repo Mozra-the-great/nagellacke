@@ -27,31 +27,41 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
   return (
     <div className={styles.page}>
       <div className={styles.toolbar}>
-        <input
-          className={styles.searchInput}
-          placeholder="Suchen…"
-          value={filter.search}
-          onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-        />
+        <div className={styles.searchWrapper}>
+          <input
+            aria-label="Lacke suchen"
+            className={styles.searchInput}
+            placeholder="Suchen…"
+            value={filter.search}
+            onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
+          />
+          {filter.search && (
+            <button
+              className={styles.clearSearch}
+              aria-label="Suche leeren"
+              onClick={() => setFilter((f) => ({ ...f, search: '' }))}
+            >✕</button>
+          )}
+        </div>
         <button className={styles.addBtn} onClick={() => { setEditing(null); setShowForm(true); }}>
           + Hinzufügen
         </button>
       </div>
 
       <div className={styles.filters}>
-        <select value={filter.sort} onChange={(e) => setFilter((f) => ({ ...f, sort: e.target.value as FilterState['sort'] }))}>
+        <select aria-label="Sortieren nach" value={filter.sort} onChange={(e) => setFilter((f) => ({ ...f, sort: e.target.value as FilterState['sort'] }))}>
           {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value as FilterState['status'] }))}>
+        <select aria-label="Status filtern" value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value as FilterState['status'] }))}>
           <option value="">Alle Status</option>
           {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={filter.finish} onChange={(e) => setFilter((f) => ({ ...f, finish: e.target.value as FilterState['finish'] }))}>
+        <select aria-label="Oberfläche filtern" value={filter.finish} onChange={(e) => setFilter((f) => ({ ...f, finish: e.target.value as FilterState['finish'] }))}>
           <option value="">Alle Finishes</option>
           {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         {activeCategories.length > 0 && (
-          <select value={filter.category} onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}>
+          <select aria-label="Kategorie filtern" value={filter.category} onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}>
             <option value="">Alle Kategorien</option>
             {activeCategories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
@@ -61,6 +71,13 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
       <div className={styles.count}>{visible.length} Lacke</div>
 
       <div className={styles.grid}>
+        {visible.length === 0 && (
+          <div className={styles.empty}>
+            {filter.search || filter.finish || filter.status || filter.category
+              ? 'Keine Lacke gefunden — Filter anpassen.'
+              : 'Noch keine Lacke — füge deinen ersten Lack hinzu!'}
+          </div>
+        )}
         {visible.map((p) => (
           <PolishCard
             key={p.id}
