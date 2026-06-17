@@ -30,7 +30,7 @@ export default function PolishCard({
         />
       </div>
       <div className={styles.info}>
-        <div className={styles.name}>{polish.name}</div>
+        <div className={styles.name} title={polish.name}>{polish.name}</div>
         {polish.brand && <div className={styles.brand}>{polish.brand}</div>}
         {polish.rating ? <div className={styles.rating}>{'★'.repeat(polish.rating)}</div> : null}
       </div>
@@ -38,7 +38,7 @@ export default function PolishCard({
         className={styles.deleteBtn}
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
         aria-label="Löschen"
-      >×</button>
+      >✕</button>
     </div>
   );
 }

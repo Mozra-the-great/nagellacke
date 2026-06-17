@@ -52,6 +52,9 @@
 .field input:focus, .field select:focus, .field textarea:focus {
   border-color: var(--md-primary);
 }
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
+  box-shadow: 0 0 0 2px var(--md-primary);
+}
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 

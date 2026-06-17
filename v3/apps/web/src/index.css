@@ -26,7 +26,6 @@
 
 body {
   background: linear-gradient(135deg, #0a080f 0%, #12091a 50%, #080c18 100%);
-  background-attachment: fixed;
   color: var(--md-on-surface);
   min-height: 100dvh;
 }
