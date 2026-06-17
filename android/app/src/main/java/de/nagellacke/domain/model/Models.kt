@@ -53,48 +53,48 @@ enum class SortOption(val label: String) {
 @Serializable
 data class Polish(
     val id: String,
-    val name: String,
-    val brand: String,
-    val num: String,
-    val color: String,
-    val finish: FinishType,
-    val status: PolishStatus,
+    val name: String = "",
+    val brand: String = "",
+    val num: String = "",
+    val color: String = "#ff6699",
+    val finish: FinishType = FinishType.Classic,
+    val status: PolishStatus = PolishStatus.Ok,
     val count: Int = 1,
     val categories: List<String> = emptyList(),
     val notes: String = "",
     val rating: Int = 0,
     val photo: String? = null,
-    val createdAt: Long,
-    val updatedAt: Long,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
     val deletedAt: Long? = null,
 )
 
 @Serializable
 data class Sticker(
     val id: String,
-    val name: String,
+    val name: String = "",
     val brand: String = "",
     val style: String = "",
-    val type: StickerType,
+    val type: StickerType = StickerType.Full,
     val colors: List<String> = listOf("#ff6699"),
-    val status: PolishStatus,
+    val status: PolishStatus = PolishStatus.Ok,
     val rating: Int = 0,
     val notes: String = "",
     val photo: String? = null,
-    val createdAt: Long,
-    val updatedAt: Long,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
     val deletedAt: Long? = null,
 )
 
 @Serializable
 data class Manicure(
     val id: String,
-    val date: String,
-    val polishIds: List<String>,
+    val date: String = "",
+    val polishIds: List<String> = emptyList(),
     val notes: String = "",
     val photos: List<String> = emptyList(),
-    val createdAt: Long,
-    val updatedAt: Long,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
     val deletedAt: Long? = null,
 )
 
