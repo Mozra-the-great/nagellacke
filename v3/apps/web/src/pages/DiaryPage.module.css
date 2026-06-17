@@ -42,6 +42,21 @@
 
 .entryNotes { font-size: 13px; color: var(--md-on-surface-variant); }
 
+.entryStickerRow { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+
+.entryStickerChip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--md-on-surface-variant);
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  padding: 2px 7px; border-radius: 10px;
+}
+
+.stickerDot {
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0;
+}
+
 .deleteBtn {
   position: absolute; top: 12px; right: 12px;
   font-size: 18px; color: var(--md-on-surface-variant); opacity: 0;

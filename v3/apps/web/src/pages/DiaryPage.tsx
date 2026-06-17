@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import type { Manicure, Polish, PolishRef, ManicurePhotos } from '@nagellacke/core';
+import type { Manicure, Polish, PolishRef, StickerRef, Sticker, ManicurePhotos } from '@nagellacke/core';
 import { filterManicures } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
 import PhotoField from '../components/PhotoField';
@@ -45,11 +45,13 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
   const [form, setForm] = useState<{
     date: string;
     polishRefs: PolishRef[];
+    stickerRefs: StickerRef[];
     notes: string;
     photos: ManicurePhotos;
   }>({
     date: new Date().toISOString().slice(0, 10),
     polishRefs: [],
+    stickerRefs: [],
     notes: '',
     photos: {},
   });
@@ -61,9 +63,11 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
     (p) => !p.deletedAt && p.status !== 'wish',
   );
 
+  const availableStickers = appData.data.stickers.filter((s) => !s.deletedAt);
+
   const openNew = () => {
     setEditing(null);
-    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], notes: '', photos: {} });
+    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], stickerRefs: [], notes: '', photos: {} });
     setShowForm(true);
   };
 
@@ -75,9 +79,19 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
           const p = appData.data.polishes.find((ap) => ap.name === name && !ap.deletedAt);
           return p ? [{ name: p.name, brand: p.brand, color: p.color }] : [];
         });
+    // Resolve legacy stickers (stored as names or ids) to StickerRef
+    const resolvedStickerRefs: StickerRef[] = m.stickerRefs?.length
+      ? m.stickerRefs
+      : (m.stickers ?? []).flatMap((nameOrId) => {
+          const s = appData.data.stickers.find(
+            (st) => (st.id === nameOrId || st.name === nameOrId) && !st.deletedAt,
+          );
+          return s ? [{ id: s.id, name: s.name, colors: s.colors }] : [];
+        });
     setForm({
       date: m.date,
       polishRefs: resolvedRefs,
+      stickerRefs: resolvedStickerRefs,
       notes: m.notes ?? '',
       photos: { ...(m.photos ?? {}) },
     });
@@ -91,6 +105,15 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
       polishRefs: f.polishRefs.some(isSelected)
         ? f.polishRefs.filter((r) => !isSelected(r))
         : [...f.polishRefs, { name: p.name, brand: p.brand, color: p.color }],
+    }));
+  };
+
+  const toggleSticker = (s: Sticker) => {
+    setForm((f) => ({
+      ...f,
+      stickerRefs: f.stickerRefs.some((r) => r.id === s.id)
+        ? f.stickerRefs.filter((r) => r.id !== s.id)
+        : [...f.stickerRefs, { id: s.id, name: s.name, colors: s.colors }],
     }));
   };
 
@@ -151,6 +174,16 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                       ))}
                     </div>
                   )}
+                  {(m.stickerRefs?.length ?? 0) > 0 && (
+                    <div className={styles.entryStickerRow}>
+                      {m.stickerRefs!.map((sr) => (
+                        <span key={sr.id} className={styles.entryStickerChip}>
+                          {sr.colors?.[0] && <span className={styles.stickerDot} style={{ background: sr.colors[0] }} />}
+                          {sr.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {m.notes && <div className={styles.entryNotes}>{m.notes}</div>}
                 </div>
               </div>
@@ -208,6 +241,19 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                         <div key={i} className={styles.polishChip}>
                           <span className={styles.polishDot} style={{ background: ref.color ?? '#888' }} />
                           {ref.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(viewing.stickerRefs?.length ?? 0) > 0 && (
+                  <div className={styles.field}>
+                    <span>Sticker</span>
+                    <div className={styles.polishPicker}>
+                      {viewing.stickerRefs!.map((sr) => (
+                        <div key={sr.id} className={styles.polishChip}>
+                          {sr.colors?.[0] && <span className={styles.polishDot} style={{ background: sr.colors[0] }} />}
+                          {sr.name}
                         </div>
                       ))}
                     </div>
@@ -295,6 +341,28 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                   })}
                 </div>
               </div>
+
+              {availableStickers.length > 0 && (
+                <div className={styles.field}>
+                  <span>Verwendete Sticker</span>
+                  <div className={styles.polishPicker}>
+                    {availableStickers.map((s) => {
+                      const on = form.stickerRefs.some((r) => r.id === s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`${styles.polishChip} ${on ? styles.polishChipOn : ''}`}
+                          onClick={() => toggleSticker(s)}
+                        >
+                          {s.colors?.[0] && <span className={styles.polishDot} style={{ background: s.colors[0] }} />}
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <label className={styles.field}>
                 <span>Notizen</span>

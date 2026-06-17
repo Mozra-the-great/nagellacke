@@ -38,6 +38,12 @@ export interface PolishRef {
   color?: string;
 }
 
+export interface StickerRef {
+  id: string;
+  name: string;
+  colors?: string[];
+}
+
 export interface ManicurePhotos {
   fingerRight?: string | null;
   fingerLeft?: string | null;
@@ -50,6 +56,8 @@ export interface Manicure {
   date: string;
   polishes?: string[];        // v3 legacy: array of polish names
   polishRefs?: PolishRef[];   // v2 + v3 preferred: inline color for display
+  stickers?: string[];        // legacy: array of sticker names or ids
+  stickerRefs?: StickerRef[]; // preferred: inline sticker data
   notes?: string;
   photos?: ManicurePhotos;    // keyed by finger slot (v2 format)
   photo?: string;             // v2 legacy: single photo filename
