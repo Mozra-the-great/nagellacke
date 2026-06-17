@@ -15,17 +15,9 @@ import javax.inject.Singleton
 class PhotoRepository @Inject constructor(@ApplicationContext private val context: Context) {
     private val dir: File get() = File(context.filesDir, "photos").also { it.mkdirs() }
 
-    /**
-     * Copies a picked photo URI into internal storage, compressing to JPEG at 80% quality.
-     * Returns the relative filename (stable path) to store in the database (H1).
-     */
     suspend fun importPhoto(uri: Uri): String {
         val filename = "photo_${UUID.randomUUID()}.jpg"
         val target = File(dir, filename)
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeStream(input, null, opts)
-        }
         context.contentResolver.openInputStream(uri)?.use { input ->
             val opts = BitmapFactory.Options().apply {
                 inSampleSize = calculateSampleSize(context, uri, 1024, 1024)

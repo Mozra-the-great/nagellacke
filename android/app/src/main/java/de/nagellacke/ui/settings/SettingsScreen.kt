@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import de.nagellacke.data.sync.SyncProvider
 import kotlinx.coroutines.launch
+import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationResponse
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,15 +69,19 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     var ncPass by remember { mutableStateOf(state.syncConfig?.nextcloudPassword ?: "") }
     var showLogin by remember { mutableStateOf(false) }
     var loginMode by remember { mutableStateOf("login") }
+    var oauthError by remember { mutableStateOf<String?>(null) }
 
     // OAuth launchers
     val googleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val resp = AuthorizationResponse.fromIntent(result.data ?: return@rememberLauncherForActivityResult) ?: return@rememberLauncherForActivityResult
-        scope.launch {
-            runCatching {
-                val tokenResp = net.openid.appauth.AuthorizationService(context).performTokenRequest(resp.createTokenExchangeRequest()) { token, _ ->
-                    if (token != null) vm.saveOAuthConfig(SyncProvider.GoogleDrive, token.accessToken ?: "", token.refreshToken ?: "", token.accessTokenExpirationTime ?: 0L)
+        net.openid.appauth.AuthorizationService(context).performTokenRequest(resp.createTokenExchangeRequest()) { token, ex ->
+            when {
+                token != null -> {
+                    vm.saveOAuthConfig(SyncProvider.GoogleDrive, token.accessToken ?: "", token.refreshToken ?: "", token.accessTokenExpirationTime ?: 0L)
+                    oauthError = null
                 }
+                ex != null -> oauthError = "Google-Anmeldung fehlgeschlagen: ${ex.errorDescription ?: ex.error ?: "Unbekannter Fehler"}"
+                else -> oauthError = "Google-Anmeldung fehlgeschlagen"
             }
         }
     }
@@ -145,7 +150,13 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                 SyncProvider.GoogleDrive -> {
                     Text("Google Drive Zugriff via OAuth2", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
+                    if (oauthError != null) {
+                        Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            Text("⚠ $oauthError", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     Button(onClick = {
+                        oauthError = null
                         googleLauncher.launch(buildAuthIntent(context, OAuthEndpoints.Google, OAuthClientIds.Google, listOf("https://www.googleapis.com/auth/drive.file")))
                     }, modifier = Modifier.fillMaxWidth()) { Text("Mit Google anmelden") }
                 }

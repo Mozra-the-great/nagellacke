@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.UUID
 
 class DropboxAdapter(private val config: SyncConfig) : SyncAdapter {
     override val provider = SyncProvider.Dropbox
@@ -61,7 +62,7 @@ class DropboxAdapter(private val config: SyncConfig) : SyncAdapter {
     }.getOrElse { e -> SyncResult(success = false, merged = local, error = e.message) }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
-        val filename = "${System.currentTimeMillis()}-${(Math.random() * 1_000_000).toLong()}.jpg"
+        val filename = "${UUID.randomUUID()}.jpg"
         val path = "/nagellacke/photos/$filename"
         val arg = """{"path":"$path","mode":"add"}"""
         client.newCall(
