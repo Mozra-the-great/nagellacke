@@ -17,7 +17,10 @@ const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stick
 export function getData(): AppData {
   try {
     if (!fs.existsSync(DATA_FILE)) return EMPTY_DATA;
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as AppData;
+    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as AppData;
+    // Ensure count is at least 1 (migration for entries created before the field existed)
+    data.polishes = data.polishes.map((p) => p.count == null ? { ...p, count: 1 } : p);
+    return data;
   } catch (e) {
     console.error('data.json corrupt — returning empty:', e);
     return EMPTY_DATA;

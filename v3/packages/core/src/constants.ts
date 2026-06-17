@@ -19,7 +19,7 @@ export const FINISH_OPTIONS: { value: FinishType; label: string; icon: string }[
 ];
 
 export const SHIMMER_FINISHES = new Set<FinishType>([
-  'Shimmer', 'Glitter', 'Metallic', 'Chrome', 'Holographic', 'Duochrome',
+  'Shimmer', 'Glitter', 'Metallic', 'Chrome', 'Holographic', 'Duochrome', 'Magnetic',
 ]);
 
 export const STATUS_OPTIONS: { value: PolishStatus; label: string }[] = [

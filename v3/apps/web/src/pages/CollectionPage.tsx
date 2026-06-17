@@ -26,7 +26,16 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
 
   return (
     <div className={styles.page}>
-      <div className={styles.toolbar}>
+      <header className={styles.header}>
+        <h2 className={styles.title}>Nagellacke</h2>
+        <button
+          className={styles.addBtn}
+          onClick={() => { setEditing(null); setShowForm(true); }}
+          aria-label="Neuen Lack hinzufügen"
+        >+</button>
+      </header>
+
+      <div className={styles.searchRow}>
         <div className={styles.searchWrapper}>
           <input
             aria-label="Lacke suchen"
@@ -43,9 +52,6 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             >✕</button>
           )}
         </div>
-        <button className={styles.addBtn} onClick={() => { setEditing(null); setShowForm(true); }}>
-          + Hinzufügen
-        </button>
       </div>
 
       <div className={styles.filters}>
