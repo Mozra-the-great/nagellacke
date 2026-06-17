@@ -1,7 +1,35 @@
 package de.nagellacke.domain.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
+// The web app stores manicure photos as either an array of filenames or a
+// ManicurePhotos object {fingerRight?, fingerLeft?, thumbRight?, thumbLeft?}.
+// This serializer accepts both shapes and normalises to List<String>.
+private object FlexiblePhotosSerializer : KSerializer<List<String>> {
+    private val delegate = ListSerializer(String.serializer())
+    override val descriptor = delegate.descriptor
+
+    override fun deserialize(decoder: Decoder): List<String> {
+        val jsonDecoder = decoder as? JsonDecoder ?: return delegate.deserialize(decoder)
+        return when (val element = jsonDecoder.decodeJsonElement()) {
+            is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            is JsonObject -> element.values.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            else -> emptyList()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<String>) = delegate.serialize(encoder, value)
+}
 
 @Serializable
 enum class FinishType(val label: String, val icon: String) {
@@ -90,9 +118,10 @@ data class Sticker(
 data class Manicure(
     val id: String,
     val date: String = "",
-    val polishIds: List<String> = emptyList(),
+    @SerialName("polishes") val polishIds: List<String> = emptyList(),
     val notes: String = "",
-    val photos: List<String> = emptyList(),
+    @Serializable(with = FlexiblePhotosSerializer::class) val photos: List<String> = emptyList(),
+    val photo: String? = null,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,
     val deletedAt: Long? = null,
