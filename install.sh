@@ -48,7 +48,7 @@ fi
 # ── 3. Clone or update repo ──
 if [ -d "$INSTALL_DIR/.git" ]; then
   info "Repository aktualisieren…"
-  git -C "$INSTALL_DIR" pull --quiet
+  git -C "$INSTALL_DIR" pull --autostash --quiet origin main
 else
   info "Repository klonen nach $INSTALL_DIR…"
   git clone --quiet "$REPO_URL" "$INSTALL_DIR"

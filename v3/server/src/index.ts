@@ -52,6 +52,7 @@ function loadOrCreateSecret(): string {
 const JWT_SECRET = loadOrCreateSecret();
 
 // ── Rate limiting (in-memory) ─────────────────────────────────────────────────
+// Map resets on server restart — acceptable for personal single-user deployment.
 const rateLimitMap = new Map<string, number[]>();
 function rateLimit(limit: number, windowMs: number) {
   return async (request: FastifyRequest, reply: FastifyReply) => {

@@ -49,7 +49,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
     <div className={styles.page}>
       <header className={styles.header}>
         <h2 className={styles.title}>Sticker</h2>
-        <button className={styles.addBtn} onClick={openNew}>+</button>
+        <button className={styles.addBtn} onClick={openNew} aria-label="Neuen Sticker hinzufügen">+</button>
       </header>
 
       <div className={styles.searchRow}>
@@ -111,7 +111,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
                 const cleanup = appData.deleteSticker(s.id);
                 showSnackbar(`„${s.name}" gelöscht`, () => appData.restoreSticker(s.id), cleanup);
               }}
-            >×</button>
+            >✕</button>
           </div>
         ))}
       </div>

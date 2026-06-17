@@ -27,6 +27,7 @@
   letter-spacing: 4px;
   margin: 0;
   background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.55) 100%);
+  color: transparent;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -68,6 +69,11 @@
   background: rgba(255,255,255,0.1);
   border-color: rgba(255,255,255,0.4);
   color: white;
+}
+
+.navBtn:focus-visible {
+  outline: 2px solid rgba(255,200,230,0.9);
+  outline-offset: 2px;
 }
 
 .navBtnSettings {

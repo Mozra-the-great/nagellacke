@@ -18,7 +18,8 @@ export function getData(): AppData {
   try {
     if (!fs.existsSync(DATA_FILE)) return EMPTY_DATA;
     return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as AppData;
-  } catch {
+  } catch (e) {
+    console.error('data.json corrupt — returning empty:', e);
     return EMPTY_DATA;
   }
 }
@@ -41,7 +42,8 @@ function readUsers(): User[] {
   try {
     if (!fs.existsSync(USERS_FILE)) return [];
     return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8')) as User[];
-  } catch {
+  } catch (e) {
+    console.error('users.json corrupt — returning empty:', e);
     return [];
   }
 }
