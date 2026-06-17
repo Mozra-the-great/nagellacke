@@ -45,8 +45,9 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 ### v3 (Sync + Android)
 - **Cloud-Sync** — Synchronisation zwischen Geräten via eigenem Server, Google Drive, OneDrive, Nextcloud oder Dropbox
 - **JWT-Authentifizierung** — User-Accounts für Sync, 30-Tage-Token
-- **Native Android-App** — Kotlin/Jetpack Compose, Material Design 3
+- **Native Android-App** — Kotlin/Jetpack Compose, Material Design 3, Hilt DI, Room DB
 - **Sync-Panel** — Cloud-Sync direkt in der Web-Oberfläche konfigurierbar (Username + Passwort)
+- **Darstellungs-Toggle (Android)** — Einstellungen: „Flasche" (SVG-Illustration in Lackfarbe mit Schimmer-Variante) oder „Farb-Swatch"; Photo-Anzeige automatisch in Sticker- und Maniküre-Listen; per-Karte 📷/◎-Button für Lacke
 
 ---
 
