@@ -31,6 +31,23 @@
 .errorBanner {
   padding: 10px 14px; background: rgba(179,38,30,0.12); color: var(--md-error);
   border-radius: var(--radius-md); font-size: 13px; margin-bottom: 12px;
+  display: flex; align-items: center;
+}
+
+.successBanner {
+  padding: 10px 14px; background: rgba(30,179,90,0.12); color: rgba(150,255,180,0.9);
+  border-radius: var(--radius-md); font-size: 13px; margin-bottom: 12px;
+  display: flex; align-items: center;
+}
+
+.confirmRow {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--md-surface-variant);
+  border-radius: var(--radius-md); margin-top: 4px;
+}
+
+.confirmText {
+  flex: 1; font-size: 13px; color: var(--md-on-surface-variant);
 }
 
 .infoText { font-size: 13px; color: var(--md-on-surface-variant); margin-bottom: 12px; }
@@ -58,6 +75,12 @@
 }
 
 .fieldHint { font-size: 11px; font-weight: 300; opacity: 0.55; }
+
+.fieldHelpText {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
 
 .loginBox { margin-bottom: 4px; }
 

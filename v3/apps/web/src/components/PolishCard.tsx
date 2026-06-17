@@ -12,7 +12,14 @@ export default function PolishCard({
   onDelete: () => void;
 }) {
   return (
-    <div className={styles.card} onClick={onEdit}>
+    <div
+      className={styles.card}
+      onClick={onEdit}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onEdit()}
+      aria-label={`${polish.name} bearbeiten`}
+    >
       <div className={styles.bottle}>
         <NailBottle
           color={polish.color}

@@ -99,7 +99,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Tagebuch</h1>
+        <h2 className={styles.title}>Tagebuch</h2>
         <button className={styles.addBtn} onClick={openNew}>+</button>
       </header>
 
@@ -113,7 +113,15 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
           const swatches = resolveSwatches(m, appData.data.polishes);
           const thumb = firstPhoto(m);
           return (
-            <div key={m.id} className={styles.entry} onClick={() => openEdit(m)}>
+            <div
+              key={m.id}
+              className={styles.entry}
+              onClick={() => openEdit(m)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openEdit(m)}
+              aria-label={`Eintrag vom ${formatDate(m.date)} bearbeiten`}
+            >
               <div className={styles.entryTop}>
                 {thumb && (
                   <img

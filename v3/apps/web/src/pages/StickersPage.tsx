@@ -48,7 +48,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Sticker</h1>
+        <h2 className={styles.title}>Sticker</h2>
         <button className={styles.addBtn} onClick={openNew}>+</button>
       </header>
 
@@ -82,7 +82,15 @@ export default function StickersPage({ appData }: { appData: AppData }) {
           </div>
         )}
         {visible.map((s) => (
-          <div key={s.id} className={styles.item} onClick={() => openEdit(s)}>
+          <div
+            key={s.id}
+            className={styles.item}
+            onClick={() => openEdit(s)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openEdit(s)}
+            aria-label={`${s.name} bearbeiten`}
+          >
             <div className={styles.itemColors}>
               {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
                 <div key={i} className={styles.colorDot} style={{ background: c }} />

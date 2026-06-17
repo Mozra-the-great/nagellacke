@@ -33,7 +33,7 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Statistik</h1>
+        <h2 className={styles.title}>Statistik</h2>
       </header>
 
       <div className={styles.kpiRow}>

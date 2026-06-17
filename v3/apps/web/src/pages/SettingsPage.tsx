@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
@@ -57,10 +57,13 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     }
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
+  const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -84,7 +87,6 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   };
 
   const applyUpdate = async () => {
-    if (!confirm('Update installieren und Server neu starten?\n\nDer Server ist danach ~2 Minuten nicht erreichbar.')) return;
     setUpdateStatus('updating');
     setUpdateError('');
     try {
@@ -141,9 +143,9 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         const merged = mergeData(appData.data, valid);
         // Push merged data through the commit path by calling importMerge
         appData.importMerge(merged);
-        alert(`Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren.`);
+        setImportMessage({ type: 'success', text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren.` });
       } catch {
-        alert('Ungültige JSON-Datei');
+        setImportMessage({ type: 'error', text: 'Ungültige JSON-Datei' });
       }
     };
     reader.readAsText(file);
@@ -158,7 +160,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Einstellungen</h1>
+        <h2 className={styles.title}>Einstellungen</h2>
       </header>
 
       <section className={styles.section}>
@@ -222,7 +224,10 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                     onKeyDown={(e) => { if (e.key === 'Enter') void login(); }}
                   />
                 </label>
-                {loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                <div role="status" aria-live="polite" aria-atomic="true">
+                  {loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
+                  {loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                </div>
                 <button
                   className={styles.saveBtn}
                   onClick={login}
@@ -239,15 +244,16 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           <>
             <label className={styles.field}>
               <span>Nextcloud-URL</span>
-              <input value={ncUrl} onChange={(e) => setNcUrl(e.target.value)} placeholder="https://meine.nextcloud.de" />
+              <input aria-required="true" value={ncUrl} onChange={(e) => setNcUrl(e.target.value)} placeholder="https://meine.nextcloud.de" />
             </label>
             <label className={styles.field}>
               <span>Benutzername</span>
-              <input value={ncUser} onChange={(e) => setNcUser(e.target.value)} />
+              <input aria-required="true" value={ncUser} onChange={(e) => setNcUser(e.target.value)} />
             </label>
             <label className={styles.field}>
               <span>Passwort / App-Token</span>
-              <input type="password" value={ncPass} onChange={(e) => setNcPass(e.target.value)} />
+              <input aria-required="true" type="password" value={ncPass} onChange={(e) => setNcPass(e.target.value)} />
+              <p className={styles.fieldHelpText}>App-Token: Nextcloud → Einstellungen → Sicherheit → App-Passwörter</p>
             </label>
           </>
         )}
@@ -309,12 +315,28 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Daten</h2>
+        {importMessage && (
+          <div className={importMessage.type === 'success' ? styles.successBanner : styles.errorBanner}>
+            {importMessage.text}
+            <button
+              style={{ marginLeft: 8, opacity: 0.7, fontSize: 12 }}
+              onClick={() => setImportMessage(null)}
+              aria-label="Meldung schließen"
+            >✕</button>
+          </div>
+        )}
         <div className={styles.btnRow}>
           <button className={styles.exportBtn} onClick={exportData}>Export JSON</button>
-          <label className={styles.importBtn}>
+          <button className={styles.importBtn} onClick={() => fileInputRef.current?.click()}>
             Import JSON
-            <input type="file" accept=".json" onChange={importData} style={{ display: 'none' }} />
-          </label>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={importData}
+            style={{ display: 'none' }}
+          />
         </div>
       </section>
 
@@ -353,14 +375,25 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           >
             {updateStatus === 'checking' ? 'Prüfe…' : 'Update prüfen'}
           </button>
-          {updateInfo?.updateAvailable && updateStatus !== 'done' && (
+          {updateInfo?.updateAvailable && updateStatus !== 'done' && !updateConfirmVisible && (
             <button
               className={styles.saveBtn}
-              onClick={applyUpdate}
+              onClick={() => setUpdateConfirmVisible(true)}
               disabled={updateStatus === 'updating'}
             >
-              {updateStatus === 'updating' ? 'Wird installiert…' : 'Update installieren'}
+              Update installieren
             </button>
+          )}
+          {updateConfirmVisible && (
+            <div className={styles.confirmRow}>
+              <span className={styles.confirmText}>Server neu starten? (~2 Min. nicht erreichbar)</span>
+              <button className={styles.saveBtn} onClick={() => { setUpdateConfirmVisible(false); void applyUpdate(); }}>
+                Ja, installieren
+              </button>
+              <button className={styles.syncBtn} onClick={() => setUpdateConfirmVisible(false)}>
+                Abbrechen
+              </button>
+            </div>
           )}
         </div>
       </section>
