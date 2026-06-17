@@ -39,8 +39,9 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private val _syncState = MutableStateFlow(Triple(false, null as String?, null as Long?))
+    private val _configVersion = MutableStateFlow(0)
 
-    val uiState = combine(repo.observeData(), _syncState) { data, (syncing, error, lastSync) ->
+    val uiState = combine(repo.observeData(), _syncState, _configVersion) { data, (syncing, error, lastSync), _ ->
         val cfg = configStore.getConfig()
         SettingsUiState(
             polishCount   = data.polishes.count { it.deletedAt == null },
@@ -54,19 +55,27 @@ class SettingsViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
+    private fun notifyConfigChanged() { _configVersion.update { it + 1 } }
+
     fun saveServerConfig(url: String, token: String) {
         configStore.saveConfig(SyncConfig(provider = SyncProvider.Server, serverUrl = url, serverToken = token))
+        notifyConfigChanged()
     }
 
     fun saveNextcloudConfig(url: String, user: String, pass: String) {
         configStore.saveConfig(SyncConfig(provider = SyncProvider.Nextcloud, nextcloudUrl = url, nextcloudUser = user, nextcloudPassword = pass))
+        notifyConfigChanged()
     }
 
     fun saveOAuthConfig(provider: SyncProvider, accessToken: String, refreshToken: String, expiry: Long) {
         configStore.saveTokens(provider, accessToken, refreshToken, expiry)
+        notifyConfigChanged()
     }
 
-    fun clearConfig() = configStore.clearConfig()
+    fun clearConfig() {
+        configStore.clearConfig()
+        notifyConfigChanged()
+    }
 
     fun syncNow() = viewModelScope.launch {
         _syncState.update { it.copy(first = true, second = null) }
