@@ -17,10 +17,13 @@ const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stick
 export function getData(): AppData {
   try {
     if (!fs.existsSync(DATA_FILE)) return EMPTY_DATA;
-    const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as AppData;
-    // Ensure count is at least 1 (migration for entries created before the field existed)
-    data.polishes = data.polishes.map((p) => p.count == null ? { ...p, count: 1 } : p);
-    return data;
+    const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')) as Partial<AppData>;
+    return {
+      polishes:   (raw.polishes   ?? []).map((p) => p.count == null ? { ...p, count: 1 } : p),
+      customCats: raw.customCats  ?? [],
+      manicures:  raw.manicures   ?? [],
+      stickers:   raw.stickers    ?? [],
+    };
   } catch (e) {
     console.error('data.json corrupt — returning empty:', e);
     return EMPTY_DATA;
