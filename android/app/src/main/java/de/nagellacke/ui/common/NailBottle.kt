@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import de.nagellacke.domain.SHIMMER_FINISHES
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
@@ -20,14 +21,14 @@ import de.nagellacke.domain.model.PolishStatus
 /**
  * Compose port of v3/apps/web/src/components/NailBottle.tsx.
  *
- * Renders a stylised nail-polish bottle whose proportions are 64×130 (width:height).
- * The caller controls the overall size via [modifier]; the composable enforces the
- * 64/130 aspect ratio internally via a custom layout measurement.
+ * Renders a stylised nail-polish bottle with a 64:130 (width:height) aspect ratio
+ * enforced via [Modifier.aspectRatio]. The caller controls size via [modifier]
+ * (e.g. `Modifier.fillMaxHeight(0.9f)` or `Modifier.size(64.dp, 130.dp)`).
  *
- * Status effects match the web implementation:
+ * Status effects:
  *   - empty / gone → 38 % opacity
  *   - wish         → 62 % opacity + ☆ marker
- *   - empty        → additional dark overlay over the lower body
+ *   - empty        → additional dark overlay over the lower body (web parity)
  *
  * Shimmer finishes (Shimmer, Glitter, Metallic, Chrome, Holographic, Duochrome) use a
  * multi-stop white/colour gradient instead of the plain colour gradient.
@@ -156,8 +157,9 @@ fun NailBottle(polish: Polish, modifier: Modifier = Modifier) {
             cornerRadius = CornerRadius(6f * sx, 6f * sy),
         )
 
-        // "Empty" overlay — darkens the lower third
-        if (faded) {
+        // Lower-body dark overlay — matches web: drawn for 'empty' only
+        // (the 38 % overall alpha already signals 'gone' without a second overlay)
+        if (polish.status == PolishStatus.Empty) {
             drawRect(
                 color = Color.Black.copy(alpha = 0.55f),
                 topLeft = Offset(10f * sx, 90f * sy),

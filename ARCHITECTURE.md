@@ -92,11 +92,23 @@ nagellacke/
         │       ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|stats|settings)
         │       ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
         │       └── pages/              ← CollectionPage, StickersPage, DiaryPage, StatsPage, SettingsPage
-        └── android/        ← Expo React Native (Package-ID: de.nagellacke.app)
-            ├── app/        ← Expo Router Screens (index, stickers, diary, stats, settings)
-            └── src/
-                ├── AppDataContext.tsx   ← React Context + CRUD + sync()
-                └── storage.ts          ← expo-file-system Persistenz
+        └── web/            ← v3 Web-App (React 18 + TypeScript + Vite) [nur Webapp]
+android/                    ← Native Android-App (Kotlin / Jetpack Compose)
+    └── app/src/main/java/de/nagellacke/
+        ├── data/
+        │   ├── local/      ← Room Entities, DAOs, AppDatabase
+        │   ├── repo/       ← NagellackeRepository, PhotoRepository, SyncConfigStore, DisplayPrefsStore
+        │   └── sync/       ← SyncAdapter Interface + ServerAdapter, NextcloudAdapter, …
+        ├── domain/
+        │   ├── model/      ← Polish, Sticker, Manicure, Category, AppData (kotlinx.serialization)
+        │   └── Constants.kt ← FINISH_OPTIONS, SHIMMER_FINISHES, BRAND_SUGGESTIONS, …
+        └── ui/
+            ├── collection/ ← CollectionScreen, PolishCard, PolishFormSheet, CollectionViewModel
+            ├── stickers/   ← StickersScreen, StickerFormSheet, StickersViewModel
+            ├── diary/      ← DiaryScreen, DiaryFormSheet, DiaryViewModel
+            ├── stats/      ← StatsScreen
+            ├── settings/   ← SettingsScreen, SettingsViewModel
+            └── common/     ← LoadingScreen, EmptyScreen, ErrorScreen, NailBottle
 ```
 
 ---
@@ -332,29 +344,68 @@ interface SyncAdapter {
 
 ## v3 — Android-App
 
-### Expo React Native
+### Native Kotlin / Jetpack Compose
 
-Die Android-App wurde mit Expo (~51.0.0) und React Native 0.74 entwickelt. Expo ermöglicht den Build über EAS (Expo Application Services) ohne lokale Android-SDK-Einrichtung.
+Die Android-App ist nativ in Kotlin geschrieben (kein React Native). Stack:
 
-**Package-ID:** `de.nagellacke.app`
+| Schicht | Technologie |
+|---------|-------------|
+| UI | Jetpack Compose + Material 3 |
+| DI | Hilt (KSP-Codegen) |
+| Persistenz | Room 2.x (SQLite), EncryptedSharedPreferences |
+| Netzwerk | Retrofit 2 + OkHttp (JSON via kotlinx.serialization) |
+| Fotos | Coil 2 (AsyncImage) |
+| OAuth | AppAuth-Android |
+| Sync-Protokolle | Eigener Server (JWT), Nextcloud (WebDAV), Google Drive, OneDrive, Dropbox (OAuth2) |
 
-### Navigation (Expo Router, Tab-basiert)
+**Package-ID:** `de.nagellacke.app`  
+**Verzeichnis:** `android/` (Root-Ebene des Repos, **nicht** im v3-Monorepo)
 
-Fünf Tabs mit Expo Router:
-1. **💅 Lacke** (`index.tsx`) — Kollektion mit FlatList-Grid, Suchbar, Status-Filter, FAB
-2. **✨ Sticker** (`stickers.tsx`) — Sticker-Verwaltung
-3. **📖 Tagebuch** (`diary.tsx`) — Maniküre-Liste
-4. **📊 Statistik** (`stats.tsx`) — Dashboard
-5. **⚙️ Mehr** (`settings.tsx`) — Sync-Konfiguration, Kategorien, Export/Import
+### Navigation (Bottom Navigation, 5 Tabs)
+
+1. **Nagellacke** — LazyVerticalGrid mit Suchbar, Status-Filter, FAB, PolishCard
+2. **Sticker** — LazyColumn mit ListItem
+3. **Tagebuch** — LazyColumn mit ListItem
+4. **Statistik** — StatsScreen
+5. **Einstellungen** — Sync-Konfiguration, Darstellung, Statistik
 
 ### Datenpersistenz
 
-- **App-Daten:** `expo-file-system` → `${documentDirectory}nagellacke-data.json`
-- **Sync-Konfiguration:** `expo-secure-store` (verschlüsselt) → SyncConfig-Objekt
+- **App-Daten:** Room-Datenbank (5 Tabellen: polishes, stickers, manicures, categories + je Sticker-/Manikür-IDs)
+- **Sync-Konfiguration:** `EncryptedSharedPreferences` (`sync_config`) via `SyncConfigStore`
+- **Darstellungs-Einstellungen:** Plain `SharedPreferences` (`display_prefs`) via `DisplayPrefsStore`
+- **Fotos lokal:** `filesDir/photos/` (JPEG, max 1024×1024, 80 % Qualität)
+
+### Darstellungs-Features (Lack-Karten)
+
+Die `PolishCard` unterstützt drei visuelle Modi mit Priorität photo > bottle > swatch:
+
+| Modus | Anzeige | Aktivierung |
+|-------|---------|-------------|
+| **Foto** | Coil `AsyncImage` (ContentScale.Crop) | Standardmäßig wenn Foto + Server-URL vorhanden |
+| **Flasche** | `NailBottle` Composable (Canvas-Port des Web-SVG) | Einstellungs-Toggle |
+| **Farb-Swatch** | Farbige Rechteck-Box | Einstellungs-Toggle |
+
+`NailBottle` (`ui/common/NailBottle.kt`):
+- Canvas mit `drawRoundRect` + `Brush.linearGradient` (Korpus, Deckel, Hals, Highlights)
+- Shimmer-Variante für Shimmer/Glitter/Metallic/Chrome/Holographic/Duochrome (Finish-Klasse aus `SHIMMER_FINISHES` in `domain/Constants.kt`)
+- Status-Effekte: `empty`/`gone` → 38 % Gesamt-Alpha via `graphicsLayer`; `wish` → 62 % + ☆; `empty` → zusätzliches dunkles Overlay auf unterem Körper
+- Marken-Label + „nail lacquer" via `nativeCanvas.drawText`
+- Aspect Ratio 64:130 erzwungen via `Modifier.aspectRatio`
+
+Foto-Anzeige (Sticker + Maniküren):
+- Automatisch als Thumbnail im `ListItem.leadingContent` wenn Server-URL konfiguriert und `item.photo != null`
+- Kein Toggle-Button; Fallback auf Farbkreise
+
+Foto-URL-Konstruktion (nur Server-Provider):
+```kotlin
+"${serverUrl.trimEnd('/')}/photos/${filename}"
+// /photos/ ist öffentliche statische Route in index.ts, kein Auth nötig
+```
 
 ### Design
 
-Material Design 3 via `react-native-paper`. Primärfarbe `#c2185b` (Pink), Sekundärfarbe `#9c27b0` (Purple). Light + Dark Mode.
+Material Design 3 (`androidx.compose.material3`). Primärfarbe `#c2185b` (Pink). Light + Dark Mode via `MaterialTheme`.
 
 ---
 
