@@ -4,6 +4,7 @@ import { filterPolishes, sortPolishes, FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTI
 import type { useAppData } from '../useAppData';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
+import { useSnackbar } from '../components/Snackbar';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -14,6 +15,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
   });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Polish | null>(null);
+  const { showSnackbar } = useSnackbar();
 
   const visible = useMemo(() => {
     const filtered = filterPolishes(appData.data.polishes, filter);
@@ -64,7 +66,10 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             key={p.id}
             polish={p}
             onEdit={() => { setEditing(p); setShowForm(true); }}
-            onDelete={() => appData.deletePolish(p.id)}
+            onDelete={() => {
+              appData.deletePolish(p.id);
+              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id));
+            }}
           />
         ))}
       </div>

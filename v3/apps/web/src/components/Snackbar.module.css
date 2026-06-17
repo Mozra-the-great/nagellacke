@@ -1,0 +1,36 @@
+.snackbar {
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40, 20, 45, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  z-index: 500;
+  backdrop-filter: blur(8px);
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.message {
+  flex: 1;
+}
+
+.undoBtn {
+  color: var(--md-primary);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dismissBtn {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 16px;
+}

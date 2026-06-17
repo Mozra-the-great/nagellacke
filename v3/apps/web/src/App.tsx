@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAppData } from './useAppData';
+import { SnackbarProvider } from './components/Snackbar';
 import CollectionPage from './pages/CollectionPage';
 import StickersPage from './pages/StickersPage';
 import DiaryPage from './pages/DiaryPage';
@@ -26,6 +27,7 @@ export default function App() {
   const totalCount = polishes.reduce((a, p) => a + (p.count ?? 1), 0);
 
   return (
+    <SnackbarProvider>
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.titleArea}>
@@ -55,5 +57,6 @@ export default function App() {
         {tab === 'settings'   && <SettingsPage appData={appData} />}
       </main>
     </div>
+    </SnackbarProvider>
   );
 }

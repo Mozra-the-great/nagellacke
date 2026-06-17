@@ -63,6 +63,13 @@ export function useAppData() {
     });
   }, [data, commit]);
 
+  const restorePolish = useCallback((id: string) => {
+    commit({
+      ...data,
+      polishes: data.polishes.map((p) => p.id === id ? { ...p, deletedAt: undefined, updatedAt: now() } : p),
+    });
+  }, [data, commit]);
+
   // Stickers
   const addSticker = useCallback((s: Omit<Sticker, 'id' | 'createdAt' | 'updatedAt'>) => {
     const item: Sticker = { ...s, id: generateId(), createdAt: now(), updatedAt: now() };
@@ -83,6 +90,13 @@ export function useAppData() {
     });
   }, [data, commit]);
 
+  const restoreSticker = useCallback((id: string) => {
+    commit({
+      ...data,
+      stickers: data.stickers.map((s) => s.id === id ? { ...s, deletedAt: undefined, updatedAt: now() } : s),
+    });
+  }, [data, commit]);
+
   // Manicures
   const addManicure = useCallback((m: Omit<Manicure, 'id' | 'createdAt' | 'updatedAt'>) => {
     const item: Manicure = { ...m, id: generateId(), createdAt: now(), updatedAt: now() };
@@ -100,6 +114,13 @@ export function useAppData() {
     commit({
       ...data,
       manicures: data.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
+    });
+  }, [data, commit]);
+
+  const restoreManicure = useCallback((id: string) => {
+    commit({
+      ...data,
+      manicures: data.manicures.map((m) => m.id === id ? { ...m, deletedAt: undefined, updatedAt: now() } : m),
     });
   }, [data, commit]);
 
@@ -153,9 +174,9 @@ export function useAppData() {
     lastSyncAt,
     sync,
     importMerge,
-    addPolish, updatePolish, deletePolish,
-    addSticker, updateSticker, deleteSticker,
-    addManicure, updateManicure, deleteManicure,
+    addPolish, updatePolish, deletePolish, restorePolish,
+    addSticker, updateSticker, deleteSticker, restoreSticker,
+    addManicure, updateManicure, deleteManicure, restoreManicure,
     addCategory, deleteCategory,
   };
 }

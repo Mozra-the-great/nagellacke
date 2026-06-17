@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { Sticker } from '@nagellacke/core';
 import { filterStickers, STICKER_TYPE_OPTIONS, STATUS_OPTIONS, DEFAULT_STICKER } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
+import { useSnackbar } from '../components/Snackbar';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import styles from './StickersPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -11,6 +13,9 @@ export default function StickersPage({ appData }: { appData: AppData }) {
   const [editing, setEditing] = useState<Sticker | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...DEFAULT_STICKER });
+  const { showSnackbar } = useSnackbar();
+  const stickerModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(stickerModalRef, showForm);
 
   const visible = filterStickers(appData.data.stickers, search);
 
@@ -76,18 +81,33 @@ export default function StickersPage({ appData }: { appData: AppData }) {
             </div>
             <button
               className={styles.deleteBtn}
-              onClick={(e) => { e.stopPropagation(); appData.deleteSticker(s.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                appData.deleteSticker(s.id);
+                showSnackbar(`„${s.name}" gelöscht`, () => appData.restoreSticker(s.id));
+              }}
             >×</button>
           </div>
         ))}
       </div>
 
       {showForm && (
-        <div className={styles.overlay} onClick={() => setShowForm(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.overlay}
+          onClick={() => setShowForm(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowForm(false)}
+        >
+          <div
+            ref={stickerModalRef}
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sticker-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>
-              <h2>{editing ? 'Bearbeiten' : 'Neuer Sticker'}</h2>
-              <button onClick={() => setShowForm(false)}>✕</button>
+              <h2 id="sticker-modal-title">{editing ? 'Bearbeiten' : 'Neuer Sticker'}</h2>
+              <button onClick={() => setShowForm(false)} aria-label="Schließen">✕</button>
             </div>
             <div className={styles.modalBody}>
               <label className={styles.field}>

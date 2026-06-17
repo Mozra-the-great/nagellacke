@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { Polish, Category } from '@nagellacke/core';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { FINISH_OPTIONS, STATUS_OPTIONS, DEFAULT_POLISH } from '@nagellacke/core';
 import styles from './PolishFormModal.module.css';
 
@@ -16,6 +17,9 @@ export default function PolishFormModal({
   onSave: (data: Partial<FormData>) => void;
   onClose: () => void;
 }) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, true);
+
   const [form, setForm] = useState<FormData>(() =>
     polish
       ? { name: polish.name, brand: polish.brand, num: polish.num, color: polish.color,
@@ -29,11 +33,22 @@ export default function PolishFormModal({
     setForm((f) => ({ ...f, [key]: value }));
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div
+      className={styles.overlay}
+      onClick={onClose}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div
+        ref={modalRef}
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="polish-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.header}>
-          <h2>{polish ? 'Bearbeiten' : 'Neuer Lack'}</h2>
-          <button onClick={onClose}>✕</button>
+          <h2 id="polish-modal-title">{polish ? 'Bearbeiten' : 'Neuer Lack'}</h2>
+          <button onClick={onClose} aria-label="Schließen">✕</button>
         </div>
 
         <div className={styles.body}>
