@@ -80,7 +80,11 @@
 .field input, .field textarea { padding: 10px 14px; border: 1px solid var(--md-outline-variant); border-radius: var(--radius-md); background: var(--md-surface-variant); color: var(--md-on-surface); font-size: 15px; outline: none; }
 .field input:focus, .field textarea:focus { border-color: var(--md-primary); }
 
-.photoSlots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.photoSlots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 16px;
+}
 
 .photoSlotWrap { display: flex; flex-direction: column; gap: 6px; }
 

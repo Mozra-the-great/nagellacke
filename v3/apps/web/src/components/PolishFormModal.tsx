@@ -95,19 +95,21 @@ export default function PolishFormModal({
             </label>
           </div>
 
-          <label className={styles.field}>
+          <div className={styles.field}>
             <span>Bewertung</span>
-            <div className={styles.stars}>
+            <div className={styles.stars} role="group" aria-label="Bewertung">
               {[1,2,3,4,5].map((n) => (
                 <button
                   key={n}
                   type="button"
+                  aria-label={`${n} Stern${n > 1 ? 'e' : ''}`}
+                  aria-pressed={n <= (form.rating ?? 0)}
                   className={n <= (form.rating ?? 0) ? styles.starOn : styles.starOff}
                   onClick={() => set('rating', n === form.rating ? 0 : n)}
                 >★</button>
               ))}
             </div>
-          </label>
+          </div>
 
           {categories.length > 0 && (
             <label className={styles.field}>

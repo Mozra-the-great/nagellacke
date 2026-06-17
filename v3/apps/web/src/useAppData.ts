@@ -4,6 +4,15 @@ import { generateId, now } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
+async function deletePhotoFromServer(filename: string): Promise<void> {
+  const config = loadSyncConfig();
+  if (!config) return;
+  try {
+    const adapter = createAdapter(config);
+    await adapter.deletePhoto(filename);
+  } catch { /* best-effort: local deletion still proceeds */ }
+}
+
 const STORAGE_KEY = 'nagellacke_v3_data';
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 
@@ -57,6 +66,8 @@ export function useAppData() {
   }, [data, commit]);
 
   const deletePolish = useCallback((id: string) => {
+    const p = data.polishes.find((p) => p.id === id);
+    if (p?.photo) void deletePhotoFromServer(p.photo);
     commit({
       ...data,
       polishes: data.polishes.map((p) => p.id === id ? { ...p, deletedAt: now(), updatedAt: now() } : p),
@@ -84,6 +95,8 @@ export function useAppData() {
   }, [data, commit]);
 
   const deleteSticker = useCallback((id: string) => {
+    const s = data.stickers.find((s) => s.id === id);
+    if (s?.photo) void deletePhotoFromServer(s.photo);
     commit({
       ...data,
       stickers: data.stickers.map((s) => s.id === id ? { ...s, deletedAt: now(), updatedAt: now() } : s),
@@ -111,6 +124,13 @@ export function useAppData() {
   }, [data, commit]);
 
   const deleteManicure = useCallback((id: string) => {
+    const m = data.manicures.find((m) => m.id === id);
+    if (m?.photo) void deletePhotoFromServer(m.photo);
+    if (m?.photos) {
+      void Promise.all(
+        Object.values(m.photos).filter((f): f is string => !!f).map(deletePhotoFromServer),
+      );
+    }
     commit({
       ...data,
       manicures: data.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
