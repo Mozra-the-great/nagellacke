@@ -34,10 +34,13 @@ function resolveSwatches(m: Manicure, allPolishes: Polish[]): string[] {
 }
 
 export default function DiaryPage({ appData }: { appData: AppData }) {
+  const [viewing, setViewing] = useState<Manicure | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Manicure | null>(null);
   const { showSnackbar } = useSnackbar();
+  const diaryDetailRef = useRef<HTMLDivElement>(null);
   const diaryModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(diaryDetailRef, !!viewing);
   useFocusTrap(diaryModalRef, showForm);
   const [form, setForm] = useState<{
     date: string;
@@ -120,11 +123,11 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
             <div
               key={m.id}
               className={styles.entry}
-              onClick={() => openEdit(m)}
+              onClick={() => setViewing(m)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openEdit(m)}
-              aria-label={`Eintrag vom ${formatDate(m.date)} bearbeiten`}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setViewing(m)}
+              aria-label={`Eintrag vom ${formatDate(m.date)} ansehen`}
             >
               <div className={styles.entryTop}>
                 {thumb && (
@@ -164,6 +167,67 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
           );
         })}
       </div>
+
+      {viewing && (() => {
+        const vPhotos = [
+          ...(viewing.photo ? [{ src: `/photos/${viewing.photo}`, label: 'Foto' }] : []),
+          ...PHOTO_SLOTS.filter((s) => viewing.photos?.[s.key]).map((s) => ({
+            src: `/photos/${viewing.photos![s.key]}`,
+            label: s.label,
+          })),
+        ];
+        const vRefs: PolishRef[] = viewing.polishRefs?.length
+          ? viewing.polishRefs
+          : (viewing.polishes ?? []).flatMap((name) => {
+              const p = appData.data.polishes.find((ap) => ap.name === name && !ap.deletedAt);
+              return p ? [{ name: p.name, brand: p.brand, color: p.color }] : [];
+            });
+        return (
+          <div className={styles.overlay} onClick={() => setViewing(null)} onKeyDown={(e) => e.key === 'Escape' && setViewing(null)}>
+            <div ref={diaryDetailRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="diary-detail-title" onClick={(e) => e.stopPropagation()}>
+              <div className={styles.modalHeader}>
+                <h2 id="diary-detail-title">{formatDate(viewing.date)}</h2>
+                <button onClick={() => setViewing(null)} aria-label="Schließen">✕</button>
+              </div>
+              <div className={styles.modalBody}>
+                {vPhotos.length > 0 && (
+                  <div className={styles.detailPhotoGrid}>
+                    {vPhotos.map((ph, i) => (
+                      <div key={i} className={styles.detailPhotoSlot}>
+                        <img src={ph.src} alt={ph.label} className={styles.detailPhoto} />
+                        <span className={styles.photoLabel}>{ph.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {vRefs.length > 0 && (
+                  <div className={styles.field}>
+                    <span>Lacke</span>
+                    <div className={styles.polishPicker}>
+                      {vRefs.map((ref, i) => (
+                        <div key={i} className={styles.polishChip}>
+                          <span className={styles.polishDot} style={{ background: ref.color ?? '#888' }} />
+                          {ref.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {viewing.notes && (
+                  <div className={styles.field}>
+                    <span>Notizen</span>
+                    <p className={styles.detailNotes}>{viewing.notes}</p>
+                  </div>
+                )}
+              </div>
+              <div className={styles.modalFooter}>
+                <button className={styles.cancelBtn} onClick={() => setViewing(null)}>Schließen</button>
+                <button className={styles.saveBtn} onClick={() => { const m = viewing; setViewing(null); openEdit(m); }}>Bearbeiten</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showForm && (
         <div

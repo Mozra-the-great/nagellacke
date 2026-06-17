@@ -87,6 +87,34 @@
   gap: 16px;
 }
 
+.detailPhotoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.detailPhotoSlot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.detailPhoto {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.detailNotes {
+  font-size: 14px;
+  color: var(--md-on-surface-variant);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .photoSlotWrap { display: flex; flex-direction: column; gap: 6px; }
 
 .photoLabel { font-size: 11px; color: var(--md-on-surface-variant); font-weight: 500; }

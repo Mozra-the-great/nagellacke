@@ -18,11 +18,14 @@ type FormState = {
 
 export default function StickersPage({ appData }: { appData: AppData }) {
   const [search, setSearch] = useState('');
+  const [viewing, setViewing] = useState<Sticker | null>(null);
   const [editing, setEditing] = useState<Sticker | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>({ ...DEFAULT_STICKER, photo: undefined });
   const { showSnackbar } = useSnackbar();
+  const stickerDetailRef = useRef<HTMLDivElement>(null);
   const stickerModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(stickerDetailRef, !!viewing);
   useFocusTrap(stickerModalRef, showForm);
 
   const visible = filterStickers(appData.data.stickers, search);
@@ -94,11 +97,11 @@ export default function StickersPage({ appData }: { appData: AppData }) {
           <div
             key={s.id}
             className={styles.item}
-            onClick={() => openEdit(s)}
+            onClick={() => setViewing(s)}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openEdit(s)}
-            aria-label={`${s.name} bearbeiten`}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setViewing(s)}
+            aria-label={`${s.name} ansehen`}
           >
             {s.photo
               ? <img src={`/photos/${s.photo}`} alt={s.name} className={styles.itemThumb} />
@@ -129,6 +132,43 @@ export default function StickersPage({ appData }: { appData: AppData }) {
           </div>
         ))}
       </div>
+
+      {viewing && (
+        <div className={styles.overlay} onClick={() => setViewing(null)} onKeyDown={(e) => e.key === 'Escape' && setViewing(null)}>
+          <div ref={stickerDetailRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="sticker-detail-title" onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h2 id="sticker-detail-title">{viewing.name}</h2>
+              <button onClick={() => setViewing(null)} aria-label="Schließen">✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              {viewing.photo && (
+                <img src={`/photos/${viewing.photo}`} alt={viewing.name} className={styles.detailPhoto} />
+              )}
+              {!viewing.photo && (viewing.colors ?? []).length > 0 && (
+                <div className={styles.detailColors}>
+                  {(viewing.colors ?? []).map((c, i) => (
+                    <div key={i} className={styles.detailColorDot} style={{ background: c }} />
+                  ))}
+                </div>
+              )}
+              <div className={styles.detailMeta}>
+                {viewing.brand && <div className={styles.detailMetaRow}><span>Marke</span><span>{viewing.brand}</span></div>}
+                <div className={styles.detailMetaRow}>
+                  <span>Typ</span>
+                  <span className={styles.typeChip}>{STICKER_TYPE_OPTIONS.find((o) => o.value === viewing.type)?.label ?? viewing.type}</span>
+                </div>
+                {viewing.style && <div className={styles.detailMetaRow}><span>Stil</span><span>{viewing.style}</span></div>}
+                {viewing.rating ? <div className={styles.detailMetaRow}><span>Bewertung</span><span className={styles.detailRating}>{'★'.repeat(viewing.rating)}</span></div> : null}
+              </div>
+              {viewing.notes && <p className={styles.detailNotes}>{viewing.notes}</p>}
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelBtn} onClick={() => setViewing(null)}>Schließen</button>
+              <button className={styles.saveBtn} onClick={() => { const s = viewing; setViewing(null); openEdit(s); }}>Bearbeiten</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div

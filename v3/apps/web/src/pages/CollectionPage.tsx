@@ -1,11 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import type { Polish, FilterState } from '@nagellacke/core';
 import { filterPolishes, sortPolishes, FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
 import { loadPhotoDefault } from '../useAppData';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
+import NailBottle from '../components/NailBottle';
 import { useSnackbar } from '../components/Snackbar';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -14,9 +16,12 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
   const [filter, setFilter] = useState<FilterState>({
     search: '', finish: '', category: '', status: '', brand: '', sort: 'newest',
   });
+  const [viewing, setViewing] = useState<Polish | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Polish | null>(null);
   const { showSnackbar } = useSnackbar();
+  const polishDetailRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(polishDetailRef, !!viewing);
   const photoDefault = loadPhotoDefault();
 
   const visible = useMemo(() => {
@@ -91,7 +96,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             key={p.id}
             polish={p}
             defaultShowPhoto={photoDefault}
-            onEdit={() => { setEditing(p); setShowForm(true); }}
+            onEdit={() => setViewing(p)}
             onDelete={() => {
               appData.deletePolish(p.id);
               showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id));
@@ -99,6 +104,46 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
           />
         ))}
       </div>
+
+      {viewing && (
+        <div className={styles.overlay} onClick={() => setViewing(null)} onKeyDown={(e) => e.key === 'Escape' && setViewing(null)}>
+          <div ref={polishDetailRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="polish-detail-title" onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <button onClick={() => setViewing(null)} aria-label="Schließen">✕</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.detailPreview}>
+                {viewing.photo
+                  ? <img src={`/photos/${viewing.photo}`} alt={viewing.name} className={styles.detailPhoto} />
+                  : <NailBottle color={viewing.color} finish={viewing.finish} status={viewing.status} brand={viewing.brand} />
+                }
+              </div>
+              <h2 id="polish-detail-title" className={styles.detailName}>{viewing.name}</h2>
+              {viewing.brand && <div className={styles.detailBrand}>{viewing.brand}</div>}
+              {viewing.rating ? <div className={styles.detailRating}>{'★'.repeat(viewing.rating)}</div> : null}
+              <div className={styles.detailGrid}>
+                {viewing.num && (
+                  <div className={styles.detailCell}><span>Nummer</span><span>{viewing.num}</span></div>
+                )}
+                <div className={styles.detailCell}>
+                  <span>Finish</span><span>{FINISH_OPTIONS.find((o) => o.value === viewing.finish)?.icon} {viewing.finish}</span>
+                </div>
+                <div className={styles.detailCell}>
+                  <span>Status</span><span>{STATUS_OPTIONS.find((o) => o.value === viewing.status)?.label}</span>
+                </div>
+                {(viewing.count ?? 1) > 1 && (
+                  <div className={styles.detailCell}><span>Anzahl</span><span>{viewing.count}×</span></div>
+                )}
+              </div>
+              {viewing.notes && <p className={styles.detailNotes}>{viewing.notes}</p>}
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.cancelBtn} onClick={() => setViewing(null)}>Schließen</button>
+              <button className={styles.saveBtn} onClick={() => { const p = viewing; setViewing(null); setEditing(p); setShowForm(true); }}>Bearbeiten</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <PolishFormModal

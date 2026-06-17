@@ -138,3 +138,35 @@
   background: var(--md-primary); color: var(--md-on-primary);
   font-size: 15px; font-weight: 600;
 }
+
+.detailPhoto {
+  width: 100%; max-height: 220px; object-fit: cover;
+  border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);
+}
+
+.detailColors { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0; }
+
+.detailColorDot {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.15);
+}
+
+.detailMeta { display: flex; flex-direction: column; gap: 8px; }
+
+.detailMetaRow {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; background: var(--md-surface-variant);
+  border-radius: var(--radius-sm); font-size: 14px;
+}
+
+.detailMetaRow span:first-child {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--md-on-surface-variant);
+}
+
+.detailRating { color: rgba(255,200,100,0.85); font-size: 16px; }
+
+.detailNotes {
+  font-size: 14px; color: var(--md-on-surface-variant);
+  line-height: 1.6; white-space: pre-wrap; padding: 4px 0;
+}

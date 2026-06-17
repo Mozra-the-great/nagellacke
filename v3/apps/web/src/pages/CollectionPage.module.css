@@ -108,3 +108,100 @@
   font-style: italic;
   font-size: 20px;
 }
+
+/* Detail modal */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  display: flex; align-items: flex-end; z-index: 200;
+}
+
+.modal {
+  background: var(--md-surface);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-bottom: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  width: 100%; max-height: 90dvh; display: flex; flex-direction: column;
+}
+
+.modalHeader {
+  display: flex; justify-content: flex-end;
+  padding: 16px 16px 0;
+}
+
+.modalHeader button { font-size: 20px; color: var(--md-on-surface-variant); }
+
+.modalBody {
+  flex: 1; overflow-y: auto; padding: 8px 20px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.modalFooter {
+  display: flex; gap: 12px; padding: 16px 20px;
+  border-top: 1px solid var(--md-outline-variant);
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+}
+
+.cancelBtn {
+  flex: 1; padding: 14px; border-radius: var(--radius-xl);
+  background: var(--md-surface-variant); color: var(--md-on-surface);
+  font-size: 15px; font-weight: 500;
+}
+
+.saveBtn {
+  flex: 2; padding: 14px; border-radius: var(--radius-xl);
+  background: var(--md-primary); color: var(--md-on-primary);
+  font-size: 15px; font-weight: 600;
+}
+
+.detailPreview {
+  display: flex; justify-content: center; padding: 8px 0 4px;
+}
+
+.detailPhoto {
+  width: 100%; max-height: 260px; object-fit: cover;
+  border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,0.1);
+}
+
+.detailName {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 300; text-align: center;
+  color: rgba(255,255,255,0.95);
+}
+
+.detailBrand {
+  text-align: center; font-size: 11px; font-weight: 200;
+  letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(255,255,255,0.60);
+  margin-top: -6px;
+}
+
+.detailRating {
+  text-align: center; font-size: 18px;
+  color: rgba(255,200,100,0.85);
+}
+
+.detailGrid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+
+.detailCell {
+  background: var(--md-surface-variant);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+
+.detailCell span:first-child {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--md-on-surface-variant);
+}
+
+.detailCell span:last-child {
+  font-size: 14px; font-weight: 500; color: var(--md-on-surface);
+}
+
+.detailNotes {
+  font-size: 14px; color: var(--md-on-surface-variant);
+  line-height: 1.6; white-space: pre-wrap;
+  padding: 4px 0;
+}
