@@ -149,6 +149,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
         <PolishFormModal
           polish={editing}
           categories={activeCategories}
+          allPolishes={appData.data.polishes}
           onSave={(p) => {
             if (editing) appData.updatePolish(editing.id, p);
             else appData.addPolish(p as Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>);

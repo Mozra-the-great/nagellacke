@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Sync-Server und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.0.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Expo-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.0.4-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -12,8 +12,6 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 |---------|--------|-------------|
 | **v2** | 🔄 Legacy | Self-hosted Web-App, kein Sync, kein Active Development |
 | **v3** (aktuell) | ✅ Stabil | Fastify-Server, Cloud-Sync, native Android-App |
-
-**Upgrade v2 → v3:** Footer → „Updates prüfen" → Button **„Upgrade auf v3 (mit Sync)"** erscheint nach dem Update. Alle Daten und Fotos werden automatisch übernommen.
 
 ---
 
@@ -25,20 +23,16 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **4 Status-Werte** — Vorhanden, Wunschliste, Leer, Nicht mehr da
 - **Eigene Kategorien** — direkt im Bearbeitungsformular anlegen und löschen
 - **Flaschenfoto** — pro Lack ein Foto hochladen; zwischen SVG-Grafik und echtem Foto umschalten
-- **Foto-Farbpicker** — Kamera oder Galerie öffnen, auf die Farbe tippen → wird direkt übernommen
-- **Duplikat-Warnung** — beim Anlegen auf ähnliche Farbe + Finish prüfen
+- **Foto-Farbpicker** — Foto öffnen, auf Farbe tippen → Lackfarbe wird direkt übernommen
+- **Duplikat-Warnung** — beim Anlegen prüft die App auf ähnlichen Farbton (±15°) + gleiches Finish
 
 ### Suche & UI
 - **Suche & Filter** — nach Name, Marke, Nummer, Finish, Kategorie, Status, Notizen
 - **Sortierung** — nach Eingabereihenfolge, Name, Marke, Farbton oder Bewertung
-- **Stapelaktionen** — mehrere Lacke gleichzeitig auswählen, Status/Marke/Finish/Kategorie setzen oder löschen
-- **Undo** — Löschungen 5 Sekunden rückgängig machen
-- **6 Themes** — Dark Luxury, Candy Pop, Warm Vintage, Neon Nightclub, Clean White, Forest Dark
-- **Tastatur-Shortcuts** — `/` Suche, `n` Neuer Lack, `Esc` schließen
-- **PWA** — installierbar als Web-App (manifest.json + Service Worker)
+- **Undo** — Löschungen 3 Sekunden rückgängig machen
 
 ### Weitere Bereiche
-- **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien, Farbpalette, Sticker und Tagebuch
+- **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien, Farbpalette; Zähler für Sticker und Maniküren
 - **Maniküre-Tagebuch** — Einträge mit Datum, Lacken, Stickern, Notizen und 4 Foto-Slots (Finger/Daumen rechts/links)
 - **Nail-Sticker-Inventar** — Sticker mit Typ, Farben, Status, Bewertung, Foto und Notizen
 
@@ -51,7 +45,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 ### v3 (Sync + Android)
 - **Cloud-Sync** — Synchronisation zwischen Geräten via eigenem Server, Google Drive, OneDrive, Nextcloud oder Dropbox
 - **JWT-Authentifizierung** — User-Accounts für Sync, 30-Tage-Token
-- **Native Android-App** — Expo React Native, Material Design 3, verfügbar im Play Store
+- **Native Android-App** — Kotlin/Jetpack Compose, Material Design 3
 - **Sync-Panel** — Cloud-Sync direkt in der Web-Oberfläche konfigurierbar (Username + Passwort)
 
 ---
@@ -60,14 +54,8 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 
 ### v3 (empfohlen)
 
-Per Knopfdruck aus v2 (empfohlen):
-1. v2 auf dem neuesten Stand bringen (Update-Knopf)
-2. Footer → **„Upgrade auf v3 (mit Sync)"** klicken
-3. Warten (~3 Min.) — die App startet automatisch neu
-
-Oder direkt auf dem Server:
 ```bash
-sudo bash /opt/nagellacke/v3/server/install.sh
+sudo bash install.sh
 ```
 
 ### v2 (Legacy)
@@ -194,8 +182,8 @@ cd v3 && npm install && npm run build:core && npm run dev:server
 # v3 (Terminal 2 – Web-App)
 cd v3 && npm run dev:web
 
-# v3 Android-App
-cd v3 && npm run dev:android
+# v3 Android-App (Android Studio / Gradle)
+cd android && ./gradlew assembleDebug
 ```
 
 Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an `:3000` weitergeleitet.
@@ -215,7 +203,8 @@ nagellacke/
 │       ├── themes.js      ← 6 Theme-Definitionen
 │       ├── constants.js   ← FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, …
 │       └── components/    ← PolishForm, StatsPage, DiaryPage, StickerPage, SyncPanel, …
-├── install.sh             ← v2 Installer (Debian/Ubuntu, systemd)
+├── android/               ← Native Android-App (Kotlin/Jetpack Compose)
+├── install.sh             ← Installer (Debian/Ubuntu, systemd)
 └── v3/                    ← v3 Monorepo (npm workspaces)
     ├── packages/
     │   ├── core/          ← Typen, Business-Logik, Merge-Algorithmus (TypeScript)
@@ -225,8 +214,7 @@ nagellacke/
     │       ├── index.ts   ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
     │       └── db.ts      ← Datei-Persistenz (data.json, users.json, Fotos)
     ├── apps/
-    │   ├── web/           ← v3 Web-App (React 18 + TypeScript + Vite)
-    │   └── android/       ← Expo React Native Android-App (5 Tabs)
+    │   └── web/           ← v3 Web-App (React 18 + TypeScript + Vite)
     └── package.json       ← Monorepo-Root (npm workspaces, Node ≥20)
 ```
 
