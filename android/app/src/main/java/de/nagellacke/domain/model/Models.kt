@@ -1,5 +1,6 @@
 package de.nagellacke.domain.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -16,27 +17,27 @@ enum class FinishType(val label: String, val icon: String) {
     Jelly("Jelly", "○"),
     Neon("Neon", "◆"),
     Magnetic("Magnetic", "⬡"),
-    GelLook("Gel Look", "◐"),
-    TopCoat("Top Coat", "▽"),
-    BaseCoat("Base Coat", "△"),
+    @SerialName("Gel Look") GelLook("Gel Look", "◐"),
+    @SerialName("Top Coat") TopCoat("Top Coat", "▽"),
+    @SerialName("Base Coat") BaseCoat("Base Coat", "△"),
 }
 
 @Serializable
 enum class PolishStatus(val label: String) {
-    Ok("Vorhanden"),
-    Wish("Wunschliste"),
-    Empty("Leer"),
-    Gone("Nicht mehr da"),
+    @SerialName("ok")   Ok("Vorhanden"),
+    @SerialName("wish") Wish("Wunschliste"),
+    @SerialName("empty") Empty("Leer"),
+    @SerialName("gone") Gone("Nicht mehr da"),
 }
 
 @Serializable
 enum class StickerType(val label: String, val icon: String) {
-    Full("Full Cover", "▬"),
-    Accent("Akzent", "◆"),
-    Wrap("Nail Wrap", "◌"),
-    ThreeD("3D", "●"),
-    Foil("Folie", "✦"),
-    Slider("Slider", "◎"),
+    @SerialName("full")   Full("Full Cover", "▬"),
+    @SerialName("accent") Accent("Akzent", "◆"),
+    @SerialName("wrap")   Wrap("Nail Wrap", "◌"),
+    @SerialName("3d")     ThreeD("3D", "●"),
+    @SerialName("foil")   Foil("Folie", "✦"),
+    @SerialName("slider") Slider("Slider", "◎"),
 }
 
 @Serializable
