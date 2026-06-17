@@ -2,6 +2,8 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { overflow-x: hidden; }
+
 :root {
   --md-primary: rgba(255,200,230,0.9);
   --md-primary-container: rgba(255,255,255,0.08);
