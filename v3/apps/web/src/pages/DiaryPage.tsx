@@ -104,7 +104,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
     <div className={styles.page}>
       <header className={styles.header}>
         <h2 className={styles.title}>Tagebuch</h2>
-        <button className={styles.addBtn} onClick={openNew}>+</button>
+        <button className={styles.addBtn} onClick={openNew} aria-label="Neuen Eintrag hinzufügen">+</button>
       </header>
 
       <div className={styles.count}>{entries.length} Einträge</div>
@@ -139,7 +139,12 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                   {swatches.length > 0 && (
                     <div className={styles.entrySwatches}>
                       {swatches.slice(0, 6).map((color, i) => (
-                        <div key={i} className={styles.swatch} style={{ background: color }} />
+                        <div
+                          key={i}
+                          className={styles.swatch}
+                          style={{ background: color }}
+                          title={m.polishRefs?.[i]?.name ?? color}
+                        />
                       ))}
                     </div>
                   )}
@@ -148,12 +153,13 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
               </div>
               <button
                 className={styles.deleteBtn}
+                aria-label="Eintrag löschen"
                 onClick={(e) => {
                   e.stopPropagation();
                   appData.deleteManicure(m.id);
                   showSnackbar(`Eintrag vom ${formatDate(m.date)} gelöscht`, () => appData.restoreManicure(m.id));
                 }}
-              >×</button>
+              >✕</button>
             </div>
           );
         })}

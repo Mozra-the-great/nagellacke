@@ -286,7 +286,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           {appData.data.customCats.filter((c) => !c.deletedAt).map((c) => (
             <div key={c.id} className={styles.catItem}>
               <span>{c.label}</span>
-              <button className={styles.catDeleteBtn} onClick={() => appData.deleteCategory(c.id)} aria-label="Löschen">×</button>
+              <button className={styles.catDeleteBtn} onClick={() => appData.deleteCategory(c.id)} aria-label="Löschen">✕</button>
             </div>
           ))}
           {appData.data.customCats.filter((c) => !c.deletedAt).length === 0 && (
