@@ -5,15 +5,17 @@ import styles from './PolishCard.module.css';
 
 export default function PolishCard({
   polish,
+  defaultShowPhoto = true,
   onEdit,
   onDelete,
 }: {
   polish: Polish;
+  defaultShowPhoto?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const hasPhoto = !!polish.photo;
-  const [showPhoto, setShowPhoto] = useState(hasPhoto);
+  const [showPhoto, setShowPhoto] = useState(hasPhoto && defaultShowPhoto);
   const count = polish.count ?? 1;
 
   return (

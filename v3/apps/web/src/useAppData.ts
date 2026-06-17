@@ -28,6 +28,16 @@ function saveLocal(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+const PHOTO_DEFAULT_KEY = 'nagellacke_v3_photo_default';
+
+export function loadPhotoDefault(): boolean {
+  return localStorage.getItem(PHOTO_DEFAULT_KEY) !== 'false';
+}
+
+export function savePhotoDefault(value: boolean): void {
+  localStorage.setItem(PHOTO_DEFAULT_KEY, String(value));
+}
+
 export function loadSyncConfig(): SyncConfig | null {
   try {
     const raw = localStorage.getItem(SYNC_CONFIG_KEY);

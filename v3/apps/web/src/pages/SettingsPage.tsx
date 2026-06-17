@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import styles from './SettingsPage.module.css';
 
@@ -58,6 +58,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -310,6 +311,28 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             className={styles.catAddBtn}
             onClick={() => { if (newCatLabel.trim()) { appData.addCategory(newCatLabel.trim()); setNewCatLabel(''); } }}
           >+</button>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Darstellung</h2>
+        <div className={styles.field}>
+          <span>Standard-Lackansicht</span>
+          <div className={styles.segmented}>
+            <button
+              className={`${styles.segBtn} ${photoDefault ? styles.segBtnActive : ''}`}
+              onClick={() => { setPhotoDefaultState(true); savePhotoDefault(true); }}
+            >
+              📷 Foto
+            </button>
+            <button
+              className={`${styles.segBtn} ${!photoDefault ? styles.segBtnActive : ''}`}
+              onClick={() => { setPhotoDefaultState(false); savePhotoDefault(false); }}
+            >
+              ◎ Flasche
+            </button>
+          </div>
+          <p className={styles.fieldHelpText}>Gilt nur für Lacke mit Foto — du kannst jederzeit pro Karte wechseln.</p>
         </div>
       </section>
 

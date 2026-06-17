@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { Polish, FilterState } from '@nagellacke/core';
 import { filterPolishes, sortPolishes, FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
+import { loadPhotoDefault } from '../useAppData';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
 import { useSnackbar } from '../components/Snackbar';
@@ -16,6 +17,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Polish | null>(null);
   const { showSnackbar } = useSnackbar();
+  const photoDefault = loadPhotoDefault();
 
   const visible = useMemo(() => {
     const filtered = filterPolishes(appData.data.polishes, filter);
@@ -88,6 +90,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
           <PolishCard
             key={p.id}
             polish={p}
+            defaultShowPhoto={photoDefault}
             onEdit={() => { setEditing(p); setShowForm(true); }}
             onDelete={() => {
               appData.deletePolish(p.id);
