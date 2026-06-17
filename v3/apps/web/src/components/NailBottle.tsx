@@ -12,6 +12,8 @@ interface Props {
 }
 
 export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
+  const uid = useMemo(() => `${color.replace('#', '')}_${finish ?? 'c'}`, [color, finish]);
+
   if (photoUrl) {
     const faded = status === 'empty' || status === 'gone';
     return (
@@ -25,8 +27,6 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
       </div>
     );
   }
-
-  const uid = useMemo(() => color.replace('#', '') + Math.random().toString(36).slice(2, 7), [color]);
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === 'empty' || status === 'gone';
   const isWish = status === 'wish';

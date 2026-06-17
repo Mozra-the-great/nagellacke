@@ -115,10 +115,10 @@ async function main() {
 
   // ── Auth helpers ──────────────────────────────────────────────────────────────
 
-  function requireApiKey(request: FastifyRequest, reply: FastifyReply): void {
+  async function requireApiKey(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
     if (!key || key !== API_KEY) {
-      reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
     }
   }
 
@@ -126,17 +126,20 @@ async function main() {
     try {
       await request.jwtVerify();
     } catch {
-      reply.code(401).send({ error: 'Unauthorized' });
+      return reply.code(401).send({ error: 'Unauthorized' });
     }
   }
 
   async function requireApiKeyOrJwt(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
-    if (key && key === API_KEY) return;
+    if (key) {
+      if (key !== API_KEY) return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      return;
+    }
     try {
       await request.jwtVerify();
     } catch {
-      reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
+      return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
     }
   }
 

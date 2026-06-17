@@ -49,6 +49,10 @@
 }
 .entry:hover .deleteBtn { opacity: 1; }
 
+@media (hover: none) {
+  .deleteBtn { opacity: 0.55; }
+}
+
 /* Modal */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-end; z-index: 200; }
 .modal {

@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { Manicure, Polish, PolishRef, ManicurePhotos } from '@nagellacke/core';
 import { filterManicures } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
 import PhotoField from '../components/PhotoField';
+import { useSnackbar } from '../components/Snackbar';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import styles from './DiaryPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -34,6 +36,9 @@ function resolveSwatches(m: Manicure, allPolishes: Polish[]): string[] {
 export default function DiaryPage({ appData }: { appData: AppData }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Manicure | null>(null);
+  const { showSnackbar } = useSnackbar();
+  const diaryModalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(diaryModalRef, showForm);
   const [form, setForm] = useState<{
     date: string;
     polishRefs: PolishRef[];
@@ -126,7 +131,11 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
               </div>
               <button
                 className={styles.deleteBtn}
-                onClick={(e) => { e.stopPropagation(); appData.deleteManicure(m.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  appData.deleteManicure(m.id);
+                  showSnackbar(`Eintrag vom ${formatDate(m.date)} gelöscht`, () => appData.restoreManicure(m.id));
+                }}
               >×</button>
             </div>
           );
@@ -134,11 +143,22 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
       </div>
 
       {showForm && (
-        <div className={styles.overlay} onClick={() => setShowForm(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.overlay}
+          onClick={() => setShowForm(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setShowForm(false)}
+        >
+          <div
+            ref={diaryModalRef}
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="diary-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className={styles.modalHeader}>
-              <h2>{editing ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}</h2>
-              <button onClick={() => setShowForm(false)}>✕</button>
+              <h2 id="diary-modal-title">{editing ? 'Eintrag bearbeiten' : 'Neuer Eintrag'}</h2>
+              <button onClick={() => setShowForm(false)} aria-label="Schließen">✕</button>
             </div>
             <div className={styles.modalBody}>
               <label className={styles.field}>

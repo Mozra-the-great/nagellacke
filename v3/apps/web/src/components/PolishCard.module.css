@@ -74,3 +74,7 @@
 }
 
 .card:hover .deleteBtn { opacity: 1; }
+
+@media (hover: none) {
+  .deleteBtn { opacity: 0.55; }
+}
