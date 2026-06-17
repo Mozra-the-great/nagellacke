@@ -16,10 +16,49 @@
   border-color: rgba(255,255,255,0.15);
 }
 
+.countBadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--md-primary);
+  background: rgba(255,200,230,0.12);
+  border: 1px solid rgba(255,200,230,0.30);
+  border-radius: 8px;
+  padding: 2px 5px;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
 .bottle {
   display: flex;
   justify-content: center;
   margin-bottom: 10px;
+}
+
+.viewToggle {
+  position: absolute;
+  bottom: 44px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.75);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card:hover .viewToggle { opacity: 1; }
+
+@media (hover: none) {
+  .viewToggle { opacity: 0.75; }
 }
 
 .info {
