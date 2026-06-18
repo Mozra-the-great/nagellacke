@@ -17,7 +17,7 @@ Wir nehmen die Sicherheit unserer Software sehr ernst. Wenn du eine Sicherheitsl
 
 ### Wie du eine Schwachstelle meldest
 
-Bitte sende eine detaillierte E-Mail an **261752434+Mozra-the-great@users.noreply.github.com** oder nutze – falls für dieses Repository aktiviert – die Funktion für [Private Vulnerability Reporting](https://docs.github.com/en/code-security/repository-security-advisories/working-with-repository-security-advisories) direkt auf GitHub.
+Bitte sende eine detaillierte E-Mail an **261752434+Mozra-the-great@users.noreply.github.com** oder nutze – falls für dieses Repository aktiviert – die Funktion für [Private Vulnerability Reporting](https://github.com/Mozra-the-great/nagellacke/security/advisories/new) direkt auf GitHub.
 
 Damit wir das Problem schnellstmöglich beheben können, lass uns bitte folgende Informationen zukommen:
 * **Beschreibung:** Eine genaue Erklärung der Schwachstelle und der potenziellen Auswirkungen.
