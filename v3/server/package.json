@@ -10,12 +10,12 @@
   },
   "dependencies": {
     "@nagellacke/core": "*",
-    "fastify": "^4.27.0",
+    "fastify": "^5.8.5",
     "@fastify/cors": "^9.0.0",
-    "@fastify/jwt": "^8.0.0",
+    "@fastify/jwt": "^10.1.0",
     "@fastify/multipart": "^8.3.0",
     "@fastify/static": "^7.0.0",
-    "uuid": "^9.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
