@@ -56,7 +56,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 ### v3 (empfohlen)
 
 ```bash
-sudo bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
 ### v2 (Legacy)
