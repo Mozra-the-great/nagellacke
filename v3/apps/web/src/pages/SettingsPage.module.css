@@ -40,6 +40,12 @@
   display: flex; align-items: center;
 }
 
+.warningBanner {
+  padding: 10px 14px; background: rgba(179,140,30,0.15); color: rgba(255,210,100,0.9);
+  border-radius: var(--radius-md); font-size: 13px; margin-bottom: 12px;
+  display: flex; align-items: center;
+}
+
 .confirmRow {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 10px 14px; background: var(--md-surface-variant);

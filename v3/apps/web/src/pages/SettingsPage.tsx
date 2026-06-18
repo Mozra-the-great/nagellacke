@@ -1,12 +1,63 @@
 import { useState, useRef } from 'react';
+import JSZip from 'jszip';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
-import type { AppData as CoreAppData } from '@nagellacke/core';
+import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
 import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
 import type { useAppData } from '../useAppData';
+import { uploadPhoto } from '../utils/photos';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
+
+function mimeTypeFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+function collectPhotoFilenames(data: CoreAppData): string[] {
+  const names = new Set<string>();
+  for (const p of data.polishes) if (p.photo) names.add(p.photo);
+  for (const s of data.stickers) if (s.photo) names.add(s.photo);
+  for (const m of data.manicures) {
+    if (m.photo) names.add(m.photo);
+    if (m.photos) {
+      const { fingerRight, fingerLeft, thumbRight, thumbLeft } = m.photos;
+      if (fingerRight) names.add(fingerRight);
+      if (fingerLeft) names.add(fingerLeft);
+      if (thumbRight) names.add(thumbRight);
+      if (thumbLeft) names.add(thumbLeft);
+    }
+  }
+  return [...names];
+}
+
+function remapPhotoRefs(data: CoreAppData, map: Map<string, string>): CoreAppData {
+  const remapStr = (name: string | undefined): string | undefined =>
+    name ? (map.get(name) ?? name) : name;
+  const remapNullable = (name: string | null | undefined): string | null | undefined =>
+    name ? (map.get(name) ?? name) : name;
+
+  return {
+    ...data,
+    polishes: data.polishes.map((p) => ({ ...p, photo: remapStr(p.photo) })),
+    stickers: data.stickers.map((s) => ({ ...s, photo: remapStr(s.photo) })),
+    manicures: data.manicures.map((m) => ({
+      ...m,
+      photo: remapStr(m.photo),
+      photos: m.photos
+        ? ({
+            fingerRight: remapNullable(m.photos.fingerRight),
+            fingerLeft:  remapNullable(m.photos.fingerLeft),
+            thumbRight:  remapNullable(m.photos.thumbRight),
+            thumbLeft:   remapNullable(m.photos.thumbLeft),
+          } satisfies ManicurePhotos)
+        : undefined,
+    })),
+  };
+}
 
 const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
@@ -64,7 +115,8 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
   const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
-  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -116,21 +168,104 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const exportData = () => {
-    const blob = new Blob([JSON.stringify(appData.data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `nagellacke-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportData = async () => {
+    setExporting(true);
+    setImportMessage(null);
+    try {
+      const zip = new JSZip();
+      zip.file('data.json', JSON.stringify(appData.data, null, 2));
+
+      const filenames = collectPhotoFilenames(appData.data);
+      let skipped = 0;
+      for (const filename of filenames) {
+        try {
+          const res = await fetch(`/photos/${encodeURIComponent(filename)}`);
+          if (!res.ok) { skipped++; continue; }
+          const blob = await res.blob();
+          zip.folder('photos')!.file(filename, blob);
+        } catch {
+          skipped++;
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nagellacke-export-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      if (skipped > 0) {
+        setImportMessage({ type: 'warning', text: `Export abgeschlossen. ${skipped} Foto(s) konnten nicht exportiert werden.` });
+      }
+    } catch (err) {
+      setImportMessage({ type: 'error', text: `Export fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so the same file can be re-selected
     e.target.value = '';
+
+    if (file.name.endsWith('.zip')) {
+      try {
+        const zip = await JSZip.loadAsync(file);
+        const jsonEntry = zip.file('data.json');
+        if (!jsonEntry) {
+          setImportMessage({ type: 'error', text: 'Ungültige ZIP-Datei: data.json fehlt' });
+          return;
+        }
+        const jsonText = await jsonEntry.async('string');
+        const imported = JSON.parse(jsonText) as Partial<CoreAppData>;
+        const valid: CoreAppData = {
+          polishes:   Array.isArray(imported.polishes)   ? imported.polishes   : [],
+          customCats: Array.isArray(imported.customCats) ? imported.customCats : [],
+          manicures:  Array.isArray(imported.manicures)  ? imported.manicures  : [],
+          stickers:   Array.isArray(imported.stickers)   ? imported.stickers   : [],
+        };
+
+        const filenameMap = new Map<string, string>();
+        let photosFailed = 0;
+        for (const [path, entry] of Object.entries(zip.files)) {
+          if (entry.dir || !path.startsWith('photos/')) continue;
+          const oldFilename = path.slice('photos/'.length);
+          if (!oldFilename) continue;
+          try {
+            const blob = await entry.async('blob');
+            const photoFile = new File([blob], oldFilename, { type: mimeTypeFromFilename(oldFilename) });
+            const newFilename = await uploadPhoto(photoFile);
+            filenameMap.set(oldFilename, newFilename);
+          } catch {
+            photosFailed++;
+          }
+        }
+
+        const remapped = filenameMap.size > 0 ? remapPhotoRefs(valid, filenameMap) : valid;
+        const merged = mergeData(appData.data, remapped);
+        appData.importMerge(merged);
+
+        if (photosFailed > 0) {
+          setImportMessage({
+            type: 'warning',
+            text: `Import abgeschlossen: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s). ${photosFailed} Foto(s) konnten nicht hochgeladen werden (Auth-Token gesetzt?).`,
+          });
+        } else {
+          setImportMessage({
+            type: 'success',
+            text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s).`,
+          });
+        }
+      } catch {
+        setImportMessage({ type: 'error', text: 'Ungültige ZIP-Datei' });
+      }
+      return;
+    }
+
+    // JSON fallback (backward compat)
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -142,7 +277,6 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           stickers:   Array.isArray(imported.stickers)   ? imported.stickers   : [],
         };
         const merged = mergeData(appData.data, valid);
-        // Push merged data through the commit path by calling importMerge
         appData.importMerge(merged);
         setImportMessage({ type: 'success', text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren.` });
       } catch {
@@ -339,7 +473,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Daten</h2>
         {importMessage && (
-          <div className={importMessage.type === 'success' ? styles.successBanner : styles.errorBanner}>
+          <div className={importMessage.type === 'success' ? styles.successBanner : importMessage.type === 'warning' ? styles.warningBanner : styles.errorBanner}>
             {importMessage.text}
             <button
               style={{ marginLeft: 8, opacity: 0.7, fontSize: 12 }}
@@ -349,15 +483,17 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </div>
         )}
         <div className={styles.btnRow}>
-          <button className={styles.exportBtn} onClick={exportData}>Export JSON</button>
+          <button className={styles.exportBtn} onClick={() => void exportData()} disabled={exporting}>
+            {exporting ? 'Exportiere…' : 'Export ZIP'}
+          </button>
           <button className={styles.importBtn} onClick={() => fileInputRef.current?.click()}>
-            Import JSON
+            Import
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".json"
-            onChange={importData}
+            accept=".json,.zip"
+            onChange={(e) => void importData(e)}
             style={{ display: 'none' }}
           />
         </div>
