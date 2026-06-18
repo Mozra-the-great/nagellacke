@@ -84,8 +84,8 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             polish={p}
             onEdit={() => { setEditing(p); setShowForm(true); }}
             onDelete={() => {
-              appData.deletePolish(p.id);
-              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id));
+              const cleanup = appData.deletePolish(p.id);
+              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id), cleanup);
             }}
           />
         ))}

@@ -146,8 +146,8 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                 className={styles.deleteBtn}
                 onClick={(e) => {
                   e.stopPropagation();
-                  appData.deleteManicure(m.id);
-                  showSnackbar(`Eintrag vom ${formatDate(m.date)} gelöscht`, () => appData.restoreManicure(m.id));
+                  const cleanup = appData.deleteManicure(m.id);
+                  showSnackbar(`Eintrag vom ${formatDate(m.date)} gelöscht`, () => appData.restoreManicure(m.id), cleanup);
                 }}
               >×</button>
             </div>

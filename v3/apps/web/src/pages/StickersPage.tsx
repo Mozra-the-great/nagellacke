@@ -108,8 +108,8 @@ export default function StickersPage({ appData }: { appData: AppData }) {
               className={styles.deleteBtn}
               onClick={(e) => {
                 e.stopPropagation();
-                appData.deleteSticker(s.id);
-                showSnackbar(`„${s.name}" gelöscht`, () => appData.restoreSticker(s.id));
+                const cleanup = appData.deleteSticker(s.id);
+                showSnackbar(`„${s.name}" gelöscht`, () => appData.restoreSticker(s.id), cleanup);
               }}
             >×</button>
           </div>

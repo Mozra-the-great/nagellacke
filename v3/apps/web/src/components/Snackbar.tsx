@@ -5,11 +5,12 @@ import styles from './Snackbar.module.css';
 interface SnackbarState {
   message: string;
   undoFn?: () => void;
+  commitFn?: () => void;
   id: number;
 }
 
 interface SnackbarContextValue {
-  showSnackbar: (message: string, undoFn?: () => void) => void;
+  showSnackbar: (message: string, undoFn?: () => void, commitFn?: () => void) => void;
 }
 
 const SnackbarContext = createContext<SnackbarContextValue>({ showSnackbar: () => {} });
@@ -22,12 +23,15 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
   const [snack, setSnack] = useState<SnackbarState | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showSnackbar = useCallback((message: string, undoFn?: () => void) => {
+  const showSnackbar = useCallback((message: string, undoFn?: () => void, commitFn?: () => void) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     const id = Date.now();
-    setSnack({ message, undoFn, id });
+    setSnack({ message, undoFn, commitFn, id });
     timerRef.current = setTimeout(() => {
-      setSnack((prev) => (prev?.id === id ? null : prev));
+      setSnack((prev) => {
+        if (prev?.id === id) { prev.commitFn?.(); return null; }
+        return prev;
+      });
     }, 3000);
   }, []);
 
@@ -39,6 +43,7 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
 
   const handleDismiss = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    snack?.commitFn?.();
     setSnack(null);
   };
 
