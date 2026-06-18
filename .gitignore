@@ -8,3 +8,4 @@ android/local.properties
 .env
 *.log
 CLAUDE.local.md
+ToFixFehler.md
