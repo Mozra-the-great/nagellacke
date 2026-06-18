@@ -98,8 +98,8 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             defaultShowPhoto={photoDefault}
             onEdit={() => setViewing(p)}
             onDelete={() => {
-              appData.deletePolish(p.id);
-              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id));
+              const cleanup = appData.deletePolish(p.id);
+              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id), cleanup);
             }}
           />
         ))}
