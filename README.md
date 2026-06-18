@@ -56,7 +56,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 ### v3 (empfohlen)
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
 ### v2 (Legacy)
@@ -114,7 +114,7 @@ Den zurückgegebenen Token in der Android-App oder im Web unter **Einstellungen 
 bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 
 # v3
-sudo bash /opt/nagellacke/v3/server/install.sh
+sudo bash /opt/nagellacke/install.sh
 ```
 
 Daten bleiben dabei **immer erhalten**.
