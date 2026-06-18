@@ -214,7 +214,13 @@ async function main() {
     };
 
     const latestVersion = await Promise.race([fetchLatest(), deadline]);
-    const updateAvailable = latestVersion ? latestVersion !== current : false;
+    const semverGt = (a: string, b: string): boolean => {
+      const p = (v: string) => v.split('.').map(Number);
+      const [aMaj, aMin, aPat] = p(a);
+      const [bMaj, bMin, bPat] = p(b);
+      return aMaj !== bMaj ? aMaj > bMaj : aMin !== bMin ? aMin > bMin : aPat > bPat;
+    };
+    const updateAvailable = latestVersion ? semverGt(latestVersion, current) : false;
     return { current, latestVersion, updateAvailable };
   });
 
