@@ -91,6 +91,15 @@ function verifyPassword(password: string, stored: string): boolean {
 }
 
 // ── GitHub version check helper ───────────────────────────────────────────────
+function semverGt(a: string, b: string): boolean {
+  const parse = (v: string) => v.split('.').map(Number);
+  const [ma, mia, pa] = parse(a);
+  const [mb, mib, pb] = parse(b);
+  if (ma !== mb) return ma > mb;
+  if (mia !== mib) return mia > mib;
+  return pa > pb;
+}
+
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': 'nagellacke-v3' } }, (res) => {
@@ -214,7 +223,7 @@ async function main() {
     };
 
     const latestVersion = await Promise.race([fetchLatest(), deadline]);
-    const updateAvailable = latestVersion ? latestVersion !== current : false;
+    const updateAvailable = latestVersion ? semverGt(latestVersion, current) : false;
     return { current, latestVersion, updateAvailable };
   });
 

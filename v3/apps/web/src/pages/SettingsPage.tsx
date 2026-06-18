@@ -378,7 +378,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         {updateInfo && updateStatus !== 'error' && (
           <div className={styles.infoText}>
             Version {updateInfo.current}
-            {updateInfo.latestVersion && updateInfo.latestVersion !== updateInfo.current
+            {updateInfo.updateAvailable
               ? ` → ${updateInfo.latestVersion} verfügbar`
               : ' — aktuell'}
           </div>
