@@ -115,7 +115,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
   const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
-  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [importMessage, setImportMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const saveApiKey = (key: string) => {
@@ -197,7 +197,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       URL.revokeObjectURL(url);
 
       if (skipped > 0) {
-        setImportMessage({ type: 'error', text: `Export abgeschlossen. ${skipped} Foto(s) konnten nicht exportiert werden.` });
+        setImportMessage({ type: 'warning', text: `Export abgeschlossen. ${skipped} Foto(s) konnten nicht exportiert werden.` });
       }
     } catch (err) {
       setImportMessage({ type: 'error', text: `Export fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}` });
@@ -229,6 +229,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         };
 
         const filenameMap = new Map<string, string>();
+        let photosFailed = 0;
         for (const [path, entry] of Object.entries(zip.files)) {
           if (entry.dir || !path.startsWith('photos/')) continue;
           const oldFilename = path.slice('photos/'.length);
@@ -239,17 +240,25 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             const newFilename = await uploadPhoto(photoFile);
             filenameMap.set(oldFilename, newFilename);
           } catch {
-            // skip photos that can't be uploaded
+            photosFailed++;
           }
         }
 
         const remapped = filenameMap.size > 0 ? remapPhotoRefs(valid, filenameMap) : valid;
         const merged = mergeData(appData.data, remapped);
         appData.importMerge(merged);
-        setImportMessage({
-          type: 'success',
-          text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s).`,
-        });
+
+        if (photosFailed > 0) {
+          setImportMessage({
+            type: 'warning',
+            text: `Import abgeschlossen: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s). ${photosFailed} Foto(s) konnten nicht hochgeladen werden (Auth-Token gesetzt?).`,
+          });
+        } else {
+          setImportMessage({
+            type: 'success',
+            text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s).`,
+          });
+        }
       } catch {
         setImportMessage({ type: 'error', text: 'Ungültige ZIP-Datei' });
       }
@@ -464,7 +473,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Daten</h2>
         {importMessage && (
-          <div className={importMessage.type === 'success' ? styles.successBanner : styles.errorBanner}>
+          <div className={importMessage.type === 'success' ? styles.successBanner : importMessage.type === 'warning' ? styles.warningBanner : styles.errorBanner}>
             {importMessage.text}
             <button
               style={{ marginLeft: 8, opacity: 0.7, fontSize: 12 }}
