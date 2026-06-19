@@ -33,19 +33,24 @@ function stars(rating: number | undefined): string {
   return '★'.repeat(full) + '☆'.repeat(5 - full);
 }
 
-function colorDots(colors: string[] | undefined): string {
-  if (!colors?.length) return '';
-  return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
-}
-
 function safeColor(color: string | undefined | null): string {
   if (color && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color)) return color;
   return '#999999';
 }
 
+function escHtml(s: string | undefined | null): string {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function colorDots(colors: string[] | undefined): string {
+  if (!colors?.length) return '';
+  return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${safeColor(c)};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
+}
+
 function photoTag(filename: string | undefined | null, alt: string, style = ''): string {
   if (!filename) return '';
-  return `<img src="/photos/${encodeURIComponent(filename)}" alt="${alt}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}" onerror="this.style.display='none'">`;
+  return `<img src="/photos/${encodeURIComponent(filename)}" alt="${escHtml(alt)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}" onerror="this.style.display='none'">`;
 }
 
 export function generateReport(data: AppData, period: 'week' | 'month', ref: Date): string {
@@ -328,9 +333,4 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
   </div>
 </body>
 </html>`;
-}
-
-function escHtml(s: string | undefined | null): string {
-  if (!s) return '';
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

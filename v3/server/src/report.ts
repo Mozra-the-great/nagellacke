@@ -45,7 +45,7 @@ function stars(rating: number | undefined): string {
 
 function colorDots(colors: string[] | undefined): string {
   if (!colors?.length) return '';
-  return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
+  return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${safeColor(c)};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
 }
 
 function photoImg(filename: string | undefined | null, alt: string, baseUrl: string, style = ''): string {

@@ -318,9 +318,12 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     const controller = new AbortController();
     const { signal } = controller;
 
+    type MeResponse = { email?: string | null; smtpConfigured?: boolean };
+    type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
+
     // Load email + smtp status
     fetch(`${base}/api/auth/me`, { headers, signal })
-      .then(r => r.ok ? r.json() as Promise<{ email?: string | null; smtpConfigured?: boolean }> : Promise.resolve({}))
+      .then(r => r.ok ? r.json() as Promise<MeResponse> : Promise.resolve<MeResponse>({}))
       .then(d => {
         if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
@@ -330,7 +333,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
     // Load schedule config
     fetch(`${base}/api/reports/schedule`, { headers, signal })
-      .then(r => r.ok ? r.json() as Promise<{ config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean }> : Promise.resolve({}))
+      .then(r => r.ok ? r.json() as Promise<ScheduleResponse> : Promise.resolve<ScheduleResponse>({}))
       .then(d => {
         if (signal.aborted) return;
         if (d.config) {
