@@ -300,7 +300,7 @@ async function main() {
   app.patch('/api/auth/me', { preHandler: requireJwt }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const { email } = request.body as { email?: string };
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!email || !isValidEmail(email)) {
       return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
     }
     updateUserEmail(username, email.trim().toLowerCase());
@@ -309,10 +309,16 @@ async function main() {
 
   // ── Report endpoints (JWT) ────────────────────────────────────────────────────
 
-  function getBaseUrl(req: FastifyRequest): string {
-    const proto = (req.headers['x-forwarded-proto'] as string) ?? 'http';
-    const host  = (req.headers['x-forwarded-host'] as string) ?? req.headers.host ?? 'localhost';
-    return `${proto}://${host}`;
+  // Use APP_URL env var — never derive the base URL from request headers to
+  // prevent host-header poisoning attacks on generated email links.
+  const APP_BASE_URL = (process.env.APP_URL ?? '').replace(/\/$/, '');
+
+  function isValidEmail(s: string): boolean {
+    if (!s || s.length > 254) return false;
+    const at = s.lastIndexOf('@');
+    if (at <= 0 || at >= s.length - 1) return false;
+    const domain = s.slice(at + 1);
+    return domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.');
   }
 
   // GET /api/reports/preview?period=week&date=2026-06-19
@@ -321,7 +327,7 @@ async function main() {
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date) : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(), period, date, getBaseUrl(request));
+    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
     return reply.type('text/html').send(html);
   });
 
@@ -331,7 +337,7 @@ async function main() {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
     const { period: rawPeriod, date: rawDate, toEmail } = request.body as { period?: string; date?: string; toEmail?: string };
-    if (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    if (!toEmail || !isValidEmail(toEmail)) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
     const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
@@ -340,13 +346,13 @@ async function main() {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(), period, date, getBaseUrl(request));
+    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
     await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     return { ok: true };
   });
 
   // GET /api/reports/schedule
-  app.get('/api/reports/schedule', { preHandler: requireJwt }, async () => {
+  app.get('/api/reports/schedule', { preHandler: [requireJwt, rateLimit(30, 60_000)] }, async () => {
     return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
   });
 
@@ -354,7 +360,7 @@ async function main() {
   app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
     const body = request.body as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
-    if (body.enabled && (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail))) {
+    if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
     const current = getScheduleConfig();
