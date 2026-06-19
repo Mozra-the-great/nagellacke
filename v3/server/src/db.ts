@@ -42,6 +42,7 @@ interface User {
   username: string;
   password_hash: string;
   created_at: number;
+  email?: string;
 }
 
 function readUsers(): User[] {
@@ -72,4 +73,39 @@ export function createUser(username: string, passwordHash: string): void {
   const users = readUsers();
   users.push({ username, password_hash: passwordHash, created_at: Date.now() });
   writeUsers(users);
+}
+
+export function updateUserEmail(username: string, email: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], email };
+    writeUsers(users);
+  }
+}
+
+// ── Report schedule config ────────────────────────────────────────────────────
+
+export interface ScheduleConfig {
+  enabled: boolean;
+  frequency: 'weekly' | 'monthly';
+  toEmail: string;
+  lastSentAt?: number;
+}
+
+const SCHEDULE_FILE = path.join(DATA_DIR, 'schedule.json');
+
+export function getScheduleConfig(): ScheduleConfig | null {
+  try {
+    if (!fs.existsSync(SCHEDULE_FILE)) return null;
+    return JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8')) as ScheduleConfig;
+  } catch {
+    return null;
+  }
+}
+
+export function setScheduleConfig(config: ScheduleConfig): void {
+  const tmp = `${SCHEDULE_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(config));
+  fs.renameSync(tmp, SCHEDULE_FILE);
 }

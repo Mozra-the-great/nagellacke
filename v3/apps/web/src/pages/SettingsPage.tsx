@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
@@ -6,6 +6,7 @@ import { mergeData } from '@nagellacke/core';
 import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
+import { generateReport } from '../utils/report';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -286,6 +287,105 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     reader.readAsText(file);
   };
 
+  // ── Berichte ──
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [reportPeriod, setReportPeriod] = useState<'week' | 'month'>('week');
+  const [reportDate, setReportDate] = useState(todayStr);
+  const [reportEmail, setReportEmail] = useState('');
+  const [reportEmailStatus, setReportEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [reportEmailError, setReportEmailError] = useState('');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleFrequency, setScheduleFrequency] = useState<'weekly' | 'monthly'>('weekly');
+  const [scheduleEmail, setScheduleEmail] = useState('');
+  const [scheduleSaveStatus, setScheduleSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [scheduleSaveError, setScheduleSaveError] = useState('');
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
+
+  const isServerSync = config?.provider === 'server';
+  const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
+  const authHeaders = (): Record<string, string> => {
+    if (apiKey) return { 'X-Api-Key': apiKey };
+    if (serverToken) return { 'Authorization': `Bearer ${serverToken}` };
+    return {};
+  };
+
+  useEffect(() => {
+    if (!isServerSync) return;
+    const base = serverBase;
+    const headers = authHeaders();
+    if (!headers['X-Api-Key'] && !headers['Authorization']) return;
+
+    // Load email + smtp status
+    fetch(`${base}/api/auth/me`, { headers })
+      .then(r => r.ok ? r.json() as Promise<{ email?: string | null; smtpConfigured?: boolean }> : Promise.resolve({}))
+      .then(d => {
+        if (d.email) setReportEmail(d.email);
+        if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
+      })
+      .catch(() => { /* ignore */ });
+
+    // Load schedule config
+    fetch(`${base}/api/reports/schedule`, { headers })
+      .then(r => r.ok ? r.json() as Promise<{ config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean }> : Promise.resolve({}))
+      .then(d => {
+        if (d.config) {
+          setScheduleEnabled(d.config.enabled);
+          setScheduleFrequency(d.config.frequency);
+          setScheduleEmail(d.config.toEmail ?? '');
+        }
+        if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
+      })
+      .catch(() => { /* ignore */ });
+  }, [isServerSync, serverBase, serverToken, apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openReport = () => {
+    const html = generateReport(appData.data, reportPeriod, new Date(reportDate));
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
+  const sendReportEmail = async () => {
+    setReportEmailStatus('sending');
+    setReportEmailError('');
+    try {
+      const base = serverBase;
+      const res = await fetch(`${base}/api/reports/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ period: reportPeriod, date: reportDate, toEmail: reportEmail }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) { setReportEmailError(data.error ?? `Fehler ${res.status}`); setReportEmailStatus('error'); return; }
+      setReportEmailStatus('sent');
+      setTimeout(() => setReportEmailStatus('idle'), 3000);
+    } catch (e) {
+      setReportEmailError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setReportEmailStatus('error');
+    }
+  };
+
+  const saveSchedule = async () => {
+    setScheduleSaveStatus('saving');
+    setScheduleSaveError('');
+    try {
+      const base = serverBase;
+      const res = await fetch(`${base}/api/reports/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ enabled: scheduleEnabled, frequency: scheduleFrequency, toEmail: scheduleEmail }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok) { setScheduleSaveError(data.error ?? `Fehler ${res.status}`); setScheduleSaveStatus('error'); return; }
+      setScheduleSaveStatus('saved');
+      setTimeout(() => setScheduleSaveStatus('idle'), 2000);
+    } catch (e) {
+      setScheduleSaveError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setScheduleSaveStatus('error');
+    }
+  };
+
   const stats = {
     polishes: appData.data.polishes.filter((p) => !p.deletedAt).length,
     stickers: appData.data.stickers.filter((s) => !s.deletedAt).length,
@@ -497,6 +597,136 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             style={{ display: 'none' }}
           />
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Berichte</h2>
+
+        <div className={styles.segmented} style={{ marginBottom: 14 }}>
+          <button
+            className={`${styles.segBtn} ${reportPeriod === 'week' ? styles.segBtnActive : ''}`}
+            onClick={() => setReportPeriod('week')}
+          >Wochenübersicht</button>
+          <button
+            className={`${styles.segBtn} ${reportPeriod === 'month' ? styles.segBtnActive : ''}`}
+            onClick={() => setReportPeriod('month')}
+          >Monatsübersicht</button>
+        </div>
+
+        <label className={styles.field}>
+          <span>Datum im Zeitraum</span>
+          <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+        </label>
+
+        <div className={styles.btnRow} style={{ marginBottom: 20 }}>
+          <button className={styles.saveBtn} onClick={openReport}>
+            📄 Bericht erstellen
+          </button>
+          <p className={styles.fieldHelpText} style={{ alignSelf: 'center', margin: 0 }}>
+            Öffnet in neuem Tab → Strg+P → Als PDF speichern
+          </p>
+        </div>
+
+        {isServerSync && (
+          <>
+            <hr style={{ border: 'none', borderTop: '1px solid var(--md-outline-variant)', margin: '12px 0 16px' }} />
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', marginBottom: 12 }}>Per E-Mail senden</h3>
+
+            {!smtpConfigured && (
+              <div className={styles.warningBanner} style={{ marginBottom: 12 }}>
+                SMTP nicht konfiguriert — bitte SMTP_HOST, SMTP_USER und SMTP_PASS als Umgebungsvariablen auf dem Server setzen.
+              </div>
+            )}
+
+            <label className={styles.field}>
+              <span>E-Mail-Adresse</span>
+              <input
+                type="email"
+                value={reportEmail}
+                onChange={(e) => setReportEmail(e.target.value)}
+                placeholder="deine@email.de"
+              />
+            </label>
+
+            {reportEmailStatus === 'error' && (
+              <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{reportEmailError}</div>
+            )}
+            {reportEmailStatus === 'sent' && (
+              <div className={styles.successBanner} style={{ marginBottom: 8 }}>✓ Bericht gesendet!</div>
+            )}
+
+            <div className={styles.btnRow} style={{ marginBottom: 20 }}>
+              <button
+                className={styles.syncBtn}
+                onClick={() => void sendReportEmail()}
+                disabled={!reportEmail || !smtpConfigured || reportEmailStatus === 'sending'}
+              >
+                {reportEmailStatus === 'sending' ? 'Sende…' : '✉ Jetzt per E-Mail senden'}
+              </button>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--md-outline-variant)', margin: '12px 0 16px' }} />
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', marginBottom: 12 }}>Automatischer Zeitplan</h3>
+            <p className={styles.fieldHelpText} style={{ marginBottom: 12 }}>
+              Wöchentlich: jeden Montag 08:00 Uhr (Vorwoche). Monatlich: 1. des Monats 08:00 Uhr (Vormonat).
+            </p>
+
+            <label className={styles.field}>
+              <span>Automatisch senden</span>
+              <div className={styles.segmented}>
+                <button
+                  className={`${styles.segBtn} ${scheduleEnabled ? styles.segBtnActive : ''}`}
+                  onClick={() => setScheduleEnabled(true)}
+                >An</button>
+                <button
+                  className={`${styles.segBtn} ${!scheduleEnabled ? styles.segBtnActive : ''}`}
+                  onClick={() => setScheduleEnabled(false)}
+                >Aus</button>
+              </div>
+            </label>
+
+            {scheduleEnabled && (
+              <>
+                <label className={styles.field}>
+                  <span>Häufigkeit</span>
+                  <select value={scheduleFrequency} onChange={(e) => setScheduleFrequency(e.target.value as 'weekly' | 'monthly')}>
+                    <option value="weekly">Wöchentlich</option>
+                    <option value="monthly">Monatlich</option>
+                  </select>
+                </label>
+                <label className={styles.field}>
+                  <span>Senden an</span>
+                  <input
+                    type="email"
+                    value={scheduleEmail}
+                    onChange={(e) => setScheduleEmail(e.target.value)}
+                    placeholder="deine@email.de"
+                  />
+                </label>
+              </>
+            )}
+
+            {scheduleSaveStatus === 'error' && (
+              <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{scheduleSaveError}</div>
+            )}
+
+            <div className={styles.btnRow}>
+              <button
+                className={styles.saveBtn}
+                onClick={() => void saveSchedule()}
+                disabled={scheduleSaveStatus === 'saving' || !smtpConfigured}
+              >
+                {scheduleSaveStatus === 'saving' ? 'Speichere…' : scheduleSaveStatus === 'saved' ? '✓ Gespeichert' : 'Zeitplan speichern'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {!isServerSync && (
+          <p className={styles.fieldHelpText} style={{ marginTop: 8 }}>
+            E-Mail und Zeitplan sind nur mit dem Eigenen-Server-Sync verfügbar.
+          </p>
+        )}
       </section>
 
       <section className={styles.section}>
