@@ -7,6 +7,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Set KEYSTORE_FILE env var to the absolute path of the .jks file to enable release signing.
+// Without it the release build is produced unsigned (safe for local development / CI without secrets).
+val keystoreFilePath: String? = System.getenv("KEYSTORE_FILE")
+
 android {
     namespace = "de.nagellacke"
     compileSdk = 35
@@ -23,8 +27,21 @@ android {
         manifestPlaceholders["appAuthRedirectScheme"] = "nagellacke"
     }
 
+    signingConfigs {
+        if (keystoreFilePath != null) {
+            create("release") {
+                storeFile = file(keystoreFilePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS") ?: "nagellacke"
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // null when KEYSTORE_FILE is absent → unsigned build (cannot be distributed)
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

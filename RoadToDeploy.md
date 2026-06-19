@@ -32,7 +32,7 @@ Yes — publishing the Nagellacke Android app on the Google Play Store is **enti
 
 ### 2.2 App Signing (Keystore)
 
-This is the most critical technical step. Currently, `android/app/build.gradle.kts` has **no signing configuration** — the release build is unsigned and cannot be distributed.
+This is the most critical technical step. `android/app/build.gradle.kts` now contains a signing configuration block, but it is **env-var-gated** — the release build remains unsigned until you provide `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` as environment variables.
 
 **What to do:**
 
@@ -199,29 +199,29 @@ The app's architecture and code quality are **production-ready**:
 
 **Gaps to fill before Play Store submission:**
 
-1. Add release signing configuration to `build.gradle.kts`
-2. Create and safeguard a release keystore
-3. Produce a signed AAB and smoke-test it on a real device
-4. Write and host a privacy policy
-5. Create store listing assets (screenshots, feature graphic, high-res icon)
-6. Decide on Google Drive OAuth strategy (include or defer)
+- [x] Add release signing configuration to `build.gradle.kts` (env-var-gated; unsigned without `KEYSTORE_FILE`)
+- [ ] Create and safeguard a release keystore (`keytool -genkey …`) and set `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` / `KEY_PASSWORD`
+- [ ] Produce a signed AAB and smoke-test it on a real device (`./gradlew bundleRelease`)
+- [x] Write a privacy policy — drafted at `docs/privacy-policy.html` (needs hosting, e.g. GitHub Pages)
+- [ ] Create store listing assets (screenshots, feature graphic, high-res icon)
+- [ ] Decide on Google Drive OAuth strategy (include or defer)
 
 ---
 
 ## 6. Recommended Next Steps
 
-1. **Create Google Play developer account** ($25, one-time)
-2. **Generate release keystore** and store it securely (password manager + encrypted backup)
-3. **Configure signing** in `build.gradle.kts`
-4. **Build signed AAB**: `./gradlew bundleRelease`
-5. **Test the release build** on a physical device or emulator
-6. **Write a privacy policy** and host it (GitHub Pages is sufficient)
-7. **Take screenshots** of the main app screens on a phone
-8. **Create/export the store icon** at 512×512 from the existing adaptive icon
-9. **Open a Closed Testing track** in Play Console to start with a limited audience
-10. **Submit and address review feedback**
-11. **(Optional, later)** Add Android release CI/CD to GitHub Actions
-12. **(Optional, later)** Apply for Google OAuth verification to enable Google Drive sync
+- [ ] **Create Google Play developer account** ($25, one-time)
+- [ ] **Generate release keystore** and store it securely (password manager + encrypted backup)
+- [x] **Configure signing** in `build.gradle.kts` (env-var-gated — no-op without `KEYSTORE_FILE`)
+- [ ] **Build signed AAB**: set env vars, then `./gradlew bundleRelease`
+- [ ] **Test the release build** on a physical device or emulator
+- [x] **Write a privacy policy** — drafted at `docs/privacy-policy.html` (needs hosting at a stable URL)
+- [ ] **Take screenshots** of the main app screens on a phone
+- [ ] **Create/export the store icon** at 512×512 from the existing adaptive icon
+- [ ] **Open a Closed Testing track** in Play Console to start with a limited audience
+- [ ] **Submit and address review feedback**
+- [x] **(Optional)** Add Android release CI/CD to GitHub Actions — workflow at `.github/workflows/android-release.yml`, triggers on `android-v*` tags or manual dispatch; signing activates automatically when `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` secrets are set in the repo
+- [ ] **(Optional, later)** Apply for Google OAuth verification to enable Google Drive sync
 
 ---
 
