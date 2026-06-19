@@ -6,6 +6,7 @@ import { mergeData } from '@nagellacke/core';
 import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
+import { openReport, type ReportPeriod } from '../utils/report';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -117,6 +118,9 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('month');
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
@@ -496,6 +500,47 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             onChange={(e) => void importData(e)}
             style={{ display: 'none' }}
           />
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Berichte</h2>
+        <label className={styles.field}>
+          <span>Zeitraum</span>
+          <div className={styles.segmented}>
+            <button
+              className={`${styles.segBtn} ${reportPeriod === 'week' ? styles.segBtnActive : ''}`}
+              onClick={() => setReportPeriod('week')}
+            >
+              Woche
+            </button>
+            <button
+              className={`${styles.segBtn} ${reportPeriod === 'month' ? styles.segBtnActive : ''}`}
+              onClick={() => setReportPeriod('month')}
+            >
+              Monat
+            </button>
+          </div>
+        </label>
+        <label className={styles.field}>
+          <span>Datum im Zeitraum</span>
+          <input
+            type="date"
+            value={reportDate}
+            onChange={(e) => setReportDate(e.target.value)}
+          />
+        </label>
+        <p className={styles.fieldHelpText}>
+          Öffnet einen Report für die gewählte {reportPeriod === 'week' ? 'Kalenderwoche' : 'Monat'} als neue Seite — dort "Als PDF speichern" klicken oder den Browser-Druckdialog nutzen.
+        </p>
+        <div className={styles.btnRow} style={{ marginTop: 12 }}>
+          <button
+            className={styles.saveBtn}
+            onClick={() => openReport(appData.data, reportPeriod, new Date(`${reportDate}T00:00:00`))}
+            disabled={!reportDate}
+          >
+            📄 Bericht erstellen
+          </button>
         </div>
       </section>
 
