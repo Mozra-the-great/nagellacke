@@ -27,6 +27,11 @@ function getWeekNumber(d: Date): number {
   return Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
+function safeColor(color: string | undefined | null): string {
+  if (color && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color)) return color;
+  return '#999999';
+}
+
 function escHtml(s: string | undefined | null): string {
   if (!s) return '';
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -135,7 +140,7 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
       <div class="polish-card">
         ${p.photo
           ? `<div class="polish-photo">${photoImg(p.photo, p.name, baseUrl)}</div>`
-          : `<div class="polish-swatch" style="background:${p.color}22"><span style="width:46px;height:46px;border-radius:50%;background:${p.color};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span></div>`}
+          : `<div class="polish-swatch" style="background:${safeColor(p.color)}22"><span style="width:46px;height:46px;border-radius:50%;background:${safeColor(p.color)};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span></div>`}
         <div class="polish-body">
           <div class="polish-name">${escHtml(p.name)}</div>
           <div class="polish-brand">${escHtml(p.brand)}${p.num ? ` · ${escHtml(p.num)}` : ''}</div>
@@ -165,7 +170,7 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
         const photoSlots = [m.photos?.fingerRight, m.photos?.fingerLeft, m.photos?.thumbRight, m.photos?.thumbLeft, m.photo].filter(Boolean) as string[];
         const displayPhotos = photoSlots.slice(0, 4);
         const polishChips = m.polishRefs?.length
-          ? m.polishRefs.map(r => `<span class="polish-chip"><span class="polish-chip-dot" style="background:${r.color ?? '#ccc'}"></span>${escHtml(r.name)}</span>`).join('')
+          ? m.polishRefs.map(r => `<span class="polish-chip"><span class="polish-chip-dot" style="background:${safeColor(r.color)}"></span>${escHtml(r.name)}</span>`).join('')
           : (m.polishes ?? []).map(n => `<span class="polish-chip">${escHtml(n)}</span>`).join('');
         return `<div class="manicure-entry">
           <div class="manicure-date">${new Date(m.date).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>

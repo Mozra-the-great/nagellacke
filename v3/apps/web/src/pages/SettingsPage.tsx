@@ -315,19 +315,24 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     const headers = authHeaders();
     if (!headers['X-Api-Key'] && !headers['Authorization']) return;
 
+    const controller = new AbortController();
+    const { signal } = controller;
+
     // Load email + smtp status
-    fetch(`${base}/api/auth/me`, { headers })
+    fetch(`${base}/api/auth/me`, { headers, signal })
       .then(r => r.ok ? r.json() as Promise<{ email?: string | null; smtpConfigured?: boolean }> : Promise.resolve({}))
       .then(d => {
+        if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => { /* ignore aborted / network errors */ });
 
     // Load schedule config
-    fetch(`${base}/api/reports/schedule`, { headers })
+    fetch(`${base}/api/reports/schedule`, { headers, signal })
       .then(r => r.ok ? r.json() as Promise<{ config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean }> : Promise.resolve({}))
       .then(d => {
+        if (signal.aborted) return;
         if (d.config) {
           setScheduleEnabled(d.config.enabled);
           setScheduleFrequency(d.config.frequency);
@@ -335,7 +340,9 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         }
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => { /* ignore aborted / network errors */ });
+
+    return () => controller.abort();
   }, [isServerSync, serverBase, serverToken, apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openReport = () => {

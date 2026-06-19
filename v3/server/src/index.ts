@@ -325,8 +325,8 @@ async function main() {
     return reply.type('text/html').send(html);
   });
 
-  // POST /api/reports/send — send email immediately
-  app.post('/api/reports/send', { preHandler: requireJwt }, async (request, reply) => {
+  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP)
+  app.post('/api/reports/send', { preHandler: [requireJwt, rateLimit(10, 60 * 60_000)] }, async (request, reply) => {
     if (!isEmailConfigured()) {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }

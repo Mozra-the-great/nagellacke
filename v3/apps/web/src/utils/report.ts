@@ -38,6 +38,11 @@ function colorDots(colors: string[] | undefined): string {
   return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
 }
 
+function safeColor(color: string | undefined | null): string {
+  if (color && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(color)) return color;
+  return '#999999';
+}
+
 function photoTag(filename: string | undefined | null, alt: string, style = ''): string {
   if (!filename) return '';
   return `<img src="/photos/${encodeURIComponent(filename)}" alt="${alt}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}" onerror="this.style.display='none'">`;
@@ -195,8 +200,8 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
       <div class="polish-card">
         ${p.photo
           ? `<div class="polish-photo">${photoTag(p.photo, p.name)}</div>`
-          : `<div class="polish-swatch" style="background:${p.color}15">
-               <span style="width:48px;height:48px;border-radius:50%;background:${p.color};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span>
+          : `<div class="polish-swatch" style="background:${safeColor(p.color)}15">
+               <span style="width:48px;height:48px;border-radius:50%;background:${safeColor(p.color)};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span>
              </div>`}
         <div class="polish-body">
           <div class="polish-name">${escHtml(p.name)}</div>
@@ -228,7 +233,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
         const displayPhotos = photoSlots.slice(0, 4);
 
         const polishChips = m.polishRefs?.length
-          ? m.polishRefs.map(r => `<span class="polish-chip"><span class="polish-chip-dot" style="background:${r.color ?? '#ccc'}"></span>${escHtml(r.name)}</span>`).join('')
+          ? m.polishRefs.map(r => `<span class="polish-chip"><span class="polish-chip-dot" style="background:${safeColor(r.color)}"></span>${escHtml(r.name)}</span>`).join('')
           : (m.polishes ?? []).map(n => `<span class="polish-chip">${escHtml(n)}</span>`).join('');
 
         return `<div class="manicure-entry">
