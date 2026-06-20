@@ -9,7 +9,7 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ### Hinzugefügt
 - **Wochen-/Monatsberichte**: Schöner HTML-Bericht mit Statistiken, neuen Lacken, neuen Stickern und Maniküren. Öffnet in neuem Tab → Als PDF speichern via Strg+P.
-- **E-Mail-Versand**: Bericht per SMTP direkt aus den Einstellungen versenden. Konfiguration via `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT`, `SMTP_FROM`, `PUBLIC_URL`.
+- **E-Mail-Versand**: Bericht per SMTP direkt aus den Einstellungen versenden. Konfiguration via `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT`, `SMTP_FROM`, `APP_URL`.
 - **Zeitplan**: Wöchentliche (Montag 08:00) oder monatliche (1. des Monats 08:00) automatische E-Mail. Einstellbar unter Einstellungen → Berichte.
 - **Neue Server-Endpoints** (alle JWT-geschützt): `GET /api/auth/me`, `PATCH /api/auth/me`, `GET/POST /api/reports/preview`, `POST /api/reports/send`, `GET/POST /api/reports/schedule`
 

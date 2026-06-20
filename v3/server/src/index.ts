@@ -325,7 +325,7 @@ async function main() {
   app.get('/api/reports/preview', { preHandler: requireJwt }, async (request, reply) => {
     const query = request.query as { period?: string; date?: string };
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
-    const date = query.date ? new Date(query.date) : new Date();
+    const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
     const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
     return reply.type('text/html').send(html);
@@ -342,13 +342,18 @@ async function main() {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
     const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
-    const date = rawDate ? new Date(rawDate) : new Date();
+    const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
     const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
-    await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+    try {
+      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+    } catch (e: unknown) {
+      request.log.error({ err: e }, '[reports] Failed to send email');
+      return reply.code(502).send({ error: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Konfiguration prüfen.' });
+    }
     return { ok: true };
   });
 
@@ -368,7 +373,7 @@ async function main() {
     const config: ScheduleConfig = {
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
-      toEmail,
+      toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
     };
     setScheduleConfig(config);
@@ -458,15 +463,15 @@ async function main() {
 
     const refDate = new Date(now);
     if (cfg.frequency === 'weekly') {
-      refDate.setDate(now.getDate() - 7); // Previous week
+      refDate.setUTCDate(now.getUTCDate() - 7);
     } else {
-      refDate.setMonth(now.getMonth() - 1); // Previous month
+      refDate.setUTCMonth(now.getUTCMonth() - 1);
     }
 
     try {
       const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
       const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-      const baseUrl = process.env.PUBLIC_URL ?? `http://localhost:${PORT}`;
+      const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
       const html = generateReportHtml(getData(), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
       setScheduleConfig({ ...cfg, lastSentAt: Date.now() });

@@ -303,12 +303,6 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
   const isServerSync = config?.provider === 'server';
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
-  const authHeaders = (): Record<string, string> => {
-    if (apiKey) return { 'X-Api-Key': apiKey };
-    if (serverToken) return { 'Authorization': `Bearer ${serverToken}` };
-    return {};
-  };
-  // JWT-only endpoints must use Bearer even when an API key is also saved.
   const bearerHeaders = (): Record<string, string> =>
     serverToken ? { 'Authorization': `Bearer ${serverToken}` } : {};
 
@@ -349,10 +343,12 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       .catch(() => { /* ignore aborted / network errors */ });
 
     return () => controller.abort();
-  }, [isServerSync, serverBase, serverToken, apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isServerSync, serverBase, serverToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openReport = () => {
-    const html = generateReport(appData.data, reportPeriod, new Date(reportDate));
+    // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
+    // which shifts getPeriodBounds off by one day in UTC-offset timezones.
+    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'));
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
