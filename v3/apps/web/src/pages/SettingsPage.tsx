@@ -308,12 +308,15 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     if (serverToken) return { 'Authorization': `Bearer ${serverToken}` };
     return {};
   };
+  // JWT-only endpoints must use Bearer even when an API key is also saved.
+  const bearerHeaders = (): Record<string, string> =>
+    serverToken ? { 'Authorization': `Bearer ${serverToken}` } : {};
 
   useEffect(() => {
     if (!isServerSync) return;
     const base = serverBase;
-    const headers = authHeaders();
-    if (!headers['X-Api-Key'] && !headers['Authorization']) return;
+    const headers = bearerHeaders();
+    if (!headers['Authorization']) return;
 
     const controller = new AbortController();
     const { signal } = controller;
@@ -363,7 +366,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       const base = serverBase;
       const res = await fetch(`${base}/api/reports/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
         body: JSON.stringify({ period: reportPeriod, date: reportDate, toEmail: reportEmail }),
       });
       const data = await res.json() as { ok?: boolean; error?: string };
@@ -383,7 +386,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       const base = serverBase;
       const res = await fetch(`${base}/api/reports/schedule`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
         body: JSON.stringify({ enabled: scheduleEnabled, frequency: scheduleFrequency, toEmail: scheduleEmail }),
       });
       const data = await res.json() as { ok?: boolean; error?: string };

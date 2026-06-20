@@ -336,7 +336,8 @@ async function main() {
     if (!isEmailConfigured()) {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
-    const { period: rawPeriod, date: rawDate, toEmail } = request.body as { period?: string; date?: string; toEmail?: string };
+    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
+    const toEmail = (rawToEmail ?? '').trim();
     if (!toEmail || !isValidEmail(toEmail)) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
@@ -439,13 +440,13 @@ async function main() {
     if (!cfg?.enabled || !cfg.toEmail || !isEmailConfigured()) return;
 
     const now = new Date();
-    const hour = now.getHours();
-    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon
-    const dayOfMonth = now.getDate();
+    const hour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+    const dayOfMonth = now.getUTCDate();
 
     const shouldSend = cfg.frequency === 'weekly'
-      ? dayOfWeek === 1 && hour === 8  // Every Monday at 8 AM
-      : dayOfMonth === 1 && hour === 8; // 1st of each month at 8 AM
+      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
 
     if (!shouldSend) return;
 
@@ -483,6 +484,9 @@ async function main() {
       console.log('│  (Unter Einstellungen ⚙ eintragen)                  │');
       console.log('│  Nur einmalig angezeigt — danach: cat data/.api_key  │');
       console.log('└─────────────────────────────────────────────────────┘\n');
+    }
+    if (isEmailConfigured() && !process.env.APP_URL) {
+      console.warn('[reports] WARNING: SMTP is configured but APP_URL is not set — photo URLs in emails will be broken. Set APP_URL to the public base URL of this server.');
     }
   } catch (err) {
     console.error(err);
