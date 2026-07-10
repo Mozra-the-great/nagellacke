@@ -100,9 +100,13 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         setLoginStatus('error');
         return;
       }
+      const c: SyncConfig = { provider: 'server', serverUrl, serverToken: data.token };
+      saveSyncConfig(c);
+      setConfig(c);
       setServerToken(data.token);
       setLoginPass('');
       setLoginStatus('idle');
+      void appData.sync();
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setLoginStatus('error');
@@ -450,7 +454,14 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             {serverToken ? (
               <div className={styles.tokenRow}>
                 <span className={styles.tokenOk}>✓ Eingeloggt</span>
-                <button className={styles.logoutBtn} onClick={() => setServerToken('')}>Abmelden</button>
+                <button
+                  className={styles.logoutBtn}
+                  onClick={() => {
+                    setServerToken('');
+                    saveSyncConfig(null);
+                    setConfig(null);
+                  }}
+                >Abmelden</button>
               </div>
             ) : (
               <div className={styles.loginBox}>
