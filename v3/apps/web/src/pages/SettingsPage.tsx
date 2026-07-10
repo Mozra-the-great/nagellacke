@@ -458,9 +458,8 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                   className={styles.logoutBtn}
                   onClick={() => {
                     setServerToken('');
-                    const c: SyncConfig = { provider: 'server', serverUrl, serverToken: '' };
-                    saveSyncConfig(c);
-                    setConfig(c);
+                    saveSyncConfig(null);
+                    setConfig(null);
                   }}
                 >Abmelden</button>
               </div>
