@@ -5,6 +5,15 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Web sync never triggered**: logging in via "Eigener Server" only stored the JWT in local React state, never in the persisted `SyncConfig` — `useAppData.sync()` reads from `localStorage`, so `ServerAdapter` threw on missing `serverToken` (silently swallowed) and no `/api/sync` request ever fired after login or "Jetzt syncen". Login now persists the token and triggers an immediate sync. Also fixes the "Eingeloggt" state not surviving a page reload. (#41)
+- **Spurious sync error after logout**: logout used to persist an empty `serverToken` instead of clearing the sync config, so the next page load's auto-sync threw and showed a "Sync-Fehler" banner even though the user intentionally logged out. Logout now clears the persisted config entirely.
+- **CI**: `claude-review` GitHub Action refused to run whenever `claude[bot]` pushed a follow-up commit to a PR it opened, failing with "Workflow initiated by non-human actor". Added `allowed_bots: 'claude[bot]'`.
+
+---
+
 ## [3.1.0] – 2026-06-20
 
 ### Added
