@@ -10,7 +10,10 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
+import type { ScheduleConfig } from './db';
+import { generateReportHtml, getPeriodBounds } from './report';
+import { isEmailConfigured, sendHtmlEmail } from './email';
 
 const PORT         = Number(process.env.PORT ?? 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
@@ -284,6 +287,99 @@ async function main() {
 
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
 
+  // ── User profile (JWT) ────────────────────────────────────────────────────────
+
+  // GET /api/auth/me
+  app.get('/api/auth/me', { preHandler: requireJwt }, async (request) => {
+    const { username } = request.user as { username: string };
+    const user = getUser(username);
+    return { username, email: user?.email ?? null, smtpConfigured: isEmailConfigured() };
+  });
+
+  // PATCH /api/auth/me
+  app.patch('/api/auth/me', { preHandler: requireJwt }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { email } = request.body as { email?: string };
+    if (!email || !isValidEmail(email)) {
+      return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
+    }
+    updateUserEmail(username, email.trim().toLowerCase());
+    return { ok: true };
+  });
+
+  // ── Report endpoints (JWT) ────────────────────────────────────────────────────
+
+  // Use APP_URL env var — never derive the base URL from request headers to
+  // prevent host-header poisoning attacks on generated email links.
+  const APP_BASE_URL = (process.env.APP_URL ?? '').replace(/\/$/, '');
+
+  function isValidEmail(s: string): boolean {
+    if (!s || s.length > 254) return false;
+    const at = s.lastIndexOf('@');
+    if (at <= 0 || at >= s.length - 1) return false;
+    const domain = s.slice(at + 1);
+    return domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.');
+  }
+
+  // GET /api/reports/preview?period=week&date=2026-06-19
+  app.get('/api/reports/preview', { preHandler: requireJwt }, async (request, reply) => {
+    const query = request.query as { period?: string; date?: string };
+    const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
+    const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
+    if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
+    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    return reply.type('text/html').send(html);
+  });
+
+  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP)
+  app.post('/api/reports/send', { preHandler: [requireJwt, rateLimit(10, 60 * 60_000)] }, async (request, reply) => {
+    if (!isEmailConfigured()) {
+      return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
+    }
+    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
+    const toEmail = (rawToEmail ?? '').trim();
+    if (!toEmail || !isValidEmail(toEmail)) {
+      return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
+    }
+    const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
+    const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
+    if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
+
+    const { label } = getPeriodBounds(period, date);
+    const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
+    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    try {
+      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+    } catch (e: unknown) {
+      request.log.error({ err: e }, '[reports] Failed to send email');
+      return reply.code(502).send({ error: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Konfiguration prüfen.' });
+    }
+    return { ok: true };
+  });
+
+  // GET /api/reports/schedule
+  app.get('/api/reports/schedule', { preHandler: [requireJwt, rateLimit(30, 60_000)] }, async () => {
+    return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
+  });
+
+  // POST /api/reports/schedule
+  app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
+    const body = request.body as Partial<ScheduleConfig>;
+    const toEmail = (body.toEmail ?? '').trim();
+    if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
+      return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
+    }
+    const current = getScheduleConfig();
+    const config: ScheduleConfig = {
+      enabled:     !!body.enabled,
+      frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
+      toEmail:     toEmail || current?.toEmail || '',
+      lastSentAt:  current?.lastSentAt,
+    };
+    setScheduleConfig(config);
+    return { ok: true, config };
+  });
+
   // POST /api/auth/register
   // Open only for the very first user (bootstrap) or when ALLOW_REGISTRATION=true.
   app.post('/api/auth/register', async (request, reply) => {
@@ -342,6 +438,49 @@ async function main() {
     }
   });
 
+  // ── Report scheduler ──────────────────────────────────────────────────────────
+  // Checks every hour whether a scheduled report should be sent.
+  setInterval(async () => {
+    const cfg = getScheduleConfig();
+    if (!cfg?.enabled || !cfg.toEmail || !isEmailConfigured()) return;
+
+    const now = new Date();
+    const hour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+    const dayOfMonth = now.getUTCDate();
+
+    const shouldSend = cfg.frequency === 'weekly'
+      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+
+    if (!shouldSend) return;
+
+    // Avoid sending twice in the same hour window
+    if (cfg.lastSentAt) {
+      const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
+      if (hoursSinceLast < 2) return;
+    }
+
+    const refDate = new Date(now);
+    if (cfg.frequency === 'weekly') {
+      refDate.setUTCDate(now.getUTCDate() - 7);
+    } else {
+      refDate.setUTCMonth(now.getUTCMonth() - 1);
+    }
+
+    try {
+      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+      const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
+      const html = generateReportHtml(getData(), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
+      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+      setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
+      console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
+    } catch (e: unknown) {
+      console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+    }
+  }, 60 * 60 * 1000); // every hour
+
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
     if (API_KEY_IS_NEW) {
@@ -350,6 +489,9 @@ async function main() {
       console.log('│  (Unter Einstellungen ⚙ eintragen)                  │');
       console.log('│  Nur einmalig angezeigt — danach: cat data/.api_key  │');
       console.log('└─────────────────────────────────────────────────────┘\n');
+    }
+    if (isEmailConfigured() && !process.env.APP_URL) {
+      console.warn('[reports] WARNING: SMTP is configured but APP_URL is not set — photo URLs in emails will be broken. Set APP_URL to the public base URL of this server.');
     }
   } catch (err) {
     console.error(err);

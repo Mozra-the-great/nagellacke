@@ -5,6 +5,23 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [3.1.0] – 2026-06-20
+
+### Added
+- **Weekly/monthly reports**: Beautiful self-contained HTML report with cover page, statistics (top finishes, top brands), new polish cards, new sticker cards, and a manicure diary. Opens in a new tab → Ctrl+P → Save as PDF.
+- **Email delivery**: Send a report directly from Settings via SMTP. Configure via `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`; optional `SMTP_PORT`, `SMTP_FROM`, `APP_URL`.
+- **Automatic scheduler**: Weekly (every Monday 08:00 UTC) or monthly (1st of month 08:00 UTC) automatic email. Configurable under Settings → Berichte.
+- **New JWT-protected server endpoints**: `GET /api/auth/me`, `PATCH /api/auth/me`, `GET /api/reports/preview`, `POST /api/reports/send` (rate-limited 10/hr), `GET /api/reports/schedule`, `POST /api/reports/schedule`.
+- Server-side report generator uses absolute photo URLs via `APP_URL` env var so images render correctly in email clients.
+
+### Fixed
+- Report email requests use Bearer token even when an API key is also stored in localStorage — avoids 401 on JWT-only endpoints.
+- SMTP errors return a sanitised 502 to the client instead of leaking raw SMTP error messages.
+- ISO date strings parsed as local midnight to avoid off-by-one week in UTC-negative timezones.
+- Disabling the report schedule no longer overwrites the stored recipient email address.
+
+---
+
 ## [3.0.4] – 2026-06-17
 
 ### Sicherheit

@@ -12,3 +12,5 @@ app/google-services.json
 app/src/main/assets/google-services.json
 *.hprof
 gradle-daemon-jvm.properties
+*.jks
+*.keystore
