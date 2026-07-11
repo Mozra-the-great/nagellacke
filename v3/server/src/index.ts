@@ -2,6 +2,7 @@ import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import staticFiles from '@fastify/static';
+import rateLimitPlugin from '@fastify/rate-limit';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
@@ -54,22 +55,6 @@ function loadOrCreateSecret(): string {
 }
 const JWT_SECRET = loadOrCreateSecret();
 
-// ── Rate limiting (in-memory) ─────────────────────────────────────────────────
-// Map resets on server restart — acceptable for personal single-user deployment.
-const rateLimitMap = new Map<string, number[]>();
-function rateLimit(limit: number, windowMs: number) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
-    const key = `${request.routeOptions?.url ?? request.url}:${request.ip}`;
-    const now = Date.now();
-    const hits = (rateLimitMap.get(key) ?? []).filter(t => now - t < windowMs);
-    if (hits.length >= limit) {
-      return reply.code(429).send({ error: 'Zu viele Anfragen' });
-    }
-    hits.push(now);
-    rateLimitMap.set(key, hits);
-  };
-}
-
 // ── Image validation ──────────────────────────────────────────────────────────
 const MAGIC: [Buffer, string][] = [
   [Buffer.from([0xff, 0xd8, 0xff]), 'image/jpeg'],
@@ -109,11 +94,41 @@ function httpsGet(url: string): Promise<string> {
 }
 
 async function main() {
+  // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
+  // so req.ip (used as the rate-limit key below) is the real client IP. If you put
+  // this behind a reverse proxy, set trustProxy to that proxy's address specifically
+  // — never `true` — or every client collapses onto one rate-limit bucket and an
+  // X-Forwarded-For header lets anyone spoof their way around the limits.
   const app = Fastify({ logger: { level: 'info' } });
 
   await app.register(cors, { origin: ALLOWED_ORIGIN });
   await app.register(jwt, { secret: JWT_SECRET });
+  // global: false — each /api/* route below opts in via its own `config.rateLimit`.
+  // A global default would also throttle /photos/ and the SPA static assets,
+  // and the gallery renders its full photo list unpaginated/unlazy on load, so a
+  // shared bucket would 429 legitimate thumbnail bursts on any sizeable collection.
+  // In-memory store resets on restart — acceptable for a personal single-user deployment.
+  await app.register(rateLimitPlugin, {
+    global: false,
+    errorResponseBuilder: (_request, context) => {
+      const err = new Error('Zu viele Anfragen') as Error & { statusCode: number };
+      err.statusCode = context.statusCode;
+      return err;
+    },
+  });
   await app.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
+
+  // Rate-limit errors (and any other thrown error) are reshaped to the app's
+  // uniform { error: string } response format instead of Fastify's default
+  // { statusCode, error, message } shape.
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, 'Unhandled error');
+      return reply.code(statusCode).send({ error: 'Interner Fehler' });
+    }
+    reply.code(statusCode).send({ error: error.message || 'Interner Fehler' });
+  });
 
   // Serve web app (built to public/ by install.sh or update/apply)
   const publicDir = path.join(process.cwd(), 'public');
@@ -154,7 +169,11 @@ async function main() {
   // ── Photo endpoints ────────────────────────────────────────────────────────────
 
   // POST /api/photos — Foto hochladen (base64 body)
-  app.post('/api/photos', { bodyLimit: 15 * 1024 * 1024, preHandler: requireApiKeyOrJwt }, async (request, reply) => {
+  app.post('/api/photos', {
+    bodyLimit: 15 * 1024 * 1024,
+    preHandler: requireApiKeyOrJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
     const buf = Buffer.from(b64, 'base64');
@@ -168,7 +187,10 @@ async function main() {
   });
 
   // DELETE /api/photos/:filename
-  app.delete('/api/photos/:filename', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
+  app.delete('/api/photos/:filename', {
+    preHandler: requireApiKeyOrJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { filename } = request.params as { filename: string };
     // Require a single `name.ext` segment — rejects bare "." / ".." and anything
     // that could resolve outside PHOTOS_DIR before we even build the path.
@@ -181,14 +203,17 @@ async function main() {
   });
 
   // GET /api/version
-  app.get('/api/version', async () => {
+  app.get('/api/version', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')) as { version: string };
     return { version: pkg.version };
   });
 
   // GET /api/update/check — prüft GitHub auf neue Version
   app.get('/api/update/check', {
-    preHandler: [requireApiKey, rateLimit(10, 60_000)],
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async () => {
     const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
       .stdout?.toString().trim() ?? '';
@@ -234,7 +259,8 @@ async function main() {
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
   app.post('/api/update/apply', {
-    preHandler: [requireApiKey, rateLimit(3, 300_000)],
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 3, timeWindow: '5 minutes' } },
   }, async (request, reply) => {
     reply.send({ ok: true });
 
@@ -277,7 +303,8 @@ async function main() {
 
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
-    preHandler: [requireApiKey, rateLimit(30, 60_000)],
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
     const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
     const r = spawnSync(
@@ -336,7 +363,10 @@ async function main() {
   });
 
   // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP)
-  app.post('/api/reports/send', { preHandler: [requireJwt, rateLimit(10, 60 * 60_000)] }, async (request, reply) => {
+  app.post('/api/reports/send', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     if (!isEmailConfigured()) {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
@@ -362,7 +392,10 @@ async function main() {
   });
 
   // GET /api/reports/schedule
-  app.get('/api/reports/schedule', { preHandler: [requireJwt, rateLimit(30, 60_000)] }, async () => {
+  app.get('/api/reports/schedule', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
     return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
   });
 
@@ -386,7 +419,9 @@ async function main() {
 
   // POST /api/auth/register
   // Open only for the very first user (bootstrap) or when ALLOW_REGISTRATION=true.
-  app.post('/api/auth/register', async (request, reply) => {
+  app.post('/api/auth/register', {
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const allowRegistration = process.env.ALLOW_REGISTRATION === 'true';
     const isFirstUser = getUserCount() === 0;
     if (!allowRegistration && !isFirstUser) {
@@ -403,7 +438,9 @@ async function main() {
   });
 
   // POST /api/auth/login
-  app.post('/api/auth/login', async (request, reply) => {
+  app.post('/api/auth/login', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { username, password } = request.body as { username?: string; password?: string };
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
@@ -413,10 +450,16 @@ async function main() {
   });
 
   // GET /api/sync — aktuellen Stand abrufen (JWT)
-  app.get('/api/sync', { preHandler: requireJwt }, async () => ({ data: getData() }));
+  app.get('/api/sync', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async () => ({ data: getData() }));
 
   // POST /api/sync — Daten zusammenführen (JWT)
-  app.post('/api/sync', { preHandler: requireJwt }, async (request, reply) => {
+  app.post('/api/sync', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { data: clientData } = request.body as { data?: AppData };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
     const merged = mergeData(getData(), clientData);
@@ -425,7 +468,10 @@ async function main() {
   });
 
   // POST /api/sync/push — fertig gemergten Stand hochladen (JWT)
-  app.post('/api/sync/push', { preHandler: requireJwt }, async (request, reply) => {
+  app.post('/api/sync/push', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
     setData(data);
