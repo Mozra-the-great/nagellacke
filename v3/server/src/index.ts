@@ -170,8 +170,12 @@ async function main() {
   // DELETE /api/photos/:filename
   app.delete('/api/photos/:filename', { preHandler: requireApiKeyOrJwt }, async (request, reply) => {
     const { filename } = request.params as { filename: string };
-    if (!/^[\w\-.]+$/.test(filename)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
-    const p = path.join(PHOTOS_DIR, filename);
+    // Require a single `name.ext` segment — rejects bare "." / ".." and anything
+    // that could resolve outside PHOTOS_DIR before we even build the path.
+    if (!/^[\w-]+\.\w+$/.test(filename)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
+    const photosRoot = path.resolve(PHOTOS_DIR);
+    const p = path.resolve(photosRoot, filename);
+    if (!p.startsWith(photosRoot + path.sep)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
     if (fs.existsSync(p)) fs.unlinkSync(p);
     return { ok: true };
   });
