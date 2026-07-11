@@ -24,6 +24,14 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Regenerate lockfile for Linux (manual trigger only)
+        # package-lock.json only carried Windows-platform entries for native
+        # optional deps (@rollup/rollup-*, @rolldown/binding-*) — plain
+        # `npm install` against the existing lock doesn't add the missing
+        # linux-x64-gnu entries on its own. Force a full fresh resolution.
+        if: github.event_name == 'workflow_dispatch'
+        run: rm -f package-lock.json && rm -rf node_modules
+
       - name: Install
         run: npm install
 
@@ -43,6 +51,7 @@ jobs:
         run: npm run test
 
       - name: Upload package-lock.json
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: package-lock
