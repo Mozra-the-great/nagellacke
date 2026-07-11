@@ -31,3 +31,7 @@
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+
+# Google Tink (androidx.security.crypto / EncryptedSharedPreferences) references
+# error-prone annotations that are compile-time only and absent at runtime.
+-dontwarn com.google.errorprone.annotations.**
