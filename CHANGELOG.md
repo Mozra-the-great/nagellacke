@@ -7,13 +7,31 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+---
+
+## [3.1.1] – 2026-07-11
+
 ### Sicherheit
+- **Path Traversal in `DELETE /api/photos/:filename` geschlossen**: der Dateiname wurde ungeprüft in einen Dateisystempfad eingesetzt, wodurch `../`-Sequenzen Zugriff außerhalb des Foto-Verzeichnisses erlaubten. (#46)
+- **Rate-Limiting auf Login verschärft**: `@fastify/rate-limit` ersetzt die bisherige Eigenimplementierung und schließt eine Brute-Force-Lücke beim Login. (#50)
 - **Dependabot #20 (esbuild dev-server arbitrary file read, GHSA-g7r4-m6w7-qqqr) geprüft, kein Fix möglich**: `esbuild@0.27.7` kommt transitiv über `vite@8.1.4` und `tsup@8.5.1` (`v3/package-lock.json`). Ein `overrides`-Zwang auf `esbuild@^0.28.1` löst den Advisory zwar auf, bricht aber `npm run build:web` — vite 8s internes rolldown-Bundling ist an seine gepinnte esbuild-Version gekoppelt und wirft beim Build (`rolldown-build-*.mjs`, `Object.build`). Betrifft nur den Dev-Server (`vite dev`/`tsup`/`tsx`), nie den Produktions-Build. Alert bis zu einem vite-Patch-Release mit esbuild ≥0.28.1 als "no fix available" dismissen. (#48)
+- **CI**: `android-release`-Workflow auf Least-Privilege-Permissions umgestellt. (#47)
 
 ### Fixed
 - **Web sync never triggered**: logging in via "Eigener Server" only stored the JWT in local React state, never in the persisted `SyncConfig` — `useAppData.sync()` reads from `localStorage`, so `ServerAdapter` threw on missing `serverToken` (silently swallowed) and no `/api/sync` request ever fired after login or "Jetzt syncen". Login now persists the token and triggers an immediate sync. Also fixes the "Eingeloggt" state not surviving a page reload. (#41)
 - **Spurious sync error after logout**: logout used to persist an empty `serverToken` instead of clearing the sync config, so the next page load's auto-sync threw and showed a "Sync-Fehler" banner even though the user intentionally logged out. Logout now clears the persisted config entirely.
+- **Nextcloud-Sync-Warnung**: Hinweis in den Sync-Einstellungen, das eigene Nextcloud-Konto-Passwort nicht direkt zu verwenden. (#52)
+- **Android Release-Build**: R8-Minification schlug fehl (`Missing class com.google.errorprone.annotations.Immutable`, transitiv über Tink/`androidx.security.crypto`) — `-dontwarn`-Regel ergänzt. (#53)
+- **Android**: Sync-Anbieter-Auswahl in den Einstellungen rendierte kaputt — die Chip-Row hatte keinen Scroll-Modifier, wodurch bei 5 Anbietern die letzten Chips als leere, überlange Pillen dargestellt wurden. Jetzt horizontal scrollbar. (#56)
+- **Web**: "Speichern" im Lack-Formular reagierte bei leerem Namen ohne jede Rückmeldung — zeigt jetzt eine sichtbare Validierungsmeldung statt still nichts zu tun. (#57)
+- **Web**: Zähler ("1 Lacke", "1 Einträge") verwenden jetzt die korrekte Singular-/Pluralform. (#58)
 - **CI**: `claude-review` GitHub Action refused to run whenever `claude[bot]` pushed a follow-up commit to a PR it opened, failing with "Workflow initiated by non-human actor". Added `allowed_bots: 'claude[bot]'`.
+
+### Changed
+- **Major Dependency-Updates** für Server und Web: Fastify 4 → 5 (inkl. CVE-2026-33806-Fix), Vite 5 → 8, Vitest 1 → 4, sowie zugehörige `@fastify/*`-Plugins und `uuid` 9 → 11. (#37)
+
+### Added
+- **Play-Store-Release-Infrastruktur** für Android: Signing-Config (env-var-gated), `android-release`-Workflow für `android-v*`-Tags, Datenschutzerklärungs-Entwurf. (#38)
 
 ---
 
