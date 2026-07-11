@@ -33,6 +33,7 @@ export default function PolishFormModal({
   useFocusTrap(modalRef, true);
 
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
 
   const [form, setForm] = useState<FormData>(() =>
     polish
@@ -45,6 +46,8 @@ export default function PolishFormModal({
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  const nameValid = form.name.trim().length > 0;
 
   const duplicates = useMemo(() => {
     if (polish) return []; // editing → no check
@@ -81,7 +84,17 @@ export default function PolishFormModal({
           <div className={styles.body}>
             <label className={styles.field}>
               <span>Name *</span>
-              <input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="z.B. Blue You A Kiss" />
+              <input
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                onBlur={() => setNameTouched(true)}
+                placeholder="z.B. Blue You A Kiss"
+                aria-invalid={nameTouched && !nameValid}
+                className={nameTouched && !nameValid ? styles.invalid : undefined}
+              />
+              {nameTouched && !nameValid && (
+                <span className={styles.errorText}>Name ist ein Pflichtfeld</span>
+              )}
             </label>
             <label className={styles.field}>
               <span>Marke</span>
@@ -183,7 +196,8 @@ export default function PolishFormModal({
             <button className={styles.cancelBtn} onClick={onClose}>Abbrechen</button>
             <button
               className={styles.saveBtn}
-              onClick={() => { if (form.name.trim()) onSave(form); }}
+              disabled={!nameValid}
+              onClick={() => onSave(form)}
             >Speichern</button>
           </div>
         </div>
