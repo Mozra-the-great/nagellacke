@@ -506,9 +506,13 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
               <input aria-required="true" value={ncUser} onChange={(e) => setNcUser(e.target.value)} />
             </label>
             <label className={styles.field}>
-              <span>Passwort / App-Token</span>
+              <span>App-Passwort</span>
               <input aria-required="true" type="password" value={ncPass} onChange={(e) => setNcPass(e.target.value)} />
-              <p className={styles.fieldHelpText}>App-Token: Nextcloud → Einstellungen → Sicherheit → App-Passwörter</p>
+              <p className={styles.fieldHelpText}>
+                Bitte kein normales Konto-Passwort eintragen — erstelle stattdessen ein App-Passwort unter
+                Nextcloud → Einstellungen → Sicherheit → App-Passwörter. Es lässt sich jederzeit widerrufen,
+                ohne das Konto-Passwort zu ändern.
+              </p>
             </label>
           </>
         )}
