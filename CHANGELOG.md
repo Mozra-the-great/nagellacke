@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **Dependabot #20 (esbuild dev-server arbitrary file read, GHSA-g7r4-m6w7-qqqr) geprüft, kein Fix möglich**: `esbuild@0.27.7` kommt transitiv über `vite@8.1.4` und `tsup@8.5.1` (`v3/package-lock.json`). Ein `overrides`-Zwang auf `esbuild@^0.28.1` löst den Advisory zwar auf, bricht aber `npm run build:web` — vite 8s internes rolldown-Bundling ist an seine gepinnte esbuild-Version gekoppelt und wirft beim Build (`rolldown-build-*.mjs`, `Object.build`). Betrifft nur den Dev-Server (`vite dev`/`tsup`/`tsx`), nie den Produktions-Build. Alert bis zu einem vite-Patch-Release mit esbuild ≥0.28.1 als "no fix available" dismissen. (#48)
+
 ### Fixed
 - **Web sync never triggered**: logging in via "Eigener Server" only stored the JWT in local React state, never in the persisted `SyncConfig` — `useAppData.sync()` reads from `localStorage`, so `ServerAdapter` threw on missing `serverToken` (silently swallowed) and no `/api/sync` request ever fired after login or "Jetzt syncen". Login now persists the token and triggers an immediate sync. Also fixes the "Eingeloggt" state not surviving a page reload. (#41)
 - **Spurious sync error after logout**: logout used to persist an empty `serverToken` instead of clearing the sync config, so the next page load's auto-sync threw and showed a "Sync-Fehler" banner even though the user intentionally logged out. Logout now clears the persisted config entirely.
