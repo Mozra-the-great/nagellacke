@@ -5,6 +5,7 @@ import type { useAppData } from '../useAppData';
 import PhotoField from '../components/PhotoField';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { plural } from '../utils/plural';
 import styles from './DiaryPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -133,7 +134,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
         <button className={styles.addBtn} onClick={openNew} aria-label="Neuen Eintrag hinzufügen">+</button>
       </header>
 
-      <div className={styles.count}>{entries.length} Einträge</div>
+      <div className={styles.count}>{plural(entries.length, 'Eintrag', 'Einträge')}</div>
 
       <div className={styles.timeline}>
         {entries.length === 0 && (

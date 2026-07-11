@@ -8,6 +8,7 @@ import PolishFormModal from '../components/PolishFormModal';
 import NailBottle from '../components/NailBottle';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { plural } from '../utils/plural';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -81,7 +82,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
         )}
       </div>
 
-      <div className={styles.count}>{visible.length} Lacke</div>
+      <div className={styles.count}>{plural(visible.length, 'Lack', 'Lacke')}</div>
 
       <div className={styles.grid}>
         {visible.length === 0 && (
