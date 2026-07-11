@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v3/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'v3/**'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm install
+
+      - name: Build core
+        run: npm run build:core
+
+      - name: Build sync
+        run: npm run build:sync
+
+      - name: Build server
+        run: npm run build:server
+
+      - name: Build web
+        run: npm run build:web
+
+      - name: Test (core)
+        run: npm run test
+
+      - name: Upload package-lock.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: v3/package-lock.json
