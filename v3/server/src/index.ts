@@ -479,7 +479,11 @@ async function main() {
   });
 
   // ── SPA Fallback ──────────────────────────────────────────────────────────────
-  app.setNotFoundHandler((_request, reply) => {
+  app.setNotFoundHandler((request, reply) => {
+    if (request.url.startsWith('/api/')) {
+      reply.code(404).send({ error: 'Not found' });
+      return;
+    }
     const index = path.join(process.cwd(), 'public', 'index.html');
     if (fs.existsSync(index)) {
       reply.type('text/html').send(fs.readFileSync(index));
