@@ -6,6 +6,7 @@ import StickersPage from './pages/StickersPage';
 import DiaryPage from './pages/DiaryPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
+import { plural } from './utils/plural';
 import styles from './App.module.css';
 
 type Tab = 'collection' | 'stickers' | 'diary' | 'stats' | 'settings';
@@ -33,7 +34,7 @@ export default function App() {
         <div className={styles.titleArea}>
           <h1 className={styles.appTitle}>Nail Lacquer</h1>
           <p className={styles.appSubtitle}>
-            {activeCount} vorhanden · {totalCount} Flaschen gesamt
+            {activeCount} vorhanden · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
           </p>
         </div>
         <nav className={styles.navRow}>
