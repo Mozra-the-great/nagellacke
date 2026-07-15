@@ -17,6 +17,14 @@ import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
 
 const PORT         = Number(process.env.PORT ?? 3000);
+
+// Fail closed in production: an unset ALLOWED_ORIGIN silently defaulting to
+// "*" is fine for local dev, but a misconfigured production deployment
+// should refuse to start rather than quietly serve wildcard CORS (#76).
+if (!process.env.ALLOWED_ORIGIN && process.env.NODE_ENV === 'production') {
+  console.error('[FATAL] ALLOWED_ORIGIN must be set explicitly when NODE_ENV=production.');
+  process.exit(1);
+}
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
 
 if (ALLOWED_ORIGIN === '*') {
