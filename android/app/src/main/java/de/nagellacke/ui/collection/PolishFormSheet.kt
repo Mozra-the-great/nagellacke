@@ -1,5 +1,6 @@
 package de.nagellacke.ui.collection
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,12 +48,15 @@ import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
+import de.nagellacke.ui.common.PhotoPickerField
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PolishFormSheet(
     polish: Polish?,
     categories: List<Category>,
+    photoBaseUrl: String?,
+    onImportPhoto: suspend (Uri) -> String,
     onSave: (Polish) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -67,6 +71,7 @@ fun PolishFormSheet(
     var notes by remember(polish) { mutableStateOf(polish?.notes ?: "") }
     var rating by remember(polish) { mutableStateOf(polish?.rating ?: 0) }
     var selectedCats by remember(polish) { mutableStateOf(polish?.categories ?: emptyList()) }
+    var photo by remember(polish) { mutableStateOf(polish?.photo) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -77,6 +82,9 @@ fun PolishFormSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
+
+            PhotoPickerField(photo = photo, photoBaseUrl = photoBaseUrl, onPhotoChange = { photo = it }, onImportPhoto = onImportPhoto)
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name *") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
@@ -155,7 +163,7 @@ fun PolishFormSheet(
                             color = if (isValidHex(color)) color else "#ff6699",
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
-                            photo = polish?.photo,
+                            photo = photo,
                             createdAt = polish?.createdAt ?: now, updatedAt = now,
                         ))
                     },

@@ -1,5 +1,6 @@
 package de.nagellacke.ui.diary
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +61,7 @@ import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
+import de.nagellacke.ui.common.PhotoPickerField
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -125,6 +127,8 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
         DiaryFormSheet(
             entry = editing,
             availablePolishes = state.polishes,
+            photoBaseUrl = state.photoBaseUrl,
+            onImportPhoto = vm::importPhoto,
             onSave = { m -> if (editing != null) vm.updateManicure(m) else vm.addManicure(m); showForm = false },
             onDelete = editing?.let { { vm.deleteManicure(it.id); showForm = false } },
             onDismiss = { showForm = false },
@@ -137,6 +141,8 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
 fun DiaryFormSheet(
     entry: Manicure?,
     availablePolishes: List<Polish>,
+    photoBaseUrl: String?,
+    onImportPhoto: suspend (Uri) -> String,
     onSave: (Manicure) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -145,11 +151,15 @@ fun DiaryFormSheet(
     var date by remember(entry) { mutableStateOf(entry?.date ?: todayIso()) }
     var selectedIds by remember(entry) { mutableStateOf(entry?.polishIds ?: emptyList()) }
     var notes by remember(entry) { mutableStateOf(entry?.notes ?: "") }
+    var photo by remember(entry) { mutableStateOf(entry?.photo) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text(if (entry != null) "Eintrag bearbeiten" else "Neuer Eintrag", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+
+            PhotoPickerField(photo = photo, photoBaseUrl = photoBaseUrl, onPhotoChange = { photo = it }, onImportPhoto = onImportPhoto)
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = formatDate(date),
@@ -179,7 +189,7 @@ fun DiaryFormSheet(
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(onClick = {
-                    onSave(Manicure(id = entry?.id ?: generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), createdAt = entry?.createdAt ?: now, updatedAt = now))
+                    onSave(Manicure(id = entry?.id ?: generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), photo = photo, createdAt = entry?.createdAt ?: now, updatedAt = now))
                 }) { Text("Speichern") }
             }
             Spacer(Modifier.height(16.dp))

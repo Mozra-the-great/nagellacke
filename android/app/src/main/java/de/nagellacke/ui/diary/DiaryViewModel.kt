@@ -1,10 +1,13 @@
 package de.nagellacke.ui.diary
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.uploadPickedPhoto
 import de.nagellacke.domain.filterManicures
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
@@ -27,6 +30,7 @@ data class DiaryUiState(
 class DiaryViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
 
     val uiState = combine(repo.observeData(), configStore.configFlow) { data, cfg ->
@@ -41,4 +45,6 @@ class DiaryViewModel @Inject constructor(
     fun addManicure(m: Manicure)    = viewModelScope.launch { repo.addManicure(m) }
     fun updateManicure(m: Manicure) = viewModelScope.launch { repo.updateManicure(m) }
     fun deleteManicure(id: String)  = viewModelScope.launch { repo.deleteManicure(id) }
+
+    suspend fun importPhoto(uri: Uri): String = uploadPickedPhoto(uri, photoRepository, configStore)
 }

@@ -1,6 +1,7 @@
 package de.nagellacke.data.sync
 
 import android.content.Context
+import android.net.Uri
 import androidx.hilt.work.HiltWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.work.Constraints
@@ -13,6 +14,7 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.purgeOldDeleted
@@ -26,6 +28,24 @@ fun createAdapter(config: SyncConfig): SyncAdapter = when (config.provider) {
     SyncProvider.GoogleDrive -> GoogleDriveAdapter(config)
     SyncProvider.OneDrive   -> OneDriveAdapter(config)
     SyncProvider.Dropbox    -> DropboxAdapter(config)
+}
+
+/**
+ * Imports [uri] into local storage and, if a sync provider is configured, uploads it right away
+ * so the returned filename is immediately resolvable via the provider's photo URL (matching how
+ * the collection/sticker/diary lists render photos). Falls back to the local filename when no
+ * provider is configured or the upload fails, so the picked photo is never silently dropped.
+ */
+suspend fun uploadPickedPhoto(uri: Uri, photoRepository: PhotoRepository, configStore: SyncConfigStore): String {
+    val localFilename = photoRepository.importPhoto(uri)
+    val config = configStore.getConfig() ?: return localFilename
+    return runCatching {
+        val adapter = createAdapter(config)
+        val bytes = photoRepository.readBytes(localFilename)
+        val result = adapter.uploadPhoto(bytes, "image/jpeg")
+        photoRepository.delete(localFilename)
+        result.filename
+    }.getOrElse { localFilename }
 }
 
 @Singleton

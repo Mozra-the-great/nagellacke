@@ -1,5 +1,6 @@
 package de.nagellacke.ui.stickers
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +63,7 @@ import de.nagellacke.domain.model.Sticker
 import de.nagellacke.domain.model.StickerType
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
+import de.nagellacke.ui.common.PhotoPickerField
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,6 +132,8 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
     if (showForm) {
         StickerFormSheet(
             sticker = editing,
+            photoBaseUrl = state.photoBaseUrl,
+            onImportPhoto = vm::importPhoto,
             onSave = { s -> if (editing != null) vm.updateSticker(s) else vm.addSticker(s); showForm = false },
             onDelete = editing?.let { { vm.deleteSticker(it.id); showForm = false } },
             onDismiss = { showForm = false },
@@ -139,7 +143,14 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (() -> Unit)?, onDismiss: () -> Unit) {
+fun StickerFormSheet(
+    sticker: Sticker?,
+    photoBaseUrl: String?,
+    onImportPhoto: suspend (Uri) -> String,
+    onSave: (Sticker) -> Unit,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
     val now = System.currentTimeMillis()
     var name   by remember(sticker) { mutableStateOf(sticker?.name ?: "") }
     var brand  by remember(sticker) { mutableStateOf(sticker?.brand ?: "") }
@@ -148,10 +159,13 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
     var status by remember(sticker) { mutableStateOf(sticker?.status ?: PolishStatus.Ok) }
     var rating by remember(sticker) { mutableStateOf(sticker?.rating ?: 0) }
     var notes  by remember(sticker) { mutableStateOf(sticker?.notes ?: "") }
+    var photo  by remember(sticker) { mutableStateOf(sticker?.photo) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text(if (sticker != null) "Bearbeiten" else "Neuer Sticker", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+            PhotoPickerField(photo = photo, photoBaseUrl = photoBaseUrl, onPhotoChange = { photo = it }, onImportPhoto = onImportPhoto)
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(name, { name = it }, label = { Text("Name *") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(brand, { brand = it }, label = { Text("Marke") }, modifier = Modifier.fillMaxWidth())
@@ -182,7 +196,7 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(
-                    onClick = { onSave(Sticker(id = sticker?.id ?: generateId(), name = name.trim(), brand = brand.trim(), style = style.trim(), type = type, status = status, rating = rating, notes = notes.trim(), colors = sticker?.colors ?: listOf("#ff6699"), createdAt = sticker?.createdAt ?: now, updatedAt = now)) },
+                    onClick = { onSave(Sticker(id = sticker?.id ?: generateId(), name = name.trim(), brand = brand.trim(), style = style.trim(), type = type, status = status, rating = rating, notes = notes.trim(), colors = sticker?.colors ?: listOf("#ff6699"), photo = photo, createdAt = sticker?.createdAt ?: now, updatedAt = now)) },
                     enabled = name.isNotBlank(),
                 ) { Text("Speichern") }
             }

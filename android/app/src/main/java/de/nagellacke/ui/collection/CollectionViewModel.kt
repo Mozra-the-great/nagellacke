@@ -1,13 +1,16 @@
 package de.nagellacke.ui.collection
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.DisplayPrefsStore
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.data.sync.SyncProvider
+import de.nagellacke.data.sync.uploadPickedPhoto
 import de.nagellacke.domain.filterPolishes
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FilterState
@@ -42,6 +45,7 @@ class CollectionViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val displayPrefsStore: DisplayPrefsStore,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _filter = MutableStateFlow(FilterState())
 
@@ -72,6 +76,8 @@ class CollectionViewModel @Inject constructor(
     fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }
     fun addCategory(label: String)   = viewModelScope.launch { repo.addCategory(label) }
+
+    suspend fun importPhoto(uri: Uri): String = uploadPickedPhoto(uri, photoRepository, configStore)
 }
 
 /** Returns the base URL for photo filenames, or null if photos cannot be loaded. */

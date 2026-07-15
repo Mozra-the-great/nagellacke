@@ -1,10 +1,13 @@
 package de.nagellacke.ui.stickers
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.uploadPickedPhoto
 import de.nagellacke.domain.filterStickers
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.ui.collection.photoBaseUrl
@@ -28,6 +31,7 @@ data class StickersUiState(
 class StickersViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _search = MutableStateFlow("")
 
@@ -44,4 +48,6 @@ class StickersViewModel @Inject constructor(
     fun addSticker(s: Sticker)     = viewModelScope.launch { repo.addSticker(s) }
     fun updateSticker(s: Sticker)  = viewModelScope.launch { repo.updateSticker(s) }
     fun deleteSticker(id: String)  = viewModelScope.launch { repo.deleteSticker(id) }
+
+    suspend fun importPhoto(uri: Uri): String = uploadPickedPhoto(uri, photoRepository, configStore)
 }
