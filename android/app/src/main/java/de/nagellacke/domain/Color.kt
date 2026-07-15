@@ -25,3 +25,6 @@ fun isValidHex(hex: String): Boolean {
     val clean = hex.trimStart('#')
     return clean.length == 6 && clean.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 }
+
+/** Ensures a hex color string has a leading `#`, so it always parses via android.graphics.Color.parseColor(). */
+fun normalizeHex(hex: String): String = if (hex.startsWith("#")) hex else "#$hex"

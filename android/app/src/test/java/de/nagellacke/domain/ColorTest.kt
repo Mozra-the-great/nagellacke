@@ -13,4 +13,7 @@ class ColorTest {
     @Test fun `short hex returns 0`() = assertEquals(0, hexToHue("#fff"))
     @Test fun `valid hex passes`() = assertTrue(isValidHex("#ff6699"))
     @Test fun `invalid hex fails`() = assertFalse(isValidHex("xyz"))
+    @Test fun `hex without hash passes validation`() = assertTrue(isValidHex("ff6699"))
+    @Test fun `normalizeHex adds missing hash`() = assertEquals("#ff6699", normalizeHex("ff6699"))
+    @Test fun `normalizeHex leaves prefixed hex unchanged`() = assertEquals("#ff6699", normalizeHex("#ff6699"))
 }

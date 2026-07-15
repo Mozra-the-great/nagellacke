@@ -43,6 +43,7 @@ import de.nagellacke.domain.FINISH_OPTIONS
 import de.nagellacke.domain.STATUS_OPTIONS
 import de.nagellacke.domain.generateId
 import de.nagellacke.domain.isValidHex
+import de.nagellacke.domain.normalizeHex
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Polish
@@ -91,7 +92,7 @@ fun PolishFormSheet(
                 label = { Text("Farbe (Hex)") },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
-                    val c = runCatching { Color(android.graphics.Color.parseColor(if (color.startsWith("#")) color else "#$color")) }.getOrElse { Color(0xFFff6699) }
+                    val c = runCatching { Color(android.graphics.Color.parseColor(normalizeHex(color))) }.getOrElse { Color(0xFFff6699) }
                     Box(Modifier.size(28.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbvorschau" })
                 },
                 isError = color.isNotBlank() && !isValidHex(color),
@@ -152,7 +153,7 @@ fun PolishFormSheet(
                         onSave(Polish(
                             id = polish?.id ?: generateId(),
                             name = name.trim(), brand = brand.trim(), num = num.trim(),
-                            color = if (isValidHex(color)) color else "#ff6699",
+                            color = if (isValidHex(color)) normalizeHex(color) else "#ff6699",
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
                             photo = polish?.photo,
