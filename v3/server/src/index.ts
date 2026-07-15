@@ -258,6 +258,12 @@ async function main() {
 
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
+  // TRUST BOUNDARY: this pulls whatever HEAD of origin/main currently is - no
+  // signature/tag pinning - and npm install runs arbitrary postinstall
+  // scripts. requireApiKey is therefore a de facto root/RCE credential, not
+  // a normal API key (see #73). Treat API_KEY accordingly; the alternative
+  // (pinning to signed release tags) is a deliberate product decision, not
+  // made here.
   app.post('/api/update/apply', {
     preHandler: requireApiKey,
     config: { rateLimit: { max: 3, timeWindow: '5 minutes' } },
