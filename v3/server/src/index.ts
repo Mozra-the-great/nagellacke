@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, isValidUsername, listUsernames, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
 import type { ScheduleConfig } from './db';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
@@ -358,7 +358,8 @@ async function main() {
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const { username } = request.user as { username: string };
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     return reply.type('text/html').send(html);
   });
 
@@ -379,9 +380,10 @@ async function main() {
     const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
 
+    const { username } = request.user as { username: string };
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     try {
       await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     } catch (e: unknown) {
@@ -395,25 +397,27 @@ async function main() {
   app.get('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-  }, async () => {
-    return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { config: getScheduleConfig(username), smtpConfigured: isEmailConfigured() };
   });
 
   // POST /api/reports/schedule
   app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const body = request.body as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
-    const current = getScheduleConfig();
+    const current = getScheduleConfig(username);
     const config: ScheduleConfig = {
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
     };
-    setScheduleConfig(config);
+    setScheduleConfig(username, config);
     return { ok: true, config };
   });
 
@@ -430,6 +434,9 @@ async function main() {
     const { username, password } = request.body as { username?: string; password?: string };
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    }
+    if (!isValidUsername(username)) {
+      return reply.code(400).send({ error: 'username darf nur Buchstaben, Zahlen, "_" und "-" enthalten (max. 32 Zeichen)' });
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     createUser(username, hashPassword(password));
@@ -453,17 +460,21 @@ async function main() {
   app.get('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async () => ({ data: getData() }));
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { data: getData(username) };
+  });
 
   // POST /api/sync — Daten zusammenführen (JWT)
   app.post('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data: clientData } = request.body as { data?: AppData };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
-    const merged = mergeData(getData(), clientData);
-    setData(merged);
+    const merged = mergeData(getData(username), clientData);
+    setData(username, merged);
     return { data: merged };
   });
 
@@ -472,9 +483,10 @@ async function main() {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    setData(data);
+    setData(username, data);
     return { ok: true };
   });
 
@@ -493,45 +505,50 @@ async function main() {
   });
 
   // ── Report scheduler ──────────────────────────────────────────────────────────
-  // Checks every hour whether a scheduled report should be sent.
+  // Checks every hour whether a scheduled report should be sent, per user
+  // (each account has its own schedule config and its own collection).
   setInterval(async () => {
-    const cfg = getScheduleConfig();
-    if (!cfg?.enabled || !cfg.toEmail || !isEmailConfigured()) return;
+    if (!isEmailConfigured()) return;
 
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
-    const dayOfMonth = now.getUTCDate();
+    for (const username of listUsernames()) {
+      const cfg = getScheduleConfig(username);
+      if (!cfg?.enabled || !cfg.toEmail) continue;
 
-    const shouldSend = cfg.frequency === 'weekly'
-      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
-      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+      const dayOfMonth = now.getUTCDate();
 
-    if (!shouldSend) return;
+      const shouldSend = cfg.frequency === 'weekly'
+        ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+        : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
 
-    // Avoid sending twice in the same hour window
-    if (cfg.lastSentAt) {
-      const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
-      if (hoursSinceLast < 2) return;
-    }
+      if (!shouldSend) continue;
 
-    const refDate = new Date(now);
-    if (cfg.frequency === 'weekly') {
-      refDate.setUTCDate(now.getUTCDate() - 7);
-    } else {
-      refDate.setUTCMonth(now.getUTCMonth() - 1);
-    }
+      // Avoid sending twice in the same hour window
+      if (cfg.lastSentAt) {
+        const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
+        if (hoursSinceLast < 2) continue;
+      }
 
-    try {
-      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
-      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-      const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
-      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-      setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
-      console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
-    } catch (e: unknown) {
-      console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+      const refDate = new Date(now);
+      if (cfg.frequency === 'weekly') {
+        refDate.setUTCDate(now.getUTCDate() - 7);
+      } else {
+        refDate.setUTCMonth(now.getUTCMonth() - 1);
+      }
+
+      try {
+        const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+        const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+        const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
+        const html = generateReportHtml(getData(username), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
+        await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+        setScheduleConfig(username, { ...cfg, lastSentAt: Date.now() });
+        console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail} (${username})`);
+      } catch (e: unknown) {
+        console.error(`[reports] Failed to send scheduled report for ${username}:`, e instanceof Error ? e.message : e);
+      }
     }
   }, 60 * 60 * 1000); // every hour
 

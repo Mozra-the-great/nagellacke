@@ -102,6 +102,8 @@ curl -X POST http://localhost:3000/api/auth/register \
 
 Den zurückgegebenen Token in der Android-App oder im Web unter **Einstellungen → Sync** eintragen.
 
+Jeder Account hat eine eigene, private Kollektion — mehrere Accounts auf demselben Server teilen sich nichts automatisch.
+
 ---
 
 ## Update einspielen
@@ -132,17 +134,17 @@ Daten bleiben dabei **immer erhalten**.
 
 **v3:**
 ```
-/opt/nagellacke/v3/server/data/data.json    ← Kollektion
-/opt/nagellacke/v3/server/data/.api_key     ← API-Schlüssel (v2-kompatibel)
-/opt/nagellacke/v3/server/data/.jwt_secret  ← JWT-Signing-Schlüssel
-/opt/nagellacke/v3/server/data/users.json   ← Sync-User-Konten
-/opt/nagellacke/v3/server/data/photos/      ← Fotos
+/opt/nagellacke/v3/server/data/.api_key                  ← API-Schlüssel (v2-kompatibel)
+/opt/nagellacke/v3/server/data/.jwt_secret                ← JWT-Signing-Schlüssel
+/opt/nagellacke/v3/server/data/users.json                 ← Sync-User-Konten
+/opt/nagellacke/v3/server/data/users/<username>/data.json ← Kollektion (pro Account)
+/opt/nagellacke/v3/server/data/photos/                    ← Fotos
 ```
 
 Backup erstellen:
 ```bash
-# v3
-cp /opt/nagellacke/v3/server/data/data.json ~/backup-$(date +%F).json
+# v3 (pro Account)
+cp /opt/nagellacke/v3/server/data/users/<username>/data.json ~/backup-$(date +%F).json
 
 # v2
 cp /opt/nagellacke/backend/data/data.json ~/backup-$(date +%F).json
