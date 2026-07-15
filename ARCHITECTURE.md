@@ -253,7 +253,7 @@ Magic-Bytes-Check vor dem Speichern: JPEG (`0xFFD8FF`), PNG (`0x89504E47`), WebP
    - `npm run build:server` (60 s)
    - `npm run build:web` (120 s)
    - Kopiert `v3/apps/web/dist` → `server/public/`
-3. Nach 300 ms: `systemctl restart SERVICE_NAME`
+3. Nach 300 ms: `process.exit(0)` — `Restart=always` in der Unit startet den Prozess automatisch neu (kein `systemctl restart` mehr, s. #71)
 
 ---
 
@@ -521,8 +521,10 @@ Die App ist für den Einsatz im **privaten Heimnetz** konzipiert, nicht für das
 | Shell-Injection (UPDATE) | SERVICE_NAME Regex-Validierung | SERVICE_NAME Regex-Validierung |
 
 Bekannte offene Punkte (für Heimnetz-Betrieb akzeptiert):
-- Der Dienst läuft standardmäßig als root — für Produktionsbetrieb sollte ein eigener User angelegt werden (`User=nagellacke`, `NoNewPrivileges=yes`, `ProtectSystem=strict`)
 - HTTP, kein HTTPS — im Heimnetz ohne externen Zugang akzeptabel; für externen Zugang: Nginx-Reverse-Proxy mit Let's Encrypt
+
+Behoben:
+- Der Dienst lief bisher standardmäßig als root; `install.sh` legt jetzt einen dedizierten Systembenutzer an (`User=nagellacke`/`Group=nagellacke` in der Unit), dem `/opt/nagellacke` gehört (#71)
 
 ---
 
