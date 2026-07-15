@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **NodeSource-Setup ohne curl-pipe-bash**: `install.sh` verifizierte das Node.js-20-Setup-Skript bisher nicht und unterdrückte stdout/stderr komplett (`| bash - > /dev/null 2>&1`), was auch einen MITM'ten oder fehlgeschlagenen Download verschleiert hätte. Jetzt NodeSource's dokumentierte signierte-apt-Repo-Methode (GPG-Key holen, `signed-by`-Repo eintragen, `apt-get install`) statt Remote-Skript-Ausführung. (#75)
+
 ---
 
 ## [3.1.1] – 2026-07-11
