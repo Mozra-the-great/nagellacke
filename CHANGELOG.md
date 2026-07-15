@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **API-Key-Vertrauensgrenze dokumentiert**: `/api/update/apply` zieht ungeprüft den aktuellen `origin/main`-HEAD (kein Signatur-/Tag-Pinning) und führt `npm install` inkl. beliebiger `postinstall`-Skripte aus — der `X-Api-Key` ist damit faktisch ein Root-/RCE-Credential, keine normale API-Key. Jetzt prominent in README, CLAUDE.md und im Code selbst dokumentiert. Tag-Pinning statt `main` wäre eine zusätzliche Härtung, ist aber eine bewusste Produktentscheidung und hier nicht umgesetzt. (#73)
+
 ---
 
 ## [3.1.1] – 2026-07-11

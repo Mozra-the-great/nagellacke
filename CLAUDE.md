@@ -49,7 +49,7 @@ npm start      # node dist/index.js
 ## Notes
 
 - Server deployment: `sudo bash install.sh` → installs to `/opt/nagellacke`, creates systemd service `nagellacke-v3`
-- Auth: JWT (Bearer) for sync endpoints (`/api/sync`, `/api/auth/*`), photo endpoints (`/api/photos`), and report endpoints (`/api/reports/*`). **Admin endpoints** (`/api/update/apply`, `/api/update/check`, `/api/logs`) accept only `X-Api-Key`.
+- Auth: JWT (Bearer) for sync endpoints (`/api/sync`, `/api/auth/*`), photo endpoints (`/api/photos`), and report endpoints (`/api/reports/*`). **Admin endpoints** (`/api/update/apply`, `/api/update/check`, `/api/logs`) accept only `X-Api-Key`. `X-Api-Key` is a de facto root credential: `/api/update/apply` pulls the current `origin/main` HEAD with no signature/tag pinning and runs `npm install` (arbitrary `postinstall` scripts) — treat it accordingly (#73).
 - Registration: `POST /api/auth/register` is open only when no users exist yet (first-user bootstrap) or `ALLOW_REGISTRATION=true` is set in the environment.
 - Env vars of note: `PORT`, `ALLOWED_ORIGIN`, `SERVICE_NAME`, `JWT_SECRET`, `DATA_DIR`, `ALLOW_REGISTRATION`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `APP_URL`
 - Data is stored as JSON files under `v3/server/data/` (gitignored); photos under `v3/server/data/photos/`.
