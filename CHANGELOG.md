@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **JWT-Revocation-Mechanismus**: JWTs waren bisher nur über ihr 30-Tage-Ablaufdatum begrenzt — kein Logout, keine Widerrufsliste, einzige Möglichkeit alle Sessions zu invalidieren war ein globaler `JWT_SECRET`-Rotationswechsel (loggt alle User gleichzeitig aus). Jeder Token trägt jetzt eine `tokenVersion`, die bei jeder JWT-Prüfung gegen die aktuell im User-Datensatz gespeicherte Version geprüft wird (`token_version` in `users.json`, neuer `db.ts`-Helper `bumpTokenVersion`). Neuer Endpoint `POST /api/auth/logout-all` (JWT-geschützt) erhöht die Version und invalidiert damit sofort jedes zuvor ausgestellte Token für diesen User — z. B. nach einem verlorenen/gestohlenen Gerät. (#77)
+
 ---
 
 ## [3.1.1] – 2026-07-11
