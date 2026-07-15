@@ -1,7 +1,5 @@
 package de.nagellacke.ui.settings
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,15 +32,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import de.nagellacke.data.sync.SyncProvider
 import kotlinx.coroutines.launch
-import net.openid.appauth.AuthorizationException
-import net.openid.appauth.AuthorizationResponse
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -60,7 +55,6 @@ private val PROVIDERS = listOf(
 fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     val state by vm.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     var selectedProvider by remember { mutableStateOf(state.syncConfig?.provider ?: SyncProvider.Server) }
     var serverUrl   by remember { mutableStateOf(state.syncConfig?.serverUrl ?: "") }
@@ -70,22 +64,6 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     var ncPass by remember { mutableStateOf(state.syncConfig?.nextcloudPassword ?: "") }
     var showLogin by remember { mutableStateOf(false) }
     var loginMode by remember { mutableStateOf("login") }
-    var oauthError by remember { mutableStateOf<String?>(null) }
-
-    // OAuth launchers
-    val googleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val resp = AuthorizationResponse.fromIntent(result.data ?: return@rememberLauncherForActivityResult) ?: return@rememberLauncherForActivityResult
-        net.openid.appauth.AuthorizationService(context).performTokenRequest(resp.createTokenExchangeRequest()) { token, ex ->
-            when {
-                token != null -> {
-                    vm.saveOAuthConfig(SyncProvider.GoogleDrive, token.accessToken ?: "", token.refreshToken ?: "", token.accessTokenExpirationTime ?: 0L)
-                    oauthError = null
-                }
-                ex != null -> oauthError = "Google-Anmeldung fehlgeschlagen: ${ex.errorDescription ?: ex.error ?: "Unbekannter Fehler"}"
-                else -> oauthError = "Google-Anmeldung fehlgeschlagen"
-            }
-        }
-    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Einstellungen", fontWeight = FontWeight.Bold) }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -182,15 +160,7 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                 SyncProvider.GoogleDrive -> {
                     Text("Google Drive Zugriff via OAuth2", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    if (oauthError != null) {
-                        Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                            Text("⚠ $oauthError", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                    Button(onClick = {
-                        oauthError = null
-                        googleLauncher.launch(buildAuthIntent(context, OAuthEndpoints.Google, OAuthClientIds.Google, listOf("https://www.googleapis.com/auth/drive.file")))
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Mit Google anmelden") }
+                    Button(onClick = {}, modifier = Modifier.fillMaxWidth(), enabled = false) { Text("Mit Google anmelden (in Kürze)") }
                 }
                 SyncProvider.OneDrive -> {
                     Text("OneDrive Zugriff via OAuth2 (Microsoft)", style = MaterialTheme.typography.bodyMedium)
