@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -119,10 +120,11 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
                 ) {
                     items(state.polishes, key = { it.id }) { polish ->
                         PolishCard(
-                            polish       = polish,
-                            bottleStyle  = state.bottleStyle,
-                            photoBaseUrl = state.photoBaseUrl,
-                            onClick      = { editing = it; showForm = true },
+                            polish            = polish,
+                            bottleStyle       = state.bottleStyle,
+                            photoBaseUrl      = state.photoBaseUrl,
+                            photosUnsupported = state.photosUnsupported,
+                            onClick           = { editing = it; showForm = true },
                         )
                     }
                 }
@@ -157,9 +159,11 @@ fun PolishCard(
     polish: Polish,
     bottleStyle: Boolean,
     photoBaseUrl: String?,
+    photosUnsupported: Boolean = false,
     onClick: (Polish) -> Unit,
 ) {
     val hasPhoto = polish.photo != null && photoBaseUrl != null
+    val photoUnavailable = polish.photo != null && !hasPhoto && photosUnsupported
     var showPhoto by remember(polish.id) { mutableStateOf(hasPhoto) }
 
     val color = runCatching {
@@ -242,6 +246,30 @@ fun PolishCard(
                         text  = if (showPhoto) "◎" else "📷",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White,
+                    )
+                }
+            }
+
+            // Photo-unavailable indicator (top-right) — a photo exists but the current
+            // sync provider doesn't support displaying it (see issue #90)
+            if (photoUnavailable) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                        .clip(CircleShape)
+                        .semantics {
+                            contentDescription = "Foto vorhanden, aber mit diesem Sync-Anbieter nicht anzeigbar"
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ImageNotSupported,
+                        contentDescription = null,
+                        tint     = Color.White,
+                        modifier = Modifier.size(16.dp),
                     )
                 }
             }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -100,8 +102,8 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
                                 val photoUrl = state.photoBaseUrl?.let { base ->
                                     sticker.photo?.let { "$base$it" }
                                 }
-                                if (photoUrl != null) {
-                                    AsyncImage(
+                                when {
+                                    photoUrl != null -> AsyncImage(
                                         model              = photoUrl,
                                         contentDescription = sticker.name,
                                         contentScale       = ContentScale.Crop,
@@ -109,8 +111,26 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
                                             .size(48.dp)
                                             .clip(RoundedCornerShape(8.dp)),
                                     )
-                                } else {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    // Photo exists but the current sync provider doesn't support
+                                    // displaying it (see issue #90)
+                                    sticker.photo != null && state.photosUnsupported -> Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .semantics {
+                                                contentDescription = "Foto vorhanden, aber mit diesem Sync-Anbieter nicht anzeigbar"
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ImageNotSupported,
+                                            contentDescription = null,
+                                            tint     = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                    else -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         sticker.colors.take(3).forEach { hex ->
                                             val c = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color(0xFFff6699) }
                                             Box(Modifier.size(18.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbe $hex" })

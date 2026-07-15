@@ -35,6 +35,8 @@ data class CollectionUiState(
     /** Base URL prefix for photo filenames, e.g. "https://server.com/photos/".
      *  null when no Server provider is configured (Nextcloud, local-only, etc.). */
     val photoBaseUrl: String? = null,
+    /** true when a sync provider is configured but photo display isn't implemented for it yet. */
+    val photosUnsupported: Boolean = false,
 )
 
 @HiltViewModel
@@ -53,12 +55,13 @@ class CollectionViewModel @Inject constructor(
     ) { data, filter, bottleStyle, cfg ->
         val visible = sortPolishes(filterPolishes(data.polishes, filter), filter.sort)
         CollectionUiState(
-            polishes     = visible,
-            categories   = data.customCats.filter { it.deletedAt == null },
-            filter       = filter,
-            loading      = false,
-            bottleStyle  = bottleStyle,
-            photoBaseUrl = cfg.photoBaseUrl(),
+            polishes         = visible,
+            categories       = data.customCats.filter { it.deletedAt == null },
+            filter           = filter,
+            loading          = false,
+            bottleStyle      = bottleStyle,
+            photoBaseUrl     = cfg.photoBaseUrl(),
+            photosUnsupported = cfg.photosUnsupported(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionUiState())
 
@@ -81,3 +84,12 @@ internal fun SyncConfig?.photoBaseUrl(): String? {
     if (serverUrl.isBlank()) return null
     return "${serverUrl.trimEnd('/')}/photos/"
 }
+
+/**
+ * True when a sync provider is configured but photo display isn't implemented for it yet
+ * (Nextcloud/Google Drive/OneDrive/Dropbox photo endpoints require provider-specific auth
+ * that the app's image loader doesn't send — see issue #90). Used to show an explicit
+ * "photo not available" indicator instead of silently falling back to the bottle icon.
+ */
+internal fun SyncConfig?.photosUnsupported(): Boolean =
+    this != null && provider != SyncProvider.Server

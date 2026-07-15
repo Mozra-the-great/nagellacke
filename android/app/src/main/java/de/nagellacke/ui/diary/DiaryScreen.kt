@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ImageNotSupported
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -45,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -95,8 +97,8 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                             headlineContent   = { Text(formatDate(entry.date), color = MaterialTheme.colorScheme.primary) },
                             supportingContent = { Text(entry.notes.ifBlank { polishes.joinToString(", ") { it.name }.take(60) }) },
                             leadingContent    = {
-                                if (photoUrl != null) {
-                                    AsyncImage(
+                                when {
+                                    photoUrl != null -> AsyncImage(
                                         model              = photoUrl,
                                         contentDescription = "Maniküre vom ${formatDate(entry.date)}",
                                         contentScale       = ContentScale.Crop,
@@ -104,8 +106,26 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                                             .size(48.dp)
                                             .clip(RoundedCornerShape(8.dp)),
                                     )
-                                } else {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    // Photo exists but the current sync provider doesn't support
+                                    // displaying it (see issue #90)
+                                    entry.photo != null && state.photosUnsupported -> Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .semantics {
+                                                contentDescription = "Foto vorhanden, aber mit diesem Sync-Anbieter nicht anzeigbar"
+                                            },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ImageNotSupported,
+                                            contentDescription = null,
+                                            tint     = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                    else -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         polishes.take(4).forEach { p ->
                                             val c = runCatching { Color(android.graphics.Color.parseColor(p.color)) }.getOrElse { Color(0xFFff6699) }
                                             Box(Modifier.size(20.dp).clip(CircleShape).background(c).semantics { contentDescription = p.name })

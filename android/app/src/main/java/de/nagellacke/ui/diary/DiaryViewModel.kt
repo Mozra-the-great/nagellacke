@@ -9,6 +9,7 @@ import de.nagellacke.domain.filterManicures
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.ui.collection.photoBaseUrl
+import de.nagellacke.ui.collection.photosUnsupported
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -21,6 +22,8 @@ data class DiaryUiState(
     val loading: Boolean = true,
     /** Base URL prefix for photo filenames — null when no Server provider is configured. */
     val photoBaseUrl: String? = null,
+    /** true when a sync provider is configured but photo display isn't implemented for it yet. */
+    val photosUnsupported: Boolean = false,
 )
 
 @HiltViewModel
@@ -31,10 +34,11 @@ class DiaryViewModel @Inject constructor(
 
     val uiState = combine(repo.observeData(), configStore.configFlow) { data, cfg ->
         DiaryUiState(
-            entries      = filterManicures(data.manicures).sortedByDescending { it.date },
-            polishes     = data.polishes.filter { it.deletedAt == null && it.status.name != "Wish" },
-            loading      = false,
-            photoBaseUrl = cfg.photoBaseUrl(),
+            entries          = filterManicures(data.manicures).sortedByDescending { it.date },
+            polishes         = data.polishes.filter { it.deletedAt == null && it.status.name != "Wish" },
+            loading          = false,
+            photoBaseUrl     = cfg.photoBaseUrl(),
+            photosUnsupported = cfg.photosUnsupported(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DiaryUiState())
 
