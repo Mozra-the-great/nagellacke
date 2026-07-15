@@ -75,7 +75,8 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     // OAuth launchers
     val googleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val resp = AuthorizationResponse.fromIntent(result.data ?: return@rememberLauncherForActivityResult) ?: return@rememberLauncherForActivityResult
-        net.openid.appauth.AuthorizationService(context).performTokenRequest(resp.createTokenExchangeRequest()) { token, ex ->
+        val authService = net.openid.appauth.AuthorizationService(context)
+        authService.performTokenRequest(resp.createTokenExchangeRequest()) { token, ex ->
             when {
                 token != null -> {
                     vm.saveOAuthConfig(SyncProvider.GoogleDrive, token.accessToken ?: "", token.refreshToken ?: "", token.accessTokenExpirationTime ?: 0L)
@@ -84,6 +85,7 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                 ex != null -> oauthError = "Google-Anmeldung fehlgeschlagen: ${ex.errorDescription ?: ex.error ?: "Unbekannter Fehler"}"
                 else -> oauthError = "Google-Anmeldung fehlgeschlagen"
             }
+            authService.dispose()
         }
     }
 
