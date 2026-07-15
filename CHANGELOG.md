@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **CORS fällt in Produktion nicht mehr unbemerkt auf Wildcard zurück**: `ALLOWED_ORIGIN` defaultete bisher überall auf `"*"` und warnte nur. Server startet jetzt nicht mehr, wenn `NODE_ENV=production` gesetzt ist und `ALLOWED_ORIGIN` fehlt (`install.sh` setzt `NODE_ENV=production` in der systemd-Unit). Lokale Entwicklung (`npm run dev`) bleibt unverändert permissiv. Aktuell nicht ausnutzbar (kein `credentials: true`, Auth ist Header-basiert), aber ein Fail-Closed-Default ist billiger als ein zukünftiges stilles Fehlverhalten. (#76)
+
 ---
 
 ## [3.1.1] – 2026-07-11
