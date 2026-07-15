@@ -32,14 +32,17 @@ fi
 info "Paketlisten aktualisieren…"
 apt-get update -qq
 
-info "Installiere Abhängigkeiten (git, curl)…"
-apt-get install -y -qq git curl ca-certificates
+info "Installiere Abhängigkeiten (git, curl, gnupg)…"
+apt-get install -y -qq git curl ca-certificates gnupg
 
 # ── 2. Node.js 20 ──
 NODE_MAJOR=$(node --version 2>/dev/null | grep -oP '(?<=v)\d+' || echo 0)
 if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt 20 ]]; then
   info "Installiere Node.js 20…"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
+  mkdir -p /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
 else
   success "Node.js bereits installiert ($(node --version))"
