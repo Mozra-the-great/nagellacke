@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Sicherheit
+- **GitHub Actions auf Commit-SHAs gepinnt**: alle Third-Party-Actions in `.github/workflows/*.yml` (`actions/checkout`, `actions/setup-java`, `actions/setup-node`, `actions/upload-artifact`, `actions/configure-pages`, `actions/upload-pages-artifact`, `actions/deploy-pages`, `gradle/actions/setup-gradle`, `anthropics/claude-code-action`) referenzierten bisher mutable Tags (`@v4`, `@v1`, …) statt gepinnter SHAs — ein kompromittiertes Tag hätte unbemerkt anderen Code ausführen können. Jetzt `@<sha> # v<version>`, SHAs gegen die GitHub-API verifiziert. (#78)
+
 ---
 
 ## [3.1.1] – 2026-07-11
