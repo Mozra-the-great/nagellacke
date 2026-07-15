@@ -9,7 +9,7 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ### Sicherheit
 - **systemd-Service läuft nicht mehr als root**: `install.sh` legt jetzt einen dedizierten Systembenutzer `nagellacke` an, dem das komplette Installationsverzeichnis gehört (`User=`/`Group=` in der Unit). Das Selbst-Update (`POST /api/update/apply`) rief bisher `systemctl restart` auf sich selbst auf, was Root-Rechte gebraucht hätte — stattdessen beendet sich der Prozess jetzt einfach selbst (`process.exit(0)`), `Restart=always` in der Unit startet ihn automatisch neu. Ein geleakter oder erratener Admin-API-Key gibt einem Angreifer damit nur noch Rechte innerhalb `/opt/nagellacke`, nicht mehr Root-RCE auf dem Host. (#71)
-- **Hinweis**: die Produktionsinstanz (CT110, `homelab-infra`) wird nicht über `install.sh` deployt, sondern über `ansible/playbooks/deploy-nagellacke.yml` im `homelab-infra`-Repo, das die systemd-Unit unabhängig schreibt. Dieser Fix hier deckt den dokumentierten manuellen Install-Weg ab; der Ansible-Playbook-Teil braucht eine eigene, von einem Menschen geprüfte Änderung (Live-Service, siehe Kommentar auf #71).
+- **Hinweis**: die Produktionsinstanz wird nicht über `install.sh` deployt, sondern über separates Infrastruktur-Tooling (privates Repo), das die systemd-Unit unabhängig schreibt. Dieser Fix hier deckt den dokumentierten manuellen Install-Weg ab; der Infrastruktur-Teil braucht eine eigene, von einem Menschen geprüfte Änderung (Live-Service, siehe Kommentar auf #71).
 
 ---
 
