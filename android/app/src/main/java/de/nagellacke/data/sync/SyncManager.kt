@@ -15,6 +15,7 @@ import dagger.assisted.AssistedInject
 import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.purgeOldDeleted
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -53,8 +54,12 @@ class SyncManager @Inject constructor(
         val local = repository.getCurrentData()
         val result = adapter.sync(local)
         if (result.success) {
-            val purged = purgeOldDeleted(result.merged)
+            // Reconcile against Room's current state, not the pre-request snapshot: local
+            // edits made while `adapter.sync` was in flight must not be clobbered by replaceAll.
+            val reconciled = mergeData(repository.getCurrentData(), result.merged)
+            val purged = purgeOldDeleted(reconciled)
             repository.replaceAll(purged)
+            return result.copy(merged = purged)
         }
         return result
     }
