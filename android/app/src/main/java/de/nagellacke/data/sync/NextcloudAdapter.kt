@@ -1,6 +1,7 @@
 package de.nagellacke.data.sync
 
 import android.util.Base64
+import de.nagellacke.BuildConfig
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
@@ -23,7 +24,11 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
     )
 
     private val client = OkHttpClient.Builder()
-        .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+        .apply {
+            if (BuildConfig.DEBUG) {
+                addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            }
+        }
         .build()
 
     private val base = config.nextcloudUrl.trimEnd('/')
