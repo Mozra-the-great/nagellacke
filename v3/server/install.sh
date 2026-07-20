@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SERVICE_NAME="${SERVICE_NAME:-nagellacke-v3}"
+SERVICE_USER="nagellacke"
 INSTALL_DIR="/opt/nagellacke"
 REPO_URL="https://github.com/Mozra-the-great/nagellacke.git"
 PORT="${PORT:-3000}"
@@ -22,6 +23,16 @@ if ! command -v node &>/dev/null || [[ "$(node -e 'console.log(process.versions.
   apt-get install -y nodejs
 fi
 echo "Node.js: $(node -v)"
+
+# Dedizierter Service-User (keine Root-Rechte für den laufenden Prozess)
+if ! getent group "$SERVICE_USER" >/dev/null; then
+  groupadd --system "$SERVICE_USER"
+fi
+if ! id -u "$SERVICE_USER" &>/dev/null; then
+  useradd --system --no-create-home --shell /usr/sbin/nologin \
+    --gid "$SERVICE_USER" --home-dir "$INSTALL_DIR" "$SERVICE_USER"
+fi
+usermod -aG systemd-journal "$SERVICE_USER"
 
 # Repo klonen oder aktualisieren
 if [[ -d "$INSTALL_DIR/.git" ]]; then
@@ -51,6 +62,7 @@ cp -r "$INSTALL_DIR/backend/public/." "$V3_SERVER/public/"
 # ── Datenordner vorbereiten ────────────────────────────────────────────────────
 DATA_DIR="$V3_SERVER/data"
 mkdir -p "$DATA_DIR/photos"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # .env anlegen (einmalig)
 ENV_FILE="$V3_SERVER/.env"
@@ -66,6 +78,15 @@ EOF
   echo "Neue .env angelegt."
 fi
 
+# ── Scoped sudo-Regel für Self-Update (nur systemctl restart) ─────────────────
+SYSTEMCTL_BIN="$(command -v systemctl)"
+SUDOERS_FILE="/etc/sudoers.d/${SERVICE_NAME}"
+cat > "$SUDOERS_FILE" <<EOF
+${SERVICE_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} restart ${SERVICE_NAME}
+EOF
+chmod 0440 "$SUDOERS_FILE"
+visudo -cf "$SUDOERS_FILE" >/dev/null
+
 # ── Systemd-Service anlegen ────────────────────────────────────────────────────
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
@@ -74,6 +95,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
 WorkingDirectory=$V3_SERVER
 EnvironmentFile=$ENV_FILE
 ExecStart=/usr/bin/node dist/index.js

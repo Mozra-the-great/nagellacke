@@ -8,6 +8,7 @@ set -e
 
 INSTALL_DIR="/opt/nagellacke"
 SERVICE_NAME="nagellacke-v3"
+SERVICE_USER="nagellacke"
 PORT=3000
 REPO_URL="https://github.com/Mozra-the-great/nagellacke"
 
@@ -45,7 +46,20 @@ else
   success "Node.js bereits installiert ($(node --version))"
 fi
 
-# ── 3. Clone or update repo ──
+# ── 3. Dedicated service user (no login, no root privileges) ──
+if ! getent group "$SERVICE_USER" >/dev/null; then
+  info "Erstelle Service-Gruppe '$SERVICE_USER'…"
+  groupadd --system "$SERVICE_USER"
+fi
+if ! id -u "$SERVICE_USER" &>/dev/null; then
+  info "Erstelle Service-User '$SERVICE_USER'…"
+  useradd --system --no-create-home --shell /usr/sbin/nologin \
+    --gid "$SERVICE_USER" --home-dir "$INSTALL_DIR" "$SERVICE_USER"
+fi
+# Damit /api/logs (journalctl) ohne root funktioniert:
+usermod -aG systemd-journal "$SERVICE_USER"
+
+# ── 4. Clone or update repo ──
 if [ -d "$INSTALL_DIR/.git" ]; then
   info "Repository aktualisieren…"
   git -C "$INSTALL_DIR" fetch --quiet origin main
@@ -55,12 +69,12 @@ else
   git clone --quiet "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# ── 4. Install dependencies ──
+# ── 5. Install dependencies ──
 info "Abhängigkeiten installieren (v3 monorepo)…"
 cd "$INSTALL_DIR/v3"
 npm install --silent
 
-# ── 5. Build ──
+# ── 6. Build ──
 info "Core-Paket bauen…"
 npm run build:core --silent
 
@@ -73,7 +87,7 @@ npm run build:server --silent
 info "Web-App bauen…"
 npm run build:web --silent
 
-# ── 6. Deploy web app to server public/ ──
+# ── 7. Deploy web app to server public/ ──
 WEB_DIST="$INSTALL_DIR/v3/apps/web/dist"
 SERVER_PUBLIC="$INSTALL_DIR/v3/server/public"
 if [ -d "$WEB_DIST" ]; then
@@ -83,11 +97,11 @@ if [ -d "$WEB_DIST" ]; then
   success "Web-App deployed → $SERVER_PUBLIC"
 fi
 
-# ── 7. Data directory ──
+# ── 8. Data directory ──
 mkdir -p "$INSTALL_DIR/v3/server/data"
-chown -R root:root "$INSTALL_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
-# ── 8. Stop old v2 service if running ──
+# ── 9. Stop old v2 service if running ──
 if systemctl is-active --quiet nagellacke.service 2>/dev/null; then
   info "Alten v2-Service stoppen…"
   systemctl stop nagellacke
@@ -95,7 +109,20 @@ if systemctl is-active --quiet nagellacke.service 2>/dev/null; then
   success "v2-Service gestoppt"
 fi
 
-# ── 9. Systemd service ──
+# ── 10. Scoped sudo rule for self-update (systemctl restart only) ──
+# Der Service läuft unprivilegiert; /api/update/apply braucht aber einen
+# Neustart via systemctl. Statt die ganze App als root laufen zu lassen,
+# erlauben wir nur genau diesen einen Befehl passwortlos per sudoers.
+SYSTEMCTL_BIN="$(command -v systemctl)"
+SUDOERS_FILE="/etc/sudoers.d/${SERVICE_NAME}"
+info "Sudo-Regel für Service-Neustart einrichten…"
+cat > "$SUDOERS_FILE" <<EOF
+${SERVICE_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} restart ${SERVICE_NAME}
+EOF
+chmod 0440 "$SUDOERS_FILE"
+visudo -cf "$SUDOERS_FILE" >/dev/null || error "Sudoers-Datei ungültig: $SUDOERS_FILE"
+
+# ── 11. Systemd service ──
 info "Systemd-Service einrichten ($SERVICE_NAME)…"
 cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
 [Unit]
@@ -104,6 +131,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}/v3/server
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
@@ -123,7 +152,7 @@ systemctl daemon-reload
 systemctl enable --quiet "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 
-# ── 10. Done ──
+# ── 12. Done ──
 sleep 1
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP=$(hostname -I | awk '{print $1}')

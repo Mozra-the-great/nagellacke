@@ -292,7 +292,9 @@ async function main() {
         }
 
         setTimeout(() => {
-          const r = spawnSync('systemctl', ['restart', SERVICE_NAME], { stdio: 'pipe' });
+          // Service läuft unprivilegiert (siehe install.sh); der Neustart läuft
+          // über eine eng gefasste, passwortlose sudoers-Regel für genau diesen Befehl.
+          const r = spawnSync('sudo', ['-n', 'systemctl', 'restart', SERVICE_NAME], { stdio: 'pipe' });
           if (r.status !== 0) process.exit(0);
         }, 300);
       } catch (e: unknown) {
