@@ -85,7 +85,17 @@ fi
 
 # ── 7. Data directory ──
 mkdir -p "$INSTALL_DIR/v3/server/data"
-chown -R root:root "$INSTALL_DIR"
+
+# ── 7b. Dedicated unprivileged service user ──
+# The service only needs to bind port 3000 and read/write its own install
+# directory - no reason to run as root (see security issue #71). Reading the
+# systemd journal (GET /api/logs) needs membership in systemd-journal.
+if ! id -u nagellacke &>/dev/null; then
+  info "Systembenutzer 'nagellacke' anlegen…"
+  useradd --system --no-create-home --shell /usr/sbin/nologin nagellacke
+fi
+usermod -aG systemd-journal nagellacke
+chown -R nagellacke:nagellacke "$INSTALL_DIR"
 
 # ── 8. Stop old v2 service if running ──
 if systemctl is-active --quiet nagellacke.service 2>/dev/null; then
@@ -104,6 +114,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=nagellacke
+Group=nagellacke
 WorkingDirectory=${INSTALL_DIR}/v3/server
 ExecStart=/usr/bin/node dist/index.js
 Restart=always

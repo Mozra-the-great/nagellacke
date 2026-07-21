@@ -292,8 +292,11 @@ async function main() {
         }
 
         setTimeout(() => {
-          const r = spawnSync('systemctl', ['restart', SERVICE_NAME], { stdio: 'pipe' });
-          if (r.status !== 0) process.exit(0);
+          // Restart=always in the systemd unit brings the process back
+          // automatically - no need to call `systemctl restart` (which would
+          // require root, or a sudo/polkit rule the service shouldn't need
+          // just to restart itself, see #71).
+          process.exit(0);
         }, 300);
       } catch (e: unknown) {
         console.error('Update failed:', e instanceof Error ? e.message : e);
