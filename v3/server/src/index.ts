@@ -78,6 +78,15 @@ function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
 }
 
+// Constant-time string comparison (avoids leaking the API key via response-time
+// side channel - crypto.timingSafeEqual itself requires equal-length buffers).
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 // ── GitHub version check helper ───────────────────────────────────────────────
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -140,7 +149,7 @@ async function main() {
 
   async function requireApiKey(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
-    if (!key || key !== API_KEY) {
+    if (typeof key !== 'string' || !safeEqual(key, API_KEY)) {
       return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
     }
   }
@@ -156,7 +165,9 @@ async function main() {
   async function requireApiKeyOrJwt(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
     if (key) {
-      if (key !== API_KEY) return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      if (typeof key !== 'string' || !safeEqual(key, API_KEY)) {
+        return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      }
       return;
     }
     try {
