@@ -11,8 +11,13 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
-import type { ScheduleConfig } from './db';
+import {
+  getData, setData, getUser, getUserCount, createUser, updateUserEmail,
+  getScheduleConfig, setScheduleConfig, getAiConfig, setAiConfig,
+  addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
+} from './db';
+import type { ScheduleConfig, AiConfig, AiJob } from './db';
+import { processAiJobQueue, isAiConfigured } from './ai';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
 
@@ -468,14 +473,106 @@ async function main() {
   });
 
   // POST /api/sync/push — fertig gemergten Stand hochladen (JWT)
+  // Merges against the current server state (rather than overwriting it) so a
+  // client push based on a slightly stale snapshot can't clobber writes made
+  // server-side in the meantime (e.g. by an AI background job).
   app.post('/api/sync/push', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    setData(data);
+    const merged = mergeData(getData(), data);
+    setData(merged);
     return { ok: true };
+  });
+
+  // ── KI-Assistenz (AI Auto-Fill / Smart-Cart) ──────────────────────────────────
+
+  // GET /api/ai/settings — secrets are never sent back, only whether they're set
+  app.get('/api/ai/settings', { preHandler: requireJwt }, async () => {
+    const config = getAiConfig();
+    return {
+      provider: config.provider,
+      openrouter: { model: config.openrouter.model, freeOnly: config.openrouter.freeOnly, hasApiKey: !!config.openrouter.apiKey },
+      gemini: { model: config.gemini.model, hasApiKey: !!config.gemini.apiKey },
+    };
+  });
+
+  // POST /api/ai/settings
+  app.post('/api/ai/settings', { preHandler: requireJwt }, async (request, reply) => {
+    const body = request.body as Partial<{
+      provider: AiConfig['provider'];
+      openrouter: Partial<{ apiKey: string; model: string; freeOnly: boolean }>;
+      gemini: Partial<{ apiKey: string; model: string }>;
+    }>;
+    if (body.provider !== 'openrouter' && body.provider !== 'gemini') {
+      return reply.code(400).send({ error: 'provider muss "openrouter" oder "gemini" sein' });
+    }
+    const current = getAiConfig();
+    const config: AiConfig = {
+      provider: body.provider,
+      openrouter: {
+        apiKey: body.openrouter?.apiKey !== undefined ? body.openrouter.apiKey : current.openrouter.apiKey,
+        model: body.openrouter?.model || current.openrouter.model,
+        freeOnly: body.openrouter?.freeOnly ?? current.openrouter.freeOnly,
+      },
+      gemini: {
+        apiKey: body.gemini?.apiKey !== undefined ? body.gemini.apiKey : current.gemini.apiKey,
+        model: body.gemini?.model || current.gemini.model,
+      },
+    };
+    setAiConfig(config);
+    return { ok: true };
+  });
+
+  // POST /api/ai/autofill — kick off a background job to research color/finish.
+  // Takes the polish's name/brand/num directly (not an id) — the result is
+  // handed back via the job for the client to apply itself, so this doesn't
+  // depend on the client having already synced the new polish to the server.
+  app.post('/api/ai/autofill', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { name, brand, num } = request.body as { name?: string; brand?: string; num?: string };
+    if (!name) return reply.code(400).send({ error: 'name erforderlich' });
+    const config = getAiConfig();
+    if (!isAiConfigured(config)) {
+      return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    }
+    const job: AiJob = {
+      id: uuidv4(), type: 'autofill', status: 'pending',
+      input: { polish: { name, brand: brand ?? '', num: num ?? '' } },
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    addAiJob(job);
+    setImmediate(() => { void processAiJobQueue(); });
+    return { jobId: job.id };
+  });
+
+  // POST /api/ai/smart-cart — kick off a background job to research + add cart items
+  app.post('/api/ai/smart-cart', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { prompt } = request.body as { prompt?: string };
+    if (!prompt || !prompt.trim()) return reply.code(400).send({ error: 'prompt erforderlich' });
+    const config = getAiConfig();
+    if (!isAiConfigured(config)) {
+      return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    }
+    const job: AiJob = { id: uuidv4(), type: 'smart-cart', status: 'pending', input: { prompt: prompt.trim() }, createdAt: Date.now(), updatedAt: Date.now() };
+    addAiJob(job);
+    setImmediate(() => { void processAiJobQueue(); });
+    return { jobId: job.id };
+  });
+
+  // GET /api/ai/jobs/:id — poll job status
+  app.get('/api/ai/jobs/:id', { preHandler: requireJwt }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = getAiJob(id);
+    if (!job) return reply.code(404).send({ error: 'Job nicht gefunden' });
+    return { job };
   });
 
   // ── SPA Fallback ──────────────────────────────────────────────────────────────
@@ -534,6 +631,12 @@ async function main() {
       console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
     }
   }, 60 * 60 * 1000); // every hour
+
+  // ── AI job queue safety net ────────────────────────────────────────────────
+  // Jobs are normally picked up immediately (see setImmediate calls above); this
+  // interval just catches anything left pending after a restart.
+  setInterval(() => { void processAiJobQueue(); }, 30 * 1000);
+  void processAiJobQueue();
 
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });

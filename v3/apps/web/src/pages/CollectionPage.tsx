@@ -9,6 +9,7 @@ import NailBottle from '../components/NailBottle';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
+import { startAutofillJob, pollAiJob } from '../utils/ai';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -31,6 +32,22 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
   }, [appData.data.polishes, filter]);
 
   const activeCategories = appData.data.customCats.filter((c) => !c.deletedAt);
+
+  const runAutofill = async (polish: Polish) => {
+    try {
+      const { jobId } = await startAutofillJob({ name: polish.name, brand: polish.brand, num: polish.num });
+      const job = await pollAiJob(jobId);
+      if (job.status === 'error') throw new Error(job.error ?? 'Unbekannter Fehler');
+      const result = job.result as { color?: string; finish?: string } | undefined;
+      if (result?.color && result?.finish) {
+        appData.updatePolish(polish.id, { color: result.color, finish: result.finish as Polish['finish'] });
+      }
+      void appData.sync();
+      showSnackbar(`✨ KI hat Farbe & Finish für „${polish.name}" ermittelt`);
+    } catch (e) {
+      showSnackbar(`KI-Recherche fehlgeschlagen: ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
+    }
+  };
 
   return (
     <div className={styles.page}>
@@ -151,9 +168,13 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
           polish={editing}
           categories={activeCategories}
           allPolishes={appData.data.polishes}
-          onSave={(p) => {
-            if (editing) appData.updatePolish(editing.id, p);
-            else appData.addPolish(p as Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>);
+          onSave={(p, aiAutofill) => {
+            if (editing) {
+              appData.updatePolish(editing.id, p);
+            } else {
+              const created = appData.addPolish(p as Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>);
+              if (aiAutofill) void runAutofill(created);
+            }
             setShowForm(false);
           }}
           onClose={() => setShowForm(false)}

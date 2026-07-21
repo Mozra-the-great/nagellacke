@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
-import { generateId, now } from '@nagellacke/core';
+import { generateId, now, mergeData } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
@@ -57,88 +57,96 @@ export function useAppData() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
 
-  const commit = useCallback((next: AppData) => {
-    saveLocal(next);
-    setDataState(next);
+  // Takes an updater rather than a plain value so long-running async callers
+  // (e.g. an AI background job that resolves a minute later) always apply
+  // their change on top of the latest state instead of clobbering whatever
+  // else happened in the meantime with a stale snapshot.
+  const commit = useCallback((updater: (prev: AppData) => AppData) => {
+    setDataState((prev) => {
+      const next = updater(prev);
+      saveLocal(next);
+      return next;
+    });
   }, []);
 
   // Polishes
-  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
     const item: Polish = { ...p, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit({ ...data, polishes: [...data.polishes, item] });
-  }, [data, commit]);
+    commit((prev) => ({ ...prev, polishes: [...prev.polishes, item] }));
+    return item;
+  }, [commit]);
 
   const updatePolish = useCallback((id: string, changes: Partial<Polish>) => {
-    commit({
-      ...data,
-      polishes: data.polishes.map((p) => p.id === id ? { ...p, ...changes, updatedAt: now() } : p),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, ...changes, updatedAt: now() } : p),
+    }));
+  }, [commit]);
 
   const deletePolish = useCallback((id: string): (() => void) => {
     const p = data.polishes.find((p) => p.id === id);
-    commit({
-      ...data,
-      polishes: data.polishes.map((p) => p.id === id ? { ...p, deletedAt: now(), updatedAt: now() } : p),
-    });
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: now(), updatedAt: now() } : p),
+    }));
     return () => { if (p?.photo) void deletePhotoFromServer(p.photo); };
   }, [data, commit]);
 
   const restorePolish = useCallback((id: string) => {
-    commit({
-      ...data,
-      polishes: data.polishes.map((p) => p.id === id ? { ...p, deletedAt: undefined, updatedAt: now() } : p),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: undefined, updatedAt: now() } : p),
+    }));
+  }, [commit]);
 
   // Stickers
   const addSticker = useCallback((s: Omit<Sticker, 'id' | 'createdAt' | 'updatedAt'>) => {
     const item: Sticker = { ...s, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit({ ...data, stickers: [...data.stickers, item] });
-  }, [data, commit]);
+    commit((prev) => ({ ...prev, stickers: [...prev.stickers, item] }));
+  }, [commit]);
 
   const updateSticker = useCallback((id: string, changes: Partial<Sticker>) => {
-    commit({
-      ...data,
-      stickers: data.stickers.map((s) => s.id === id ? { ...s, ...changes, updatedAt: now() } : s),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, ...changes, updatedAt: now() } : s),
+    }));
+  }, [commit]);
 
   const deleteSticker = useCallback((id: string): (() => void) => {
     const s = data.stickers.find((s) => s.id === id);
-    commit({
-      ...data,
-      stickers: data.stickers.map((s) => s.id === id ? { ...s, deletedAt: now(), updatedAt: now() } : s),
-    });
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: now(), updatedAt: now() } : s),
+    }));
     return () => { if (s?.photo) void deletePhotoFromServer(s.photo); };
   }, [data, commit]);
 
   const restoreSticker = useCallback((id: string) => {
-    commit({
-      ...data,
-      stickers: data.stickers.map((s) => s.id === id ? { ...s, deletedAt: undefined, updatedAt: now() } : s),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: undefined, updatedAt: now() } : s),
+    }));
+  }, [commit]);
 
   // Manicures
   const addManicure = useCallback((m: Omit<Manicure, 'id' | 'createdAt' | 'updatedAt'>) => {
     const item: Manicure = { ...m, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit({ ...data, manicures: [...data.manicures, item] });
-  }, [data, commit]);
+    commit((prev) => ({ ...prev, manicures: [...prev.manicures, item] }));
+  }, [commit]);
 
   const updateManicure = useCallback((id: string, changes: Partial<Manicure>) => {
-    commit({
-      ...data,
-      manicures: data.manicures.map((m) => m.id === id ? { ...m, ...changes, updatedAt: now() } : m),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, ...changes, updatedAt: now() } : m),
+    }));
+  }, [commit]);
 
   const deleteManicure = useCallback((id: string): (() => void) => {
     const m = data.manicures.find((m) => m.id === id);
-    commit({
-      ...data,
-      manicures: data.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
-    });
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
+    }));
     return () => {
       if (m?.photo) void deletePhotoFromServer(m.photo);
       if (m?.photos) void Promise.all(Object.values(m.photos).filter((f): f is string => !!f).map(deletePhotoFromServer));
@@ -146,28 +154,28 @@ export function useAppData() {
   }, [data, commit]);
 
   const restoreManicure = useCallback((id: string) => {
-    commit({
-      ...data,
-      manicures: data.manicures.map((m) => m.id === id ? { ...m, deletedAt: undefined, updatedAt: now() } : m),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: undefined, updatedAt: now() } : m),
+    }));
+  }, [commit]);
 
   // Categories
   const addCategory = useCallback((label: string) => {
     const item: Category = { id: generateId(), label, updatedAt: now() };
-    commit({ ...data, customCats: [...data.customCats, item] });
-  }, [data, commit]);
+    commit((prev) => ({ ...prev, customCats: [...prev.customCats, item] }));
+  }, [commit]);
 
   const deleteCategory = useCallback((id: string) => {
-    commit({
-      ...data,
-      customCats: data.customCats.map((c) => c.id === id ? { ...c, deletedAt: now(), updatedAt: now() } : c),
-    });
-  }, [data, commit]);
+    commit((prev) => ({
+      ...prev,
+      customCats: prev.customCats.map((c) => c.id === id ? { ...c, deletedAt: now(), updatedAt: now() } : c),
+    }));
+  }, [commit]);
 
   // Direct import (merge imported JSON into local data)
   const importMerge = useCallback((merged: AppData) => {
-    commit(merged);
+    commit((prev) => mergeData(prev, merged));
   }, [commit]);
 
   // Sync
@@ -180,7 +188,10 @@ export function useAppData() {
       const adapter = createAdapter(config);
       const result = await adapter.sync(data);
       if (result.success) {
-        commit(result.merged);
+        // Merge against whatever's latest (not the `data` snapshot this
+        // closure started with) so edits made while this sync was in flight
+        // aren't discarded.
+        commit((prev) => mergeData(prev, result.merged));
         setLastSyncAt(result.lastSyncAt);
       } else {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');
