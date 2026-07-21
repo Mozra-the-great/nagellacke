@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import type { Polish, Category } from '@nagellacke/core';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { FINISH_OPTIONS, STATUS_OPTIONS, DEFAULT_POLISH, hexToHue } from '@nagellacke/core';
+import { hasServerSync } from '../utils/ai';
 import PhotoField from './PhotoField';
 import ColorFromPhoto from './ColorFromPhoto';
 import styles from './PolishFormModal.module.css';
@@ -20,13 +21,15 @@ export default function PolishFormModal({
   polish,
   categories,
   allPolishes,
+  initialStatus,
   onSave,
   onClose,
 }: {
   polish: Polish | null;
   categories: Category[];
   allPolishes: Polish[];
-  onSave: (data: Partial<FormData>) => void;
+  initialStatus?: Polish['status'];
+  onSave: (data: Partial<FormData>, aiAutofill: boolean) => void;
   onClose: () => void;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
@@ -34,6 +37,8 @@ export default function PolishFormModal({
 
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
+  const [aiAutofill, setAiAutofill] = useState(false);
+  const aiAvailable = !polish && hasServerSync();
 
   const [form, setForm] = useState<FormData>(() =>
     polish
@@ -41,7 +46,7 @@ export default function PolishFormModal({
           finish: polish.finish, status: polish.status, count: polish.count ?? 1,
           categories: polish.categories ?? [], notes: polish.notes ?? '',
           rating: polish.rating ?? 0, photo: polish.photo }
-      : { ...DEFAULT_POLISH, photo: undefined },
+      : { ...DEFAULT_POLISH, status: initialStatus ?? DEFAULT_POLISH.status, photo: undefined },
   );
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
@@ -105,11 +110,22 @@ export default function PolishFormModal({
               <input value={form.num} onChange={(e) => set('num', e.target.value)} placeholder="z.B. NL B24" />
             </label>
 
+            {aiAvailable && (
+              <label className={styles.aiToggle}>
+                <input
+                  type="checkbox"
+                  checked={aiAutofill}
+                  onChange={(e) => setAiAutofill(e.target.checked)}
+                />
+                <span>✨ KI recherchiert Farbe &amp; Finish automatisch</span>
+              </label>
+            )}
+
             <div className={styles.row}>
               <div className={styles.field}>
-                <span>Farbe</span>
+                <span>Farbe {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
                 <div className={styles.colorRow}>
-                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} />
+                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} disabled={aiAutofill} />
                   <span className={styles.colorHex}>{form.color}</span>
                   <button
                     type="button"
@@ -117,6 +133,7 @@ export default function PolishFormModal({
                     onClick={() => setShowColorPicker(true)}
                     aria-label="Farbe aus Foto"
                     title="Farbe aus Foto"
+                    disabled={aiAutofill}
                   >📷</button>
                 </div>
                 {duplicates.length > 0 && (
@@ -126,8 +143,8 @@ export default function PolishFormModal({
                 )}
               </div>
               <label className={styles.field}>
-                <span>Finish</span>
-                <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])}>
+                <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
+                <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])} disabled={aiAutofill}>
                   {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
                 </select>
               </label>
@@ -197,7 +214,7 @@ export default function PolishFormModal({
             <button
               className={styles.saveBtn}
               disabled={!nameValid}
-              onClick={() => onSave(form)}
+              onClick={() => onSave(form, aiAutofill)}
             >Speichern</button>
           </div>
         </div>

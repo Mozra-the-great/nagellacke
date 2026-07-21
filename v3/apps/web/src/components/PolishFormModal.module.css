@@ -55,6 +55,10 @@
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--md-primary);
 }
+.field input:disabled, .field select:disabled, .colorFromPhotoBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .invalid {
   border-color: #ef4444 !important;
@@ -63,6 +67,26 @@
 .errorText {
   font-size: 12px;
   color: #ef4444;
+}
+
+.aiToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--md-primary-container);
+  color: var(--md-primary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.aiToggle input { width: 18px; height: 18px; flex-shrink: 0; }
+
+.fieldHint {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.7;
 }
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
