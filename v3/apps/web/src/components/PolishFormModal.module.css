@@ -67,6 +67,20 @@
 
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
+.aiToggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--md-primary-container);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--md-primary);
+  cursor: pointer;
+}
+.aiToggle input { margin-top: 3px; flex-shrink: 0; }
+.aiToggle .fieldHint { display: block; font-size: 12px; opacity: 0.75; font-weight: 400; }
+
 .colorRow { display: flex; align-items: center; gap: 10px; }
 .colorPicker { width: 44px; height: 44px; border: none; border-radius: var(--radius-sm); cursor: pointer; padding: 0; }
 .colorHex { font-size: 14px; font-family: monospace; flex: 1; }

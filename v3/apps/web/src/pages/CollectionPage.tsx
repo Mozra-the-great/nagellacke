@@ -9,6 +9,7 @@ import NailBottle from '../components/NailBottle';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
+import { aiAvailable, requestAutofillForNewPolish } from '../utils/ai';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -151,9 +152,18 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
           polish={editing}
           categories={activeCategories}
           allPolishes={appData.data.polishes}
-          onSave={(p) => {
-            if (editing) appData.updatePolish(editing.id, p);
-            else appData.addPolish(p as Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>);
+          aiAvailable={aiAvailable()}
+          onSave={(p, useAi) => {
+            if (editing) {
+              appData.updatePolish(editing.id, p);
+            } else {
+              const item = appData.addPolish(p as Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>);
+              if (useAi) {
+                requestAutofillForNewPolish(item)
+                  .then(() => showSnackbar('✨ KI recherchiert Farbe & Finish im Hintergrund…'))
+                  .catch((e: unknown) => showSnackbar(e instanceof Error ? e.message : 'KI-Anfrage fehlgeschlagen'));
+              }
+            }
             setShowForm(false);
           }}
           onClose={() => setShowForm(false)}

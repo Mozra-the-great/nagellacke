@@ -7,6 +7,7 @@ import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } fr
 import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
 import { generateReport } from '../utils/report';
+import { getAiSettings, saveAiSettings } from '../utils/ai';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -305,6 +306,13 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [scheduleSaveError, setScheduleSaveError] = useState('');
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
+  // ── KI-Assistenz ──
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [aiSaveStatus, setAiSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [aiSaveError, setAiSaveError] = useState('');
+
   const isServerSync = config?.provider === 'server';
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
   const bearerHeaders = (): Record<string, string> =>
@@ -348,6 +356,28 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
     return () => controller.abort();
   }, [isServerSync, serverBase, serverToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isServerSync) return;
+    getAiSettings()
+      .then((s) => { setAiConfigured(s.configured); setAiModel(s.model ?? ''); })
+      .catch(() => { /* ignore — surfaced when the user tries to save */ });
+  }, [isServerSync, serverBase, serverToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveAi = async () => {
+    setAiSaveStatus('saving');
+    setAiSaveError('');
+    try {
+      await saveAiSettings(aiApiKey, aiModel);
+      setAiConfigured(!!aiApiKey.trim());
+      setAiApiKey('');
+      setAiSaveStatus('saved');
+      setTimeout(() => setAiSaveStatus('idle'), 2000);
+    } catch (e) {
+      setAiSaveError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAiSaveStatus('error');
+    }
+  };
 
   const openReport = () => {
     // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
@@ -750,6 +780,70 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           <p className={styles.fieldHelpText} style={{ marginTop: 8 }}>
             E-Mail und Zeitplan sind nur mit dem Eigenen-Server-Sync verfügbar.
           </p>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
+        {!isServerSync ? (
+          <p className={styles.fieldHelpText}>
+            KI-Funktionen (Auto-Fill beim Hinzufügen, Smart-Cart-Vorschläge) laufen serverseitig und sind nur mit
+            dem Eigenen-Server-Sync verfügbar.
+          </p>
+        ) : (
+          <>
+            <p className={styles.fieldHelpText} style={{ marginBottom: 12 }}>
+              Nutzt <a href="https://openrouter.ai" target="_blank" rel="noreferrer">OpenRouter</a> für LLM-Zugriff
+              inklusive Websuche. Der Schlüssel wird auf dem Server hinterlegt, nicht im Browser.
+            </p>
+            <div className={styles.infoText}>
+              Status: {aiConfigured ? '✓ konfiguriert' : 'nicht konfiguriert'}
+            </div>
+            <label className={styles.field}>
+              <span>OpenRouter API-Key</span>
+              <input
+                type="password"
+                value={aiApiKey}
+                onChange={(e) => setAiApiKey(e.target.value)}
+                placeholder="sk-or-…"
+              />
+              {aiConfigured && (
+                <p className={styles.fieldHelpText}>Ein Schlüssel ist bereits hinterlegt — zum Ändern hier einen neuen eingeben.</p>
+              )}
+            </label>
+            <label className={styles.field}>
+              <span>Modell</span>
+              <input
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                placeholder="z.B. google/gemini-2.5-flash oder openai/gpt-4o-mini"
+              />
+              <p className={styles.fieldHelpText}>
+                Jedes auf OpenRouter verfügbare Modell mit Tool-/Websuche-Unterstützung funktioniert.
+              </p>
+            </label>
+
+            {aiSaveStatus === 'error' && <div className={styles.errorBanner}>{aiSaveError}</div>}
+
+            <div className={styles.btnRow}>
+              <button
+                className={styles.saveBtn}
+                onClick={() => void saveAi()}
+                disabled={aiSaveStatus === 'saving' || !aiModel.trim() || !aiApiKey.trim()}
+              >
+                {aiSaveStatus === 'saving' ? 'Speichere…' : aiSaveStatus === 'saved' ? '✓ Gespeichert' : 'Speichern'}
+              </button>
+              {aiConfigured && (
+                <button
+                  className={styles.syncBtn}
+                  onClick={() => {
+                    setAiApiKey('');
+                    saveAiSettings('', '').then(() => setAiConfigured(false)).catch((e: unknown) => setAiSaveError(e instanceof Error ? e.message : 'Fehler'));
+                  }}
+                >KI deaktivieren</button>
+              )}
+            </div>
+          </>
         )}
       </section>
 

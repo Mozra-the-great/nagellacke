@@ -11,10 +11,11 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, getAiConfig, setAiConfig, PHOTOS_DIR, DATA_DIR } from './db';
 import type { ScheduleConfig } from './db';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
+import { enqueueAutofillJob, enqueueSmartCartJob, getAiJobStatus, initAiQueue } from './ai';
 
 const PORT         = Number(process.env.PORT ?? 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
@@ -468,14 +469,74 @@ async function main() {
   });
 
   // POST /api/sync/push — fertig gemergten Stand hochladen (JWT)
+  // Merges against the current server state instead of overwriting outright:
+  // the client's merged payload is only as fresh as its last GET /api/sync, so
+  // a plain overwrite here could silently wipe out changes written server-side
+  // in between (e.g. an AI Auto-Fill/Smart-Cart job completing) or by another
+  // device that pushed first. Response shape is unchanged for existing clients.
   app.post('/api/sync/push', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    setData(data);
+    setData(mergeData(getData(), data));
     return { ok: true };
+  });
+
+  // ── KI-Assistenz (Auto-Fill & Smart-Cart) ─────────────────────────────────────
+
+  // GET /api/ai/settings
+  app.get('/api/ai/settings', { preHandler: requireJwt }, async () => {
+    const cfg = getAiConfig();
+    return { configured: !!cfg, provider: cfg?.provider ?? null, model: cfg?.model ?? null };
+  });
+
+  // POST /api/ai/settings — leerer apiKey löscht die Konfiguration
+  app.post('/api/ai/settings', { preHandler: requireJwt }, async (request, reply) => {
+    const { apiKey, model } = request.body as { apiKey?: string; model?: string };
+    if (apiKey === '') {
+      setAiConfig(null);
+      return { ok: true };
+    }
+    if (!apiKey?.trim() || !model?.trim()) {
+      return reply.code(400).send({ error: 'apiKey und model erforderlich' });
+    }
+    setAiConfig({ provider: 'openrouter', apiKey: apiKey.trim(), model: model.trim() });
+    return { ok: true };
+  });
+
+  // POST /api/ai/autofill — { polishId } → recherchiert Farbe/Finish im Hintergrund
+  app.post('/api/ai/autofill', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    if (!getAiConfig()) return reply.code(400).send({ error: 'KI ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    const { polishId } = request.body as { polishId?: string };
+    const polish = getData().polishes.find((p) => p.id === polishId && !p.deletedAt);
+    if (!polish) return reply.code(404).send({ error: 'Lack nicht gefunden' });
+    const job = enqueueAutofillJob({ polishId: polish.id, name: polish.name, brand: polish.brand, num: polish.num });
+    return { jobId: job.id };
+  });
+
+  // POST /api/ai/smart-cart — { prompt } → recherchiert passende Lacke, fügt sie in den Einkaufswagen ein
+  app.post('/api/ai/smart-cart', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    if (!getAiConfig()) return reply.code(400).send({ error: 'KI ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    const { prompt } = request.body as { prompt?: string };
+    if (!prompt?.trim()) return reply.code(400).send({ error: 'prompt erforderlich' });
+    const job = enqueueSmartCartJob({ prompt: prompt.trim() });
+    return { jobId: job.id };
+  });
+
+  // GET /api/ai/jobs/:id — Job-Status abfragen (Polling)
+  app.get('/api/ai/jobs/:id', { preHandler: requireJwt }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const job = getAiJobStatus(id);
+    if (!job) return reply.code(404).send({ error: 'Job nicht gefunden' });
+    return { job };
   });
 
   // ── SPA Fallback ──────────────────────────────────────────────────────────────
@@ -534,6 +595,8 @@ async function main() {
       console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
     }
   }, 60 * 60 * 1000); // every hour
+
+  initAiQueue();
 
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });

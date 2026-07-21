@@ -20,13 +20,17 @@ export default function PolishFormModal({
   polish,
   categories,
   allPolishes,
+  aiAvailable = false,
+  defaultStatus,
   onSave,
   onClose,
 }: {
   polish: Polish | null;
   categories: Category[];
   allPolishes: Polish[];
-  onSave: (data: Partial<FormData>) => void;
+  aiAvailable?: boolean;
+  defaultStatus?: Polish['status'];
+  onSave: (data: Partial<FormData>, useAi: boolean) => void;
   onClose: () => void;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
@@ -34,6 +38,8 @@ export default function PolishFormModal({
 
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
+  // Only offered for new entries — an existing polish already has color/finish set.
+  const [useAi, setUseAi] = useState(false);
 
   const [form, setForm] = useState<FormData>(() =>
     polish
@@ -41,7 +47,7 @@ export default function PolishFormModal({
           finish: polish.finish, status: polish.status, count: polish.count ?? 1,
           categories: polish.categories ?? [], notes: polish.notes ?? '',
           rating: polish.rating ?? 0, photo: polish.photo }
-      : { ...DEFAULT_POLISH, photo: undefined },
+      : { ...DEFAULT_POLISH, status: defaultStatus ?? DEFAULT_POLISH.status, photo: undefined },
   );
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
@@ -105,33 +111,45 @@ export default function PolishFormModal({
               <input value={form.num} onChange={(e) => set('num', e.target.value)} placeholder="z.B. NL B24" />
             </label>
 
-            <div className={styles.row}>
-              <div className={styles.field}>
-                <span>Farbe</span>
-                <div className={styles.colorRow}>
-                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} />
-                  <span className={styles.colorHex}>{form.color}</span>
-                  <button
-                    type="button"
-                    className={styles.colorFromPhotoBtn}
-                    onClick={() => setShowColorPicker(true)}
-                    aria-label="Farbe aus Foto"
-                    title="Farbe aus Foto"
-                  >📷</button>
-                </div>
-                {duplicates.length > 0 && (
-                  <div className={styles.duplicateWarning}>
-                    ⚠ Ähnlich wie: {duplicates.map((p) => `„${p.name}"`).join(', ')}
-                  </div>
-                )}
-              </div>
-              <label className={styles.field}>
-                <span>Finish</span>
-                <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])}>
-                  {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
-                </select>
+            {!polish && aiAvailable && (
+              <label className={styles.aiToggle}>
+                <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />
+                <span>
+                  ✨ KI recherchiert Farbe &amp; Finish automatisch
+                  <span className={styles.fieldHint}> — läuft im Hintergrund nach dem Speichern</span>
+                </span>
               </label>
-            </div>
+            )}
+
+            {!useAi && (
+              <div className={styles.row}>
+                <div className={styles.field}>
+                  <span>Farbe</span>
+                  <div className={styles.colorRow}>
+                    <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} />
+                    <span className={styles.colorHex}>{form.color}</span>
+                    <button
+                      type="button"
+                      className={styles.colorFromPhotoBtn}
+                      onClick={() => setShowColorPicker(true)}
+                      aria-label="Farbe aus Foto"
+                      title="Farbe aus Foto"
+                    >📷</button>
+                  </div>
+                  {duplicates.length > 0 && (
+                    <div className={styles.duplicateWarning}>
+                      ⚠ Ähnlich wie: {duplicates.map((p) => `„${p.name}"`).join(', ')}
+                    </div>
+                  )}
+                </div>
+                <label className={styles.field}>
+                  <span>Finish</span>
+                  <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])}>
+                    {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
 
             <div className={styles.row}>
               <label className={styles.field}>
@@ -197,7 +215,7 @@ export default function PolishFormModal({
             <button
               className={styles.saveBtn}
               disabled={!nameValid}
-              onClick={() => onSave(form)}
+              onClick={() => onSave(form, useAi)}
             >Speichern</button>
           </div>
         </div>

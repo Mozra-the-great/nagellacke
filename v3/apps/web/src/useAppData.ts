@@ -63,9 +63,10 @@ export function useAppData() {
   }, []);
 
   // Polishes
-  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
     const item: Polish = { ...p, id: generateId(), createdAt: now(), updatedAt: now() };
     commit({ ...data, polishes: [...data.polishes, item] });
+    return item;
   }, [data, commit]);
 
   const updatePolish = useCallback((id: string, changes: Partial<Polish>) => {
