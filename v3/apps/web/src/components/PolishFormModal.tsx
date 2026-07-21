@@ -20,12 +20,14 @@ export default function PolishFormModal({
   polish,
   categories,
   allPolishes,
+  initialStatus,
   onSave,
   onClose,
 }: {
   polish: Polish | null;
   categories: Category[];
   allPolishes: Polish[];
+  initialStatus?: Polish['status'];
   onSave: (data: Partial<FormData>) => void;
   onClose: () => void;
 }) {
@@ -41,7 +43,7 @@ export default function PolishFormModal({
           finish: polish.finish, status: polish.status, count: polish.count ?? 1,
           categories: polish.categories ?? [], notes: polish.notes ?? '',
           rating: polish.rating ?? 0, photo: polish.photo }
-      : { ...DEFAULT_POLISH, photo: undefined },
+      : { ...DEFAULT_POLISH, status: initialStatus ?? DEFAULT_POLISH.status, photo: undefined },
   );
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>

@@ -3,17 +3,19 @@ import { useAppData } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
 import CollectionPage from './pages/CollectionPage';
 import StickersPage from './pages/StickersPage';
+import CartPage from './pages/CartPage';
 import DiaryPage from './pages/DiaryPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
 import { plural } from './utils/plural';
 import styles from './App.module.css';
 
-type Tab = 'collection' | 'stickers' | 'diary' | 'stats' | 'settings';
+type Tab = 'collection' | 'stickers' | 'cart' | 'diary' | 'stats' | 'settings';
 
 const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'collection', label: '◈ Nagellack' },
   { id: 'stickers',   label: '◈ Sticker' },
+  { id: 'cart',       label: '◈ Einkaufswagen' },
   { id: 'stats',      label: '◈ Statistiken' },
   { id: 'diary',      label: '◈ Tagebuch' },
   { id: 'settings',   label: '◈ Mehr' },
@@ -60,6 +62,7 @@ export default function App() {
       <main className={styles.main}>
         {tab === 'collection' && <CollectionPage appData={appData} />}
         {tab === 'stickers'   && <StickersPage appData={appData} />}
+        {tab === 'cart'       && <CartPage appData={appData} />}
         {tab === 'diary'      && <DiaryPage appData={appData} />}
         {tab === 'stats'      && <StatsPage appData={appData} />}
         {tab === 'settings'   && <SettingsPage appData={appData} />}
