@@ -25,3 +25,6 @@ fun isValidHex(hex: String): Boolean {
     val clean = hex.trimStart('#')
     return clean.length == 6 && clean.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 }
+
+/** Prepends "#" if missing, so a valid-but-unprefixed hex string is never persisted raw. */
+fun normalizeHex(hex: String): String = if (hex.startsWith("#")) hex else "#$hex"
