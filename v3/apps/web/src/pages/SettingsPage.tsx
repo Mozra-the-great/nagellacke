@@ -120,6 +120,8 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
   const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
+  const [rotateStatus, setRotateStatus] = useState<'idle' | 'rotating' | 'error'>('idle');
+  const [rotateError, setRotateError] = useState('');
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -153,6 +155,21 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     } catch (e) {
       setUpdateError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setUpdateStatus('error');
+    }
+  };
+
+  const rotateApiKey = async () => {
+    setRotateStatus('rotating');
+    setRotateError('');
+    try {
+      const res = await fetch('/api/update/rotate-key', { method: 'POST', headers: { 'X-Api-Key': apiKey } });
+      if (res.status === 401) { setRotateError('API-Schlüssel ungültig'); setRotateStatus('error'); return; }
+      const data = await res.json() as { apiKey: string };
+      saveApiKey(data.apiKey);
+      setRotateStatus('idle');
+    } catch (e) {
+      setRotateError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setRotateStatus('error');
     }
   };
 
@@ -779,6 +796,9 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         {updateStatus === 'error' && (
           <div className={styles.errorBanner}>{updateError}</div>
         )}
+        {rotateStatus === 'error' && (
+          <div className={styles.errorBanner}>{rotateError}</div>
+        )}
 
         <div className={styles.btnRow}>
           <button
@@ -787,6 +807,14 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             disabled={!apiKey || updateStatus === 'checking' || updateStatus === 'updating'}
           >
             {updateStatus === 'checking' ? 'Prüfe…' : 'Update prüfen'}
+          </button>
+          <button
+            className={styles.syncBtn}
+            onClick={() => void rotateApiKey()}
+            disabled={!apiKey || rotateStatus === 'rotating'}
+            title="Erzeugt einen neuen API-Schlüssel und macht den alten sofort ungültig"
+          >
+            {rotateStatus === 'rotating' ? 'Erneuere…' : 'Schlüssel erneuern'}
           </button>
           {updateInfo?.updateAvailable && updateStatus !== 'done' && !updateConfirmVisible && (
             <button

@@ -90,6 +90,20 @@ cat /opt/nagellacke/backend/data/.api_key
 cat /opt/nagellacke/v3/server/data/.api_key
 ```
 
+### Schlüssel rotieren
+
+Der API-Schlüssel läuft nie automatisch ab. Bei Verdacht auf Kompromittierung (z.B. XSS im Browser, gestohlenes Gerät) sofort rotieren:
+
+**In der App:** Footer → **⚙ Einstellungen** → Admin → „Schlüssel erneuern" (erzeugt sofort einen neuen Schlüssel, der alte wird ungültig; der neue wird direkt in den Einstellungen gespeichert).
+
+**Manuell (v3):**
+```bash
+rm /opt/nagellacke/v3/server/data/.api_key
+sudo systemctl restart nagellacke-v3
+cat /opt/nagellacke/v3/server/data/.api_key   # neuer Schlüssel
+```
+Anschließend den neuen Schlüssel in der App unter Einstellungen eintragen — auf allen Geräten, die den alten Schlüssel gespeichert hatten.
+
 ---
 
 ## Sync-Account anlegen (v3, einmalig)

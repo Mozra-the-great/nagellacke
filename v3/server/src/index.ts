@@ -330,6 +330,16 @@ async function main() {
     return { logs: r.stderr?.toString().trim() ?? 'journalctl nicht verfügbar', lines, error: true };
   });
 
+  // POST /api/update/rotate-key — generate a new admin API key, invalidating the old one immediately
+  app.post('/api/update/rotate-key', {
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 5, timeWindow: '5 minutes' } },
+  }, async () => {
+    API_KEY = crypto.randomBytes(24).toString('hex');
+    fs.writeFileSync(API_KEY_FILE, API_KEY, { mode: 0o600 });
+    return { apiKey: API_KEY };
+  });
+
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
 
   // ── User profile (JWT) ────────────────────────────────────────────────────────
