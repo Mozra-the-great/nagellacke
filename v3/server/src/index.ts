@@ -23,6 +23,9 @@ if (ALLOWED_ORIGIN === '*') {
   console.warn('[WARN] ALLOWED_ORIGIN is not set — CORS is open to all origins');
 }
 const SERVICE_NAME = process.env.SERVICE_NAME ?? 'nagellacke-v3';
+// Shorter-lived than before (was 30d) to reduce the exposure window if a token
+// leaks from client-side storage; clients simply re-authenticate on expiry.
+const JWT_EXPIRY   = process.env.JWT_EXPIRY ?? '7d';
 const APP_ROOT     = path.resolve(process.cwd(), '..', '..');  // /opt/nagellacke
 
 // ── Validate SERVICE_NAME (prevent injection) ─────────────────────────────────
@@ -447,7 +450,7 @@ async function main() {
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     createUser(username, hashPassword(password));
-    const token = app.jwt.sign({ username }, { expiresIn: '30d' });
+    const token = app.jwt.sign({ username }, { expiresIn: JWT_EXPIRY });
     return { token };
   });
 
@@ -459,7 +462,7 @@ async function main() {
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
-    const token = app.jwt.sign({ username }, { expiresIn: '30d' });
+    const token = app.jwt.sign({ username }, { expiresIn: JWT_EXPIRY });
     return { token };
   });
 
