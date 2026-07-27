@@ -88,14 +88,27 @@ mkdir -p "$INSTALL_DIR/v3/server/data"
 
 # ── 7b. Dedicated unprivileged service user ──
 # The service only needs to bind port 3000 and read/write its own install
-# directory - no reason to run as root (see security issue #71). Reading the
-# systemd journal (GET /api/logs) needs membership in systemd-journal.
+# directory - no reason to run as root (see security issue #71).
 if ! id -u nagellacke &>/dev/null; then
   info "Systembenutzer 'nagellacke' anlegen…"
   useradd --system --no-create-home --shell /usr/sbin/nologin nagellacke
 fi
-usermod -aG systemd-journal nagellacke
 chown -R nagellacke:nagellacke "$INSTALL_DIR"
+
+# ── 7c. Scoped journal-read permission ──
+# GET /api/logs only ever needs to read this unit's own journal. Membership
+# in systemd-journal would grant read access to the *entire* system journal
+# (auth logs, kernel logs, other services), so instead grant a narrow,
+# passwordless sudo rule limited to exactly the `journalctl -u
+# ${SERVICE_NAME} ...` invocation the server issues (see security issue #110).
+JOURNALCTL_BIN="$(command -v journalctl || echo /usr/bin/journalctl)"
+info "Eingeschränkte Journal-Leserechte einrichten…"
+cat > /etc/sudoers.d/nagellacke-journalctl <<EOF
+Defaults:nagellacke !requiretty
+nagellacke ALL=(root) NOPASSWD: ${JOURNALCTL_BIN} -u ${SERVICE_NAME} -n * --no-pager --output=short-iso
+EOF
+chmod 0440 /etc/sudoers.d/nagellacke-journalctl
+visudo -cf /etc/sudoers.d/nagellacke-journalctl || error "Sudoers-Regel für Journal-Zugriff ungültig"
 
 # ── 8. Stop old v2 service if running ──
 if systemctl is-active --quiet nagellacke.service 2>/dev/null; then

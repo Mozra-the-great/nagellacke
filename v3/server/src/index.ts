@@ -321,9 +321,13 @@ async function main() {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
     const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
+    // Runs via a narrow passwordless sudo rule (installed by install.sh) that
+    // permits only this exact journalctl invocation for our own unit - the
+    // service user is intentionally not a member of systemd-journal, which
+    // would grant read access to the entire system journal (see #110).
     const r = spawnSync(
-      'journalctl',
-      ['-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'],
+      'sudo',
+      ['-n', 'journalctl', '-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'],
       { stdio: 'pipe', timeout: 6000 },
     );
     if (r.status === 0) return { logs: r.stdout?.toString() ?? '', lines };
