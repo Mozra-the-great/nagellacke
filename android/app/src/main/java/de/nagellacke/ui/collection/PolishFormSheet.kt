@@ -43,6 +43,7 @@ import de.nagellacke.domain.FINISH_OPTIONS
 import de.nagellacke.domain.STATUS_OPTIONS
 import de.nagellacke.domain.generateId
 import de.nagellacke.domain.isValidHex
+import de.nagellacke.domain.normalizeHex
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Polish
@@ -152,7 +153,7 @@ fun PolishFormSheet(
                         onSave(Polish(
                             id = polish?.id ?: generateId(),
                             name = name.trim(), brand = brand.trim(), num = num.trim(),
-                            color = if (isValidHex(color)) color else "#ff6699",
+                            color = if (isValidHex(color)) normalizeHex(color) else "#ff6699",
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
                             photo = polish?.photo,
