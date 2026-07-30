@@ -15,6 +15,7 @@ import dagger.assisted.AssistedInject
 import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.purgeOldDeleted
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -53,8 +54,14 @@ class SyncManager @Inject constructor(
         val local = repository.getCurrentData()
         val result = adapter.sync(local)
         if (result.success) {
-            val purged = purgeOldDeleted(result.merged)
+            // The local DB can change while the network round trip above is in flight. Re-read it
+            // and, if it did, fold those edits into the synced result instead of silently
+            // overwriting them with the pre-request snapshot (#88).
+            val latestLocal = repository.getCurrentData()
+            val reconciled = if (latestLocal != local) mergeData(latestLocal, result.merged) else result.merged
+            val purged = purgeOldDeleted(reconciled)
             repository.replaceAll(purged)
+            return result.copy(merged = purged)
         }
         return result
     }
