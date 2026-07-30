@@ -182,7 +182,18 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(
-                    onClick = { onSave(Sticker(id = sticker?.id ?: generateId(), name = name.trim(), brand = brand.trim(), style = style.trim(), type = type, status = status, rating = rating, notes = notes.trim(), colors = sticker?.colors ?: listOf("#ff6699"), createdAt = sticker?.createdAt ?: now, updatedAt = now)) },
+                    onClick = {
+                        val result = sticker?.copy(
+                            name = name.trim(), brand = brand.trim(), style = style.trim(),
+                            type = type, status = status, rating = rating, notes = notes.trim(),
+                            updatedAt = now,
+                        ) ?: Sticker(
+                            id = generateId(), name = name.trim(), brand = brand.trim(), style = style.trim(),
+                            type = type, status = status, rating = rating, notes = notes.trim(),
+                            colors = listOf("#ff6699"), createdAt = now, updatedAt = now,
+                        )
+                        onSave(result)
+                    },
                     enabled = name.isNotBlank(),
                 ) { Text("Speichern") }
             }

@@ -179,7 +179,10 @@ fun DiaryFormSheet(
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(onClick = {
-                    onSave(Manicure(id = entry?.id ?: generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), createdAt = entry?.createdAt ?: now, updatedAt = now))
+                    val result = entry?.copy(
+                        date = date, polishIds = selectedIds, notes = notes.trim(), updatedAt = now,
+                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), createdAt = now, updatedAt = now)
+                    onSave(result)
                 }) { Text("Speichern") }
             }
             Spacer(Modifier.height(16.dp))

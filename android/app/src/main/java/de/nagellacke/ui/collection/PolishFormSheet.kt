@@ -150,15 +150,22 @@ fun PolishFormSheet(
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(
                     onClick = {
-                        onSave(Polish(
-                            id = polish?.id ?: generateId(),
+                        val resolvedColor = if (isValidHex(color)) normalizeHex(color) else "#ff6699"
+                        val result = polish?.copy(
                             name = name.trim(), brand = brand.trim(), num = num.trim(),
-                            color = if (isValidHex(color)) normalizeHex(color) else "#ff6699",
+                            color = resolvedColor,
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
-                            photo = polish?.photo,
-                            createdAt = polish?.createdAt ?: now, updatedAt = now,
-                        ))
+                            updatedAt = now,
+                        ) ?: Polish(
+                            id = generateId(),
+                            name = name.trim(), brand = brand.trim(), num = num.trim(),
+                            color = resolvedColor,
+                            finish = finish, status = status, notes = notes.trim(),
+                            rating = rating, categories = selectedCats,
+                            createdAt = now, updatedAt = now,
+                        )
+                        onSave(result)
                     },
                     enabled = name.isNotBlank(),
                 ) { Text("Speichern") }
