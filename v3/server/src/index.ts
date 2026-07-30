@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, bumpTokenVersion, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail, bumpTokenVersion, migrateGlobalDataToFirstUser, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
 import type { ScheduleConfig } from './db';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
@@ -140,6 +140,9 @@ function httpsGet(url: string): Promise<string> {
 }
 
 async function main() {
+  // Must run before any request is served (#87).
+  migrateGlobalDataToFirstUser();
+
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
   // this behind a reverse proxy, set trustProxy to that proxy's address specifically
@@ -462,11 +465,12 @@ async function main() {
 
   // GET /api/reports/preview?period=week&date=2026-06-19
   app.get('/api/reports/preview', { preHandler: requireJwt }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const query = request.query as { period?: string; date?: string };
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     return reply.type('text/html').send(html);
   });
 
@@ -478,6 +482,7 @@ async function main() {
     if (!isEmailConfigured()) {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
+    const { username } = request.user as { username: string };
     const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
     const toEmail = (rawToEmail ?? '').trim();
     if (!toEmail || !isValidEmail(toEmail)) {
@@ -489,7 +494,7 @@ async function main() {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     try {
       await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     } catch (e: unknown) {
@@ -509,6 +514,7 @@ async function main() {
 
   // POST /api/reports/schedule
   app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const body = request.body as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
@@ -520,6 +526,9 @@ async function main() {
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
+      // Whoever last saved the schedule owns the collection it reports on —
+      // collections are per-user since #87, so the hourly job needs to know.
+      username,
     };
     setScheduleConfig(config);
     return { ok: true, config };
@@ -567,21 +576,29 @@ async function main() {
     return { ok: true };
   });
 
+  // Every sync route below reads/writes only the authenticated user's own
+  // collection. Previously they all operated on one global data.json, so any
+  // account could read — and /api/sync/push could wipe — another's data (#87).
+
   // GET /api/sync — aktuellen Stand abrufen (JWT)
   app.get('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async () => ({ data: getData() }));
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { data: getData(username) };
+  });
 
   // POST /api/sync — Daten zusammenführen (JWT)
   app.post('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data: clientData } = request.body as { data?: AppData };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
-    const merged = mergeData(getData(), clientData);
-    setData(merged);
+    const merged = mergeData(getData(username), clientData);
+    setData(username, merged);
     return { data: merged };
   });
 
@@ -590,9 +607,10 @@ async function main() {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    setData(data);
+    setData(username, data);
     return { ok: true };
   });
 
@@ -640,11 +658,19 @@ async function main() {
       refDate.setUTCMonth(now.getUTCMonth() - 1);
     }
 
+    // Configs written before per-user isolation carry no username; the account
+    // that bootstrapped the server owns the migrated collection (#87).
+    const reportUser = cfg.username ?? getFirstUsername();
+    if (!reportUser) {
+      console.warn('[reports] Scheduled report skipped: no user to report on.');
+      return;
+    }
+
     try {
       const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
       const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
       const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
+      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
       setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
       console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
