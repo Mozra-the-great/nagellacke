@@ -6,14 +6,18 @@ export class ServerAdapter implements SyncAdapter {
   readonly type = 'server' as const;
   private baseUrl: string;
   private token: string;
+  private refreshToken?: string;
+  private onTokensRefreshed?: (token: string, refreshToken: string) => void;
 
-  constructor(config: SyncConfig) {
+  constructor(config: SyncConfig, onTokensRefreshed?: (token: string, refreshToken: string) => void) {
     if (!config.serverToken) {
       throw new Error('ServerAdapter requires serverToken');
     }
     // Empty serverUrl = same-origin (app served from the same server)
     this.baseUrl = (config.serverUrl ?? '').replace(/\/$/, '');
     this.token = config.serverToken;
+    this.refreshToken = config.serverRefreshToken;
+    this.onTokensRefreshed = onTokensRefreshed;
   }
 
   private headers(): HeadersInit {
@@ -23,11 +27,46 @@ export class ServerAdapter implements SyncAdapter {
     };
   }
 
+  /**
+   * Trades the refresh token for a fresh access token. Returns false when there
+   * is nothing to refresh with or the server rejects it — the caller then
+   * surfaces the original 401 rather than retrying forever.
+   */
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+    try {
+      const res = await fetch(`${this.baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: this.refreshToken }),
+      });
+      if (!res.ok) return false;
+      const { token, refreshToken } = await res.json() as { token?: string; refreshToken?: string };
+      if (!token || !refreshToken) return false;
+      this.token = token;
+      this.refreshToken = refreshToken;
+      this.onTokensRefreshed?.(token, refreshToken);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * fetch + one transparent retry after refreshing on a 401, so an expired
+   * access token renews itself instead of surfacing as a sync error.
+   */
+  private async authedFetch(url: string, init: RequestInit): Promise<Response> {
+    const res = await fetch(url, { ...init, headers: this.headers() });
+    if (res.status !== 401) return res;
+    if (!(await this.refreshAccessToken())) return res;
+    return fetch(url, { ...init, headers: this.headers() });
+  }
+
   async sync(local: AppData): Promise<SyncResult> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/sync`, {
+      const res = await this.authedFetch(`${this.baseUrl}/api/sync`, {
         method: 'POST',
-        headers: this.headers(),
         body: JSON.stringify({ data: local, clientTime: Date.now() }),
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
@@ -35,9 +74,8 @@ export class ServerAdapter implements SyncAdapter {
       const merged = mergeData(local, remote);
 
       // Push merged result back
-      const pushRes = await fetch(`${this.baseUrl}/api/sync/push`, {
+      const pushRes = await this.authedFetch(`${this.baseUrl}/api/sync/push`, {
         method: 'POST',
-        headers: this.headers(),
         body: JSON.stringify({ data: merged }),
       });
       if (!pushRes.ok) throw new Error(`Push failed: ${pushRes.status}`);
@@ -58,9 +96,8 @@ export class ServerAdapter implements SyncAdapter {
       ? JSON.stringify({ data, mimeType })
       : await blobToBase64Body(data, mimeType);
 
-    const res = await fetch(`${this.baseUrl}/api/photos`, {
+    const res = await this.authedFetch(`${this.baseUrl}/api/photos`, {
       method: 'POST',
-      headers: this.headers(),
       body,
     });
     if (!res.ok) throw new Error(`Photo upload failed: ${res.status}`);
@@ -69,9 +106,8 @@ export class ServerAdapter implements SyncAdapter {
   }
 
   async deletePhoto(filename: string): Promise<void> {
-    await fetch(`${this.baseUrl}/api/photos/${encodeURIComponent(filename)}`, {
+    await this.authedFetch(`${this.baseUrl}/api/photos/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
-      headers: this.headers(),
     });
   }
 

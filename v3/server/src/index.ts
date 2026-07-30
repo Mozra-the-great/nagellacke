@@ -97,6 +97,14 @@ function loadOrCreateSecret(): string {
 }
 const JWT_SECRET = loadOrCreateSecret();
 
+// Access tokens were 30d, so a token leaked out of localStorage stayed usable
+// for a month (#109). Shortened to 7d, with a long-lived refresh token the web
+// client trades in silently. 7d rather than minutes because the Android client
+// has no refresh logic yet and syncs every 6h — this keeps it working through
+// normal use while cutting the exposure window fourfold.
+const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
+const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
+
 // ── Image validation ──────────────────────────────────────────────────────────
 const MAGIC: [Buffer, string][] = [
   [Buffer.from([0xff, 0xd8, 0xff]), 'image/jpeg'],
@@ -555,8 +563,7 @@ async function main() {
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     createUser(username, hashPassword(password));
-    const token = app.jwt.sign({ username, tokenVersion: 0 }, { expiresIn: '30d' });
-    return { token };
+    return issueTokens(username, 0);
   });
 
   // POST /api/auth/login
@@ -567,8 +574,51 @@ async function main() {
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
-    const token = app.jwt.sign({ username, tokenVersion: user.token_version ?? 0 }, { expiresIn: '30d' });
-    return { token };
+    return issueTokens(user.username, user.token_version ?? 0);
+  });
+
+  /**
+   * Mints an access/refresh pair. Both carry the user's current tokenVersion,
+   * so POST /api/auth/logout-all revokes refresh tokens too — otherwise a
+   * stolen refresh token would outlive the very thing meant to kill it.
+   *
+   * `token` keeps its old name and shape so existing clients (and the Android
+   * app, which ignores the rest) keep working; they simply get a 7-day token
+   * instead of a 30-day one and re-login when it lapses.
+   */
+  function issueTokens(username: string, tokenVersion: number) {
+    return {
+      token: app.jwt.sign({ username, tokenVersion, typ: 'access' }, { expiresIn: ACCESS_TOKEN_TTL }),
+      refreshToken: app.jwt.sign({ username, tokenVersion, typ: 'refresh' }, { expiresIn: REFRESH_TOKEN_TTL }),
+    };
+  }
+
+  // POST /api/auth/refresh — trade a refresh token for a fresh access token.
+  // Deliberately not behind requireJwt: the caller presents a refresh token in
+  // the body, not an access token in the header (the access token it is
+  // replacing has usually expired by then).
+  app.post('/api/auth/refresh', {
+    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { refreshToken } = request.body as { refreshToken?: string };
+    if (!refreshToken) return reply.code(400).send({ error: 'refreshToken erforderlich' });
+
+    let payload: { username?: string; tokenVersion?: number; typ?: string };
+    try {
+      payload = app.jwt.verify(refreshToken);
+    } catch {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    // An access token must not be usable as a refresh token — otherwise a
+    // leaked access token could be renewed indefinitely, undoing the short TTL.
+    if (payload.typ !== 'refresh' || !payload.username) {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    const user = getUser(payload.username);
+    if (!user || (payload.tokenVersion ?? 0) !== (user.token_version ?? 0)) {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    return issueTokens(payload.username, user.token_version ?? 0);
   });
 
   // POST /api/auth/logout-all — invalidate every previously issued token for

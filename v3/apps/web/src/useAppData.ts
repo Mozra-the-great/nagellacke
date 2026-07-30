@@ -8,7 +8,7 @@ async function deletePhotoFromServer(filename: string): Promise<void> {
   const config = loadSyncConfig();
   if (!config) return;
   try {
-    const adapter = createAdapter(config);
+    const adapter = createAdapter(config, persistRefreshedTokens);
     await adapter.deletePhoto(filename);
   } catch { /* best-effort: local deletion still proceeds */ }
 }
@@ -69,6 +69,17 @@ export function loadSyncConfig(): SyncConfig | null {
 export function saveSyncConfig(config: SyncConfig | null): void {
   if (config) localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
   else localStorage.removeItem(SYNC_CONFIG_KEY);
+}
+
+/**
+ * Writes a renewed access/refresh pair back into the stored sync config, so a
+ * silent refresh survives a page reload (#109). Re-reads the config rather than
+ * closing over one, since a refresh can land long after the adapter was built.
+ */
+export function persistRefreshedTokens(token: string, refreshToken: string): void {
+  const current = loadSyncConfig();
+  if (!current || current.provider !== 'server') return;
+  saveSyncConfig({ ...current, serverToken: token, serverRefreshToken: refreshToken });
 }
 
 export function useAppData() {
@@ -205,7 +216,7 @@ export function useAppData() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const adapter = createAdapter(config);
+      const adapter = createAdapter(config, persistRefreshedTokens);
       const result = await adapter.sync(data);
       if (result.success) {
         // Merge against whatever's latest (not the `data` snapshot this

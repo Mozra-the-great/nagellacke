@@ -96,13 +96,18 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUser, password: loginPass }),
       });
-      const data = await res.json() as { token?: string; error?: string };
+      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
       if (!res.ok || !data.token) {
         setLoginError(data.error ?? `Fehler ${res.status}`);
         setLoginStatus('error');
         return;
       }
-      const c: SyncConfig = { provider: 'server', serverUrl, serverToken: data.token };
+      const c: SyncConfig = {
+        provider: 'server',
+        serverUrl,
+        serverToken: data.token,
+        serverRefreshToken: data.refreshToken,
+      };
       saveSyncConfig(c);
       setConfig(c);
       setServerToken(data.token);

@@ -7,6 +7,12 @@ export interface SyncConfig {
   // server
   serverUrl?: string;
   serverToken?: string;
+  /**
+   * Long-lived token used to silently mint a new `serverToken` once the short
+   * access token lapses (#109). Absent for configs saved before refresh tokens
+   * existed — those simply keep working until their access token expires.
+   */
+  serverRefreshToken?: string;
   // oauth providers (google, onedrive, dropbox)
   accessToken?: string;
   refreshToken?: string;

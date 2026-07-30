@@ -5,9 +5,17 @@ import { OneDriveAdapter } from './adapters/onedrive';
 import { NextcloudAdapter } from './adapters/nextcloud';
 import { DropboxAdapter } from './adapters/dropbox';
 
-export function createAdapter(config: SyncConfig): SyncAdapter {
+/**
+ * @param onTokensRefreshed called when the server adapter silently renews its
+ *   access token (#109), so the caller can persist the new pair. Only the
+ *   server provider refreshes; the OAuth adapters ignore it.
+ */
+export function createAdapter(
+  config: SyncConfig,
+  onTokensRefreshed?: (token: string, refreshToken: string) => void,
+): SyncAdapter {
   switch (config.provider) {
-    case 'server':      return new ServerAdapter(config);
+    case 'server':      return new ServerAdapter(config, onTokensRefreshed);
     case 'googledrive': return new GoogleDriveAdapter(config);
     case 'onedrive':    return new OneDriveAdapter(config);
     case 'nextcloud':   return new NextcloudAdapter(config);
