@@ -147,7 +147,17 @@ async function main() {
   // X-Forwarded-For header lets anyone spoof their way around the limits.
   const app = Fastify({ logger: { level: 'info' } });
 
-  await app.register(cors, { origin: ALLOWED_ORIGIN });
+  // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
+  // does not reflect the routes actually registered. Every preflight therefore
+  // advertised those three methods, so a browser refused to send the real
+  // DELETE /api/photos/:filename or PATCH /api/auth/me whenever the web app was
+  // served from a different origin than the API (GitHub Pages, or a "Eigener
+  // Server" URL pointing elsewhere). Invisible in the same-origin install.sh
+  // deployment, where CORS is skipped entirely. (#112)
+  await app.register(cors, {
+    origin: ALLOWED_ORIGIN,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+  });
   await app.register(jwt, { secret: JWT_SECRET });
   // global: false — each /api/* route below opts in via its own `config.rateLimit`.
   // A global default would also throttle /photos/ and the SPA static assets,
