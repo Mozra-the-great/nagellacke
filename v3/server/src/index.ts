@@ -350,14 +350,23 @@ async function main() {
     preHandler: requireApiKey,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
-    const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
-    const r = spawnSync(
-      'journalctl',
-      ['-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'],
-      { stdio: 'pipe', timeout: 6000 },
-    );
+    // parseInt returns NaN for junk like ?lines=abc, and Math.min(NaN, 500) is
+    // NaN — which used to reach journalctl as the literal string "NaN".
+    const requested = Number.parseInt((request.query as { lines?: string }).lines ?? '100', 10);
+    const lines = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 500) : 100;
+
+    const args = ['-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'];
+    // install.sh grants exactly this invocation via /etc/sudoers.d, instead of
+    // putting the service user in the systemd-journal group — which would have
+    // granted read access to the whole system journal, not just our own unit
+    // (#110). Fall back to a direct call so deployments that provision journal
+    // access some other way (or run the server as root) keep working.
+    let r = spawnSync('sudo', ['-n', 'journalctl', ...args], { stdio: 'pipe', timeout: 6000 });
+    if (r.error || r.status !== 0) {
+      r = spawnSync('journalctl', args, { stdio: 'pipe', timeout: 6000 });
+    }
     if (r.status === 0) return { logs: r.stdout?.toString() ?? '', lines };
-    return { logs: r.stderr?.toString().trim() ?? 'journalctl nicht verfügbar', lines, error: true };
+    return { logs: r.stderr?.toString().trim() || 'journalctl nicht verfügbar', lines, error: true };
   });
 
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
