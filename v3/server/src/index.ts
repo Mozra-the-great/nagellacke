@@ -11,12 +11,20 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
+import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, bumpTokenVersion, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
 import type { ScheduleConfig } from './db';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
 
 const PORT         = Number(process.env.PORT ?? 3000);
+
+// Fail closed in production: an unset ALLOWED_ORIGIN silently defaulting to
+// "*" is fine for local dev, but a misconfigured production deployment
+// should refuse to start rather than quietly serve wildcard CORS (#76).
+if (!process.env.ALLOWED_ORIGIN && process.env.NODE_ENV === 'production') {
+  console.error('[FATAL] ALLOWED_ORIGIN must be set explicitly when NODE_ENV=production.');
+  process.exit(1);
+}
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
 
 if (ALLOWED_ORIGIN === '*') {
@@ -154,10 +162,23 @@ async function main() {
     }
   }
 
+  // Rejects a verified JWT whose embedded tokenVersion doesn't match the
+  // user's current token_version - lets /api/auth/logout-all invalidate
+  // every previously issued token for that user immediately, without a
+  // separate revocation list (#77).
+  function tokenVersionValid(request: FastifyRequest): boolean {
+    const { username, tokenVersion } = request.user as { username: string; tokenVersion?: number };
+    const user = getUser(username);
+    return !!user && (tokenVersion ?? 0) === (user.token_version ?? 0);
+  }
+
   async function requireJwt(request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
     } catch {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+    if (!tokenVersionValid(request)) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
   }
@@ -173,6 +194,9 @@ async function main() {
     try {
       await request.jwtVerify();
     } catch {
+      return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
+    }
+    if (!tokenVersionValid(request)) {
       return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
     }
   }
@@ -269,6 +293,12 @@ async function main() {
 
   // POST /api/update/apply — git pull + rebuild + restart
   // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
+  // TRUST BOUNDARY: this pulls whatever HEAD of origin/main currently is - no
+  // signature/tag pinning - and npm install runs arbitrary postinstall
+  // scripts. requireApiKey is therefore a de facto root/RCE credential, not
+  // a normal API key (see #73). Treat API_KEY accordingly; the alternative
+  // (pinning to signed release tags) is a deliberate product decision, not
+  // made here.
   app.post('/api/update/apply', {
     preHandler: requireApiKey,
     config: { rateLimit: { max: 3, timeWindow: '5 minutes' } },
@@ -447,7 +477,7 @@ async function main() {
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     createUser(username, hashPassword(password));
-    const token = app.jwt.sign({ username }, { expiresIn: '30d' });
+    const token = app.jwt.sign({ username, tokenVersion: 0 }, { expiresIn: '30d' });
     return { token };
   });
 
@@ -459,8 +489,18 @@ async function main() {
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
-    const token = app.jwt.sign({ username }, { expiresIn: '30d' });
+    const token = app.jwt.sign({ username, tokenVersion: user.token_version ?? 0 }, { expiresIn: '30d' });
     return { token };
+  });
+
+  // POST /api/auth/logout-all — invalidate every previously issued token for
+  // the current user (e.g. after a device is lost/stolen). No way to revoke
+  // a single token without per-token tracking, but bumping the version
+  // covers the actual threat: an attacker with a stolen long-lived token.
+  app.post('/api/auth/logout-all', { preHandler: requireJwt }, async (request) => {
+    const { username } = request.user as { username: string };
+    bumpTokenVersion(username);
+    return { ok: true };
   });
 
   // GET /api/sync — aktuellen Stand abrufen (JWT)

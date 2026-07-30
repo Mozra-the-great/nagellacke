@@ -81,6 +81,13 @@ Beim ersten Start wird ein Schlüssel generiert und in der Konsole angezeigt:
 
 Diesen Schlüssel in der App unter dem **⚙-Button** (Footer) eintragen. Er wird im Browser gespeichert.
 
+> **⚠️ Dieser Schlüssel ist ein De-facto-Root-Credential, kein normaler API-Key.**
+> Er schaltet `/api/update/apply` frei — das zieht ungeprüft den aktuellen `origin/main`,
+> installiert Dependencies (inkl. `postinstall`-Skripten) und baut/startet die App neu.
+> Wer den Schlüssel hat, kann effektiv beliebigen Code auf dem Server zur Ausführung
+> bringen. Genauso vertraulich behandeln wie ein root-Passwort — nicht in Screenshots,
+> Chats oder Tickets teilen. (#73)
+
 Schlüssel später abrufen:
 ```bash
 # v2

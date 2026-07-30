@@ -43,6 +43,7 @@ interface User {
   password_hash: string;
   created_at: number;
   email?: string;
+  token_version?: number;
 }
 
 function readUsers(): User[] {
@@ -73,6 +74,19 @@ export function createUser(username: string, passwordHash: string): void {
   const users = readUsers();
   users.push({ username, password_hash: passwordHash, created_at: Date.now() });
   writeUsers(users);
+}
+
+// Bumps a user's token_version, immediately invalidating every previously
+// issued JWT for that user (they carry the old version and get rejected by
+// requireJwt). Returns the new version so callers don't need a second read.
+export function bumpTokenVersion(username: string): number {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return 0;
+  const next = (users[idx].token_version ?? 0) + 1;
+  users[idx] = { ...users[idx], token_version: next };
+  writeUsers(users);
+  return next;
 }
 
 export function updateUserEmail(username: string, email: string): void {
