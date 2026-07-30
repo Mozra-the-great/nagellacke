@@ -7,9 +7,16 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Android: Hex-Farbwert ohne führendes `#` korrumpierte den Lack-Eintrag**: `isValidHex()` akzeptierte 6-stellige Hex-Werte auch ohne `#`, wurde aber unverändert gespeichert — die Vorschau im Formular normalisierte den Wert zwar korrekt, aber jede andere Stelle (Karten, Statistik, Sticker, Tagebuch), die `polish.color` direkt mit `Color.parseColor()` rendert, warf dabei eine Exception und fiel auf die Default-Farbe zurück. `PolishFormSheet.kt` normalisiert den Wert jetzt beim Speichern (`normalizeHex()` in `domain/Color.kt`), sodass nur noch `#`-präfixierte Werte persistiert/synced werden. (#91)
+
 ### Sicherheit
+- **Android: HTTP-Logging-Interceptor nicht mehr in Release-Builds aktiv**: `ServerAdapter` und `NextcloudAdapter` fügten `HttpLoggingInterceptor(Level.BASIC)` bedingungslos hinzu, wodurch jede Sync-Anfrage auch in Produktions-Builds ins Logcat geschrieben wurde. Bei Nextcloud steckt der Nextcloud-Benutzername in der WebDAV-Basis-URL und wurde damit bei jedem Sync geloggt. Der Interceptor wird jetzt nur noch in Debug-Builds registriert (`BuildConfig.DEBUG`). (#94)
 - **systemd-Service läuft nicht mehr als root**: `install.sh` legt jetzt einen dedizierten Systembenutzer `nagellacke` an, dem das komplette Installationsverzeichnis gehört (`User=`/`Group=` in der Unit). Das Selbst-Update (`POST /api/update/apply`) rief bisher `systemctl restart` auf sich selbst auf, was Root-Rechte gebraucht hätte — stattdessen beendet sich der Prozess jetzt einfach selbst (`process.exit(0)`), `Restart=always` in der Unit startet ihn automatisch neu. Ein geleakter oder erratener Admin-API-Key gibt einem Angreifer damit nur noch Rechte innerhalb `/opt/nagellacke`, nicht mehr Root-RCE auf dem Host. (#71)
 - **Hinweis**: die Produktionsinstanz wird nicht über `install.sh` deployt, sondern über separates Infrastruktur-Tooling (privates Repo), das die systemd-Unit unabhängig schreibt. Dieser Fix hier deckt den dokumentierten manuellen Install-Weg ab; der Infrastruktur-Teil braucht eine eigene, von einem Menschen geprüfte Änderung (Live-Service, siehe Kommentar auf #71).
+
+### Fixed
+- **Android**: `AuthorizationService`-Instanzen aus dem OAuth-Sign-in-Flow (`OAuthHelper.kt`, `SettingsScreen.kt`) wurden nie disposed, wodurch jeder Anmeldeversuch (auch wiederholte, z.B. nach einem OAuth-Fehler) eine gebundene Custom-Tabs-Service-Verbindung leakte. Beide Stellen rufen `dispose()` jetzt, sobald der jeweilige Service nicht mehr gebraucht wird. (#95)
 
 ---
 

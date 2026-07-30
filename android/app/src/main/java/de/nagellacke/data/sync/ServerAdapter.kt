@@ -2,6 +2,7 @@ package de.nagellacke.data.sync
 
 import android.util.Base64
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import de.nagellacke.BuildConfig
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
@@ -26,7 +27,11 @@ class ServerAdapter(private val config: SyncConfig) : SyncAdapter {
                         .build()
                 )
             }
-            .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+                }
+            }
             .build()
 
         Retrofit.Builder()

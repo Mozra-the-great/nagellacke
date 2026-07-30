@@ -35,5 +35,8 @@ fun buildAuthIntent(context: Context, config: AuthorizationServiceConfiguration,
     val request = AuthorizationRequest.Builder(config, clientId, ResponseTypeValues.CODE, Uri.parse(OAuthClientIds.Redirect))
         .setScopes(scopes)
         .build() // AppAuth generates PKCE code verifier automatically
-    return AuthorizationService(context).getAuthorizationRequestIntent(request)
+    val service = AuthorizationService(context)
+    val intent = service.getAuthorizationRequestIntent(request)
+    service.dispose()
+    return intent
 }

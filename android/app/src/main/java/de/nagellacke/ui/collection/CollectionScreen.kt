@@ -228,21 +228,26 @@ fun PolishCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(28.dp)
-                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                        .clip(CircleShape)
+                        .size(48.dp) // minimum touch target size (Material accessibility guideline)
                         .clickable { showPhoto = !showPhoto }
                         .semantics {
                             contentDescription = if (showPhoto) "Flasche anzeigen" else "Foto anzeigen"
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text  = if (showPhoto) "◎" else "📷",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .clip(CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text  = if (showPhoto) "◎" else "📷",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
         }
