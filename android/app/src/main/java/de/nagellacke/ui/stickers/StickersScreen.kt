@@ -60,8 +60,11 @@ import de.nagellacke.domain.generateId
 import de.nagellacke.domain.model.PolishStatus
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.domain.model.StickerType
+import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
+import de.nagellacke.ui.common.UnsupportedPhotoIndicator
+import de.nagellacke.ui.common.rememberPhotoModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,20 +100,21 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
                             headlineContent   = { Text(sticker.name) },
                             supportingContent = { Text(listOf(sticker.brand, sticker.type.label).filter { it.isNotBlank() }.joinToString(" · ")) },
                             leadingContent    = {
-                                val photoUrl = state.photoBaseUrl?.let { base ->
-                                    sticker.photo?.let { "$base$it" }
-                                }
-                                if (photoUrl != null) {
-                                    AsyncImage(
-                                        model              = photoUrl,
+                                val photoModel = rememberPhotoModel(state.photoResolution, sticker.photo)
+                                val photoUnsupported = sticker.photo != null && state.photoResolution is PhotoResolution.Unsupported
+                                when {
+                                    photoModel != null -> AsyncImage(
+                                        model              = photoModel,
                                         contentDescription = sticker.name,
                                         contentScale       = ContentScale.Crop,
                                         modifier           = Modifier
                                             .size(48.dp)
                                             .clip(RoundedCornerShape(8.dp)),
                                     )
-                                } else {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    photoUnsupported -> UnsupportedPhotoIndicator(
+                                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+                                    )
+                                    else -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         sticker.colors.take(3).forEach { hex ->
                                             val c = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { Color(0xFFff6699) }
                                             Box(Modifier.size(18.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbe $hex" })

@@ -56,6 +56,8 @@ import de.nagellacke.domain.model.Polish
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
 import de.nagellacke.ui.common.NailBottle
+import de.nagellacke.ui.common.UnsupportedPhotoIndicator
+import de.nagellacke.ui.common.rememberPhotoModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,10 +121,10 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
                 ) {
                     items(state.polishes, key = { it.id }) { polish ->
                         PolishCard(
-                            polish       = polish,
-                            bottleStyle  = state.bottleStyle,
-                            photoBaseUrl = state.photoBaseUrl,
-                            onClick      = { editing = it; showForm = true },
+                            polish          = polish,
+                            bottleStyle     = state.bottleStyle,
+                            photoResolution = state.photoResolution,
+                            onClick         = { editing = it; showForm = true },
                         )
                     }
                 }
@@ -156,10 +158,12 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
 fun PolishCard(
     polish: Polish,
     bottleStyle: Boolean,
-    photoBaseUrl: String?,
+    photoResolution: PhotoResolution,
     onClick: (Polish) -> Unit,
 ) {
-    val hasPhoto = polish.photo != null && photoBaseUrl != null
+    val photoModel = rememberPhotoModel(photoResolution, polish.photo)
+    val hasPhoto = photoModel != null
+    val photoUnsupported = polish.photo != null && photoResolution is PhotoResolution.Unsupported
     var showPhoto by remember(polish.id) { mutableStateOf(hasPhoto) }
 
     val color = runCatching {
@@ -177,7 +181,7 @@ fun PolishCard(
             when {
                 // 1. Photo view
                 hasPhoto && showPhoto -> AsyncImage(
-                    model            = "$photoBaseUrl${polish.photo}",
+                    model            = photoModel,
                     contentDescription = polish.name,
                     contentScale     = ContentScale.Crop,
                     modifier         = Modifier.fillMaxSize(),
@@ -221,6 +225,17 @@ fun PolishCard(
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
+            }
+
+            // Unsupported-provider badge (top-right) — photo exists but can't be resolved (e.g. Google Drive)
+            if (photoUnsupported) {
+                UnsupportedPhotoIndicator(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .clip(CircleShape),
+                )
             }
 
             // Photo toggle button (top-right) — only visible when a photo exists

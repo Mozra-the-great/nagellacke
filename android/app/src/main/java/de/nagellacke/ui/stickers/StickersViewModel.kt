@@ -7,7 +7,8 @@ import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterStickers
 import de.nagellacke.domain.model.Sticker
-import de.nagellacke.ui.collection.photoBaseUrl
+import de.nagellacke.ui.collection.PhotoResolution
+import de.nagellacke.ui.collection.photoResolution
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -20,8 +21,8 @@ data class StickersUiState(
     val stickers: List<Sticker> = emptyList(),
     val search: String = "",
     val loading: Boolean = true,
-    /** Base URL prefix for photo filenames — null when no Server provider is configured. */
-    val photoBaseUrl: String? = null,
+    /** How (or whether) photo filenames can be turned into loadable image URLs. */
+    val photoResolution: PhotoResolution = PhotoResolution.None,
 )
 
 @HiltViewModel
@@ -36,7 +37,7 @@ class StickersViewModel @Inject constructor(
             stickers     = filterStickers(data.stickers, search),
             search       = search,
             loading      = false,
-            photoBaseUrl = cfg.photoBaseUrl(),
+            photoResolution = cfg.photoResolution(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StickersUiState())
 
