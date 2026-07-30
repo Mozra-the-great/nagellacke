@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import type { Polish } from '@nagellacke/core';
 import { FINISH_OPTIONS } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
-import { loadPhotoDefault } from '../useAppData';
+import { loadPhotoDefault, loadAiEnabled } from '../useAppData';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
 import NailBottle from '../components/NailBottle';
@@ -29,6 +29,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
   useFocusTrap(chooserRef, showChooser);
   useFocusTrap(pickerRef, showPicker);
   const photoDefault = loadPhotoDefault();
+  const aiEnabled = loadAiEnabled();
   const serverSyncAvailable = hasServerSync();
 
   const cartItems = useMemo(
@@ -112,6 +113,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
         <button className={styles.addBtn} onClick={() => setShowChooser(true)} aria-label="Zum Einkaufswagen hinzufügen">+</button>
       </header>
 
+      {aiEnabled && (
       <section className={styles.smartCart}>
         <h3 className={styles.smartCartTitle}>✨ Smart-Cart</h3>
         {!serverSyncAvailable ? (
@@ -140,6 +142,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
           </>
         )}
       </section>
+      )}
 
       <div className={styles.count}>{plural(cartItems.length, 'Lack', 'Lacke')} im Einkaufswagen</div>
 

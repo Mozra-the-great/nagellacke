@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
 import { generateReport } from '../utils/report';
@@ -117,6 +117,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
+  const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -644,6 +645,29 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </div>
           <p className={styles.fieldHelpText}>Gilt nur für Lacke mit Foto — du kannst jederzeit pro Karte wechseln.</p>
         </div>
+
+        <div className={styles.field}>
+          <span>KI-Funktionen</span>
+          <div className={styles.segmented}>
+            <button
+              className={`${styles.segBtn} ${aiEnabled ? styles.segBtnActive : ''}`}
+              onClick={() => { setAiEnabledState(true); saveAiEnabled(true); }}
+            >
+              ✨ An
+            </button>
+            <button
+              className={`${styles.segBtn} ${!aiEnabled ? styles.segBtnActive : ''}`}
+              onClick={() => { setAiEnabledState(false); saveAiEnabled(false); }}
+            >
+              Aus
+            </button>
+          </div>
+          <p className={styles.fieldHelpText}>
+            Blendet alle KI-Funktionen vollständig aus — Auto-Fill im Lack-Formular, Smart-Cart im
+            Einkaufswagen und die KI-Einstellungen. Nichts wird nur ausgegraut, die App sieht aus,
+            als hätte es die Funktionen nie gegeben.
+          </p>
+        </div>
       </section>
 
       <section className={styles.section}>
@@ -805,6 +829,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         )}
       </section>
 
+      {aiEnabled && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
 
@@ -913,6 +938,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </>
         )}
       </section>
+      )}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Admin</h2>

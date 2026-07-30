@@ -38,6 +38,26 @@ export function savePhotoDefault(value: boolean): void {
   localStorage.setItem(PHOTO_DEFAULT_KEY, String(value));
 }
 
+const AI_ENABLED_KEY = 'nagellacke_v3_ai_enabled';
+
+/**
+ * Master switch for every AI/KI feature (#99). When off, all AI UI — the
+ * Auto-Fill toggle, the Smart-Cart prompt, and the KI-Assistenz settings
+ * section — is not rendered at all rather than disabled, so the app reads as
+ * if the features had never been built.
+ *
+ * Defaults to on: the AI surfaces already hide themselves when no server sync
+ * or provider is configured, so a default of off would hide the feature from
+ * everyone who never finds this setting.
+ */
+export function loadAiEnabled(): boolean {
+  return localStorage.getItem(AI_ENABLED_KEY) !== 'false';
+}
+
+export function saveAiEnabled(value: boolean): void {
+  localStorage.setItem(AI_ENABLED_KEY, String(value));
+}
+
 export function loadSyncConfig(): SyncConfig | null {
   try {
     const raw = localStorage.getItem(SYNC_CONFIG_KEY);

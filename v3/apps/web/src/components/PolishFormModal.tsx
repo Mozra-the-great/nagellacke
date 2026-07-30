@@ -3,6 +3,7 @@ import type { Polish, Category } from '@nagellacke/core';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { FINISH_OPTIONS, STATUS_OPTIONS, DEFAULT_POLISH, hexToHue } from '@nagellacke/core';
 import { hasServerSync } from '../utils/ai';
+import { loadAiEnabled } from '../useAppData';
 import PhotoField from './PhotoField';
 import ColorFromPhoto from './ColorFromPhoto';
 import styles from './PolishFormModal.module.css';
@@ -38,7 +39,7 @@ export default function PolishFormModal({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const [aiAutofill, setAiAutofill] = useState(false);
-  const aiAvailable = !polish && hasServerSync();
+  const aiAvailable = !polish && loadAiEnabled() && hasServerSync();
 
   const [form, setForm] = useState<FormData>(() =>
     polish
