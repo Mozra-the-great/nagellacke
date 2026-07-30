@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Sync-Server und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.0.4-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.2.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -96,6 +96,29 @@ cat /opt/nagellacke/backend/data/.api_key
 # v3
 cat /opt/nagellacke/v3/server/data/.api_key
 ```
+
+### Schlüssel rotieren
+
+Der Schlüssel läuft nicht ab. Er autorisiert `/api/update/apply` — und damit
+das Ausführen beliebigen Repo-Codes auf dem Host — deshalb ist ein Leak wie ein
+verlorener Shell-Zugang zu behandeln. Nach einem verlorenen Gerät, einem
+geteilten Browser oder einfach turnusmäßig rotieren:
+
+```bash
+# Variante 1 — im laufenden Betrieb, mit dem aktuellen Schlüssel.
+# Antwortet mit dem neuen Schlüssel; der alte ist ab sofort ungültig.
+curl -X POST http://localhost:3000/api/admin/api-key/rotate \
+  -H "X-Api-Key: $ALTER_SCHLUESSEL"
+
+# Variante 2 — ohne den aktuellen Schlüssel (z. B. wenn er verloren ist).
+# Erfordert Shell-Zugriff; der neue Schlüssel steht beim Start in der Konsole.
+rm /opt/nagellacke/v3/server/data/.api_key
+systemctl restart nagellacke-v3
+journalctl -u nagellacke-v3 -n 20
+```
+
+Danach den neuen Schlüssel in der App unter **⚙ → Einstellungen** eintragen.
+Ist der Schlüssel älter als 180 Tage, weist der Server beim Start darauf hin.
 
 ---
 

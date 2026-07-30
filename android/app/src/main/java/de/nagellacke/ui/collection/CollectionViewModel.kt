@@ -1,12 +1,20 @@
 package de.nagellacke.ui.collection
 
+import android.net.Uri
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.DisplayPrefsStore
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.DropboxAdapter
+import de.nagellacke.data.sync.NextcloudAdapter
+import de.nagellacke.data.sync.OneDriveAdapter
+import de.nagellacke.data.sync.ServerAdapter
+import de.nagellacke.data.sync.SyncAdapter
 import de.nagellacke.data.sync.SyncProvider
 import de.nagellacke.domain.filterPolishes
 import de.nagellacke.domain.model.Category
@@ -32,9 +40,9 @@ data class CollectionUiState(
     val error: String? = null,
     /** true = show nail-bottle SVG, false = plain colour swatch */
     val bottleStyle: Boolean = true,
-    /** Base URL prefix for photo filenames, e.g. "https://server.com/photos/".
-     *  null when no Server provider is configured (Nextcloud, local-only, etc.). */
-    val photoBaseUrl: String? = null,
+    /** How (or whether) photo filenames can be turned into loadable image URLs
+     *  for the currently configured sync provider. */
+    val photoResolution: PhotoResolution = PhotoResolution.None,
 )
 
 @HiltViewModel
@@ -42,6 +50,7 @@ class CollectionViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val displayPrefsStore: DisplayPrefsStore,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _filter = MutableStateFlow(FilterState())
 
@@ -58,7 +67,7 @@ class CollectionViewModel @Inject constructor(
             filter       = filter,
             loading      = false,
             bottleStyle  = bottleStyle,
-            photoBaseUrl = cfg.photoBaseUrl(),
+            photoResolution = cfg.photoResolution(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionUiState())
 
@@ -72,12 +81,81 @@ class CollectionViewModel @Inject constructor(
     fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }
     fun addCategory(label: String)   = viewModelScope.launch { repo.addCategory(label) }
+
+    /** Imports a picked photo (downsamples + compresses) and returns its local filename. */
+    suspend fun importPhoto(uri: Uri): String = photoRepository.importPhoto(uri)
+
+    /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
+    fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
 }
 
-/** Returns the base URL for photo filenames, or null if photos cannot be loaded. */
-internal fun SyncConfig?.photoBaseUrl(): String? {
-    if (this == null) return null
-    if (provider != SyncProvider.Server) return null
-    if (serverUrl.isBlank()) return null
-    return "${serverUrl.trimEnd('/')}/photos/"
+/**
+ * Describes how photo filenames can be turned into a loadable image URL for the
+ * currently configured sync provider.
+ */
+sealed class PhotoResolution {
+    /** No provider configured, or the configured provider has no usable photo storage yet. */
+    object None : PhotoResolution()
+
+    /**
+     * Filenames can be resolved to a URL; [authHeader], if non-null, must be sent with the request.
+     *
+     * Equality is keyed on the sync config rather than on the URL-building lambda: function
+     * references have no stable equality, so a lambda-carrying data class would compare unequal
+     * on every emission, invalidating the enclosing UI state — and with it every cached
+     * ImageRequest — on any unrelated collection change.
+     */
+    class Resolvable(
+        private val config: SyncConfig,
+        val authHeader: String?,
+        private val adapter: SyncAdapter,
+    ) : PhotoResolution() {
+        fun urlFor(filename: String): String = adapter.photoUrl(filename)
+
+        override fun equals(other: Any?): Boolean =
+            other is Resolvable && other.config == config && other.authHeader == authHeader
+
+        override fun hashCode(): Int = 31 * config.hashCode() + (authHeader?.hashCode() ?: 0)
+    }
+
+    /** A provider is configured, but photo URLs cannot be resolved for it (Google Drive). */
+    object Unsupported : PhotoResolution()
+}
+
+/** Resolves how (or whether) this sync config's photo filenames can be loaded as images. */
+internal fun SyncConfig?.photoResolution(): PhotoResolution {
+    val cfg = this ?: return PhotoResolution.None
+    return when (cfg.provider) {
+        SyncProvider.Server -> {
+            if (cfg.serverUrl.isBlank()) PhotoResolution.None
+            else {
+                PhotoResolution.Resolvable(cfg, authHeader = null, adapter = ServerAdapter(cfg))
+            }
+        }
+        SyncProvider.Nextcloud -> {
+            if (cfg.nextcloudUrl.isBlank() || cfg.nextcloudUser.isBlank()) PhotoResolution.None
+            else {
+                val authHeader = "Basic " + Base64.encodeToString(
+                    "${cfg.nextcloudUser}:${cfg.nextcloudPassword}".toByteArray(),
+                    Base64.NO_WRAP,
+                )
+                PhotoResolution.Resolvable(cfg, authHeader = authHeader, adapter = NextcloudAdapter(cfg))
+            }
+        }
+        SyncProvider.OneDrive -> {
+            if (cfg.accessToken.isBlank()) PhotoResolution.None
+            else {
+                PhotoResolution.Resolvable(cfg, authHeader = "Bearer ${cfg.accessToken}", adapter = OneDriveAdapter(cfg))
+            }
+        }
+        SyncProvider.Dropbox -> {
+            if (cfg.accessToken.isBlank()) PhotoResolution.None
+            else {
+                PhotoResolution.Resolvable(cfg, authHeader = "Bearer ${cfg.accessToken}", adapter = DropboxAdapter(cfg))
+            }
+        }
+        // Resolving a Google Drive filename to a downloadable URL requires an async
+        // file-ID lookup that doesn't fit this synchronous resolution shape (#90).
+        SyncProvider.GoogleDrive -> PhotoResolution.Unsupported
+    }
 }

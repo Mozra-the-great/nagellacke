@@ -1,13 +1,16 @@
 package de.nagellacke.ui.stickers
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterStickers
 import de.nagellacke.domain.model.Sticker
-import de.nagellacke.ui.collection.photoBaseUrl
+import de.nagellacke.ui.collection.PhotoResolution
+import de.nagellacke.ui.collection.photoResolution
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -20,14 +23,15 @@ data class StickersUiState(
     val stickers: List<Sticker> = emptyList(),
     val search: String = "",
     val loading: Boolean = true,
-    /** Base URL prefix for photo filenames — null when no Server provider is configured. */
-    val photoBaseUrl: String? = null,
+    /** How (or whether) photo filenames can be turned into loadable image URLs. */
+    val photoResolution: PhotoResolution = PhotoResolution.None,
 )
 
 @HiltViewModel
 class StickersViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _search = MutableStateFlow("")
 
@@ -36,7 +40,7 @@ class StickersViewModel @Inject constructor(
             stickers     = filterStickers(data.stickers, search),
             search       = search,
             loading      = false,
-            photoBaseUrl = cfg.photoBaseUrl(),
+            photoResolution = cfg.photoResolution(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), StickersUiState())
 
@@ -44,4 +48,10 @@ class StickersViewModel @Inject constructor(
     fun addSticker(s: Sticker)     = viewModelScope.launch { repo.addSticker(s) }
     fun updateSticker(s: Sticker)  = viewModelScope.launch { repo.updateSticker(s) }
     fun deleteSticker(id: String)  = viewModelScope.launch { repo.deleteSticker(id) }
+
+    /** Imports a picked photo (downsamples + compresses) and returns its local filename. */
+    suspend fun importPhoto(uri: Uri): String = photoRepository.importPhoto(uri)
+
+    /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
+    fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
 }

@@ -3,10 +3,12 @@ import JSZip from 'jszip';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
 import { generateReport } from '../utils/report';
+import { getAiSettings, saveAiSettings } from '../utils/ai';
+import type { AiProvider } from '../utils/ai';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -94,13 +96,18 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUser, password: loginPass }),
       });
-      const data = await res.json() as { token?: string; error?: string };
+      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
       if (!res.ok || !data.token) {
         setLoginError(data.error ?? `Fehler ${res.status}`);
         setLoginStatus('error');
         return;
       }
-      const c: SyncConfig = { provider: 'server', serverUrl, serverToken: data.token };
+      const c: SyncConfig = {
+        provider: 'server',
+        serverUrl,
+        serverToken: data.token,
+        serverRefreshToken: data.refreshToken,
+      };
       saveSyncConfig(c);
       setConfig(c);
       setServerToken(data.token);
@@ -115,6 +122,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
+  const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -305,6 +313,18 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [scheduleSaveError, setScheduleSaveError] = useState('');
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
+  // ── KI-Assistenz ──
+  const [aiProvider, setAiProvider] = useState<AiProvider>('openrouter');
+  const [aiOpenrouterKey, setAiOpenrouterKey] = useState('');
+  const [aiOpenrouterModel, setAiOpenrouterModel] = useState('openrouter/auto');
+  const [aiOpenrouterFreeOnly, setAiOpenrouterFreeOnly] = useState(false);
+  const [aiOpenrouterHasKey, setAiOpenrouterHasKey] = useState(false);
+  const [aiGeminiKey, setAiGeminiKey] = useState('');
+  const [aiGeminiModel, setAiGeminiModel] = useState('gemini-2.5-flash');
+  const [aiGeminiHasKey, setAiGeminiHasKey] = useState(false);
+  const [aiSaveStatus, setAiSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [aiSaveError, setAiSaveError] = useState('');
+
   const isServerSync = config?.provider === 'server';
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
   const bearerHeaders = (): Record<string, string> =>
@@ -348,6 +368,44 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
     return () => controller.abort();
   }, [isServerSync, serverBase, serverToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isServerSync) return;
+    let cancelled = false;
+    getAiSettings()
+      .then((s) => {
+        if (cancelled) return;
+        setAiProvider(s.provider);
+        setAiOpenrouterModel(s.openrouter.model);
+        setAiOpenrouterFreeOnly(s.openrouter.freeOnly);
+        setAiOpenrouterHasKey(s.openrouter.hasApiKey);
+        setAiGeminiModel(s.gemini.model);
+        setAiGeminiHasKey(s.gemini.hasApiKey);
+      })
+      .catch(() => { /* ignore — offline or not yet configured */ });
+    return () => { cancelled = true; };
+  }, [isServerSync, serverBase, serverToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveAiConfig = async () => {
+    setAiSaveStatus('saving');
+    setAiSaveError('');
+    try {
+      await saveAiSettings({
+        provider: aiProvider,
+        openrouter: { apiKey: aiOpenrouterKey || undefined, model: aiOpenrouterModel || 'openrouter/auto', freeOnly: aiOpenrouterFreeOnly },
+        gemini: { apiKey: aiGeminiKey || undefined, model: aiGeminiModel || 'gemini-2.5-flash' },
+      });
+      if (aiOpenrouterKey) setAiOpenrouterHasKey(true);
+      if (aiGeminiKey) setAiGeminiHasKey(true);
+      setAiOpenrouterKey('');
+      setAiGeminiKey('');
+      setAiSaveStatus('saved');
+      setTimeout(() => setAiSaveStatus('idle'), 2000);
+    } catch (e) {
+      setAiSaveError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAiSaveStatus('error');
+    }
+  };
 
   const openReport = () => {
     // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
@@ -592,6 +650,29 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </div>
           <p className={styles.fieldHelpText}>Gilt nur für Lacke mit Foto — du kannst jederzeit pro Karte wechseln.</p>
         </div>
+
+        <div className={styles.field}>
+          <span>KI-Funktionen</span>
+          <div className={styles.segmented}>
+            <button
+              className={`${styles.segBtn} ${aiEnabled ? styles.segBtnActive : ''}`}
+              onClick={() => { setAiEnabledState(true); saveAiEnabled(true); }}
+            >
+              ✨ An
+            </button>
+            <button
+              className={`${styles.segBtn} ${!aiEnabled ? styles.segBtnActive : ''}`}
+              onClick={() => { setAiEnabledState(false); saveAiEnabled(false); }}
+            >
+              Aus
+            </button>
+          </div>
+          <p className={styles.fieldHelpText}>
+            Blendet alle KI-Funktionen vollständig aus — Auto-Fill im Lack-Formular, Smart-Cart im
+            Einkaufswagen und die KI-Einstellungen. Nichts wird nur ausgegraut, die App sieht aus,
+            als hätte es die Funktionen nie gegeben.
+          </p>
+        </div>
       </section>
 
       <section className={styles.section}>
@@ -752,6 +833,117 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </p>
         )}
       </section>
+
+      {aiEnabled && (
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
+
+        {!isServerSync && (
+          <p className={styles.fieldHelpText}>
+            KI Auto-Fill und Smart-Cart benötigen den Eigenen-Server-Sync (siehe oben) — die KI läuft serverseitig.
+          </p>
+        )}
+
+        {isServerSync && (
+          <>
+            <label className={styles.field}>
+              <span>Anbieter</span>
+              <div className={styles.segmented}>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiProvider === 'openrouter' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiProvider('openrouter')}
+                >OpenRouter</button>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiProvider === 'gemini' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiProvider('gemini')}
+                >Gemini (Google AI Studio)</button>
+              </div>
+            </label>
+
+            {aiProvider === 'openrouter' && (
+              <>
+                <label className={styles.field}>
+                  <span>OpenRouter API-Schlüssel {aiOpenrouterHasKey && <span className={styles.fieldHint}>(bereits gesetzt)</span>}</span>
+                  <input
+                    type="password"
+                    value={aiOpenrouterKey}
+                    onChange={(e) => setAiOpenrouterKey(e.target.value)}
+                    placeholder={aiOpenrouterHasKey ? '••••••••••••' : 'sk-or-…'}
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span>Modell</span>
+                  <input
+                    value={aiOpenrouterModel}
+                    onChange={(e) => setAiOpenrouterModel(e.target.value)}
+                    placeholder="z.B. openrouter/auto, google/gemini-2.5-flash"
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span>Nur kostenlose Modelle</span>
+                  <div className={styles.segmented}>
+                    <button
+                      type="button"
+                      className={`${styles.segBtn} ${aiOpenrouterFreeOnly ? styles.segBtnActive : ''}`}
+                      onClick={() => setAiOpenrouterFreeOnly(true)}
+                    >An</button>
+                    <button
+                      type="button"
+                      className={`${styles.segBtn} ${!aiOpenrouterFreeOnly ? styles.segBtnActive : ''}`}
+                      onClick={() => setAiOpenrouterFreeOnly(false)}
+                    >Aus</button>
+                  </div>
+                  <p className={styles.fieldHelpText}>
+                    Hängt „:free" an den Modellnamen an, damit nur kostenlose OpenRouter-Modelle verwendet werden.
+                  </p>
+                </label>
+              </>
+            )}
+
+            {aiProvider === 'gemini' && (
+              <>
+                <label className={styles.field}>
+                  <span>Gemini API-Schlüssel {aiGeminiHasKey && <span className={styles.fieldHint}>(bereits gesetzt)</span>}</span>
+                  <input
+                    type="password"
+                    value={aiGeminiKey}
+                    onChange={(e) => setAiGeminiKey(e.target.value)}
+                    placeholder={aiGeminiHasKey ? '••••••••••••' : 'AIza…'}
+                  />
+                  <p className={styles.fieldHelpText}>
+                    Direkte Anbindung an Google AI Studio (generativelanguage.googleapis.com) — kein Umweg über OpenRouter.
+                  </p>
+                </label>
+                <label className={styles.field}>
+                  <span>Modell</span>
+                  <input
+                    value={aiGeminiModel}
+                    onChange={(e) => setAiGeminiModel(e.target.value)}
+                    placeholder="z.B. gemini-2.5-flash"
+                  />
+                </label>
+              </>
+            )}
+
+            {aiSaveStatus === 'error' && (
+              <div className={styles.errorBanner}>{aiSaveError}</div>
+            )}
+
+            <div className={styles.btnRow}>
+              <button
+                className={styles.saveBtn}
+                onClick={() => void saveAiConfig()}
+                disabled={aiSaveStatus === 'saving'}
+              >
+                {aiSaveStatus === 'saving' ? 'Speichere…' : aiSaveStatus === 'saved' ? '✓ Gespeichert' : 'Speichern'}
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+      )}
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Admin</h2>

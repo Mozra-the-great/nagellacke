@@ -11,8 +11,13 @@ import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
-import { getData, setData, getUser, getUserCount, createUser, updateUserEmail, bumpTokenVersion, getScheduleConfig, setScheduleConfig, PHOTOS_DIR, DATA_DIR } from './db';
-import type { ScheduleConfig } from './db';
+import {
+  getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
+  bumpTokenVersion, migrateGlobalDataToFirstUser, getScheduleConfig, setScheduleConfig,
+  getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
+} from './db';
+import type { ScheduleConfig, AiConfig, AiJob } from './db';
+import { processAiJobQueue, isAiConfigured } from './ai';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
 
@@ -40,16 +45,45 @@ if (!/^[a-zA-Z0-9_.-]+$/.test(SERVICE_NAME)) {
 }
 
 // ── X-Api-Key auth (v2-kompatibel) ────────────────────────────────────────────
+// NOTE: this key is effectively a root credential — it authorizes
+// /api/update/apply, which pulls and executes arbitrary repo code. Treat losing
+// it like losing a shell on the host, and rotate it (see rotateApiKey below).
 const API_KEY_FILE = path.join(DATA_DIR, '.api_key');
+// Age after which startup nags about rotating (#108). Not enforced: the key is
+// the only way in for admin endpoints, so expiring it automatically would lock
+// the operator out of a self-hosted box with no recovery path.
+const API_KEY_MAX_AGE_DAYS = 180;
+
 let API_KEY: string;
 let API_KEY_IS_NEW = false;
+
+function writeApiKey(key: string): void {
+  fs.writeFileSync(API_KEY_FILE, key, { mode: 0o600 });
+}
 
 if (fs.existsSync(API_KEY_FILE)) {
   API_KEY = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
 } else {
   API_KEY = crypto.randomBytes(24).toString('hex');
-  fs.writeFileSync(API_KEY_FILE, API_KEY, { mode: 0o600 });
+  writeApiKey(API_KEY);
   API_KEY_IS_NEW = true;
+}
+
+/** Age of the current key in days, or null if it can't be determined. */
+function apiKeyAgeDays(): number | null {
+  try {
+    const { mtimeMs } = fs.statSync(API_KEY_FILE);
+    return Math.floor((Date.now() - mtimeMs) / 86_400_000);
+  } catch {
+    return null;
+  }
+}
+
+/** Generates and persists a fresh key, replacing the current one immediately. */
+function rotateApiKey(): string {
+  API_KEY = crypto.randomBytes(24).toString('hex');
+  writeApiKey(API_KEY);
+  return API_KEY;
 }
 
 // ── JWT secret (persistent) ────────────────────────────────────────────────────
@@ -62,6 +96,14 @@ function loadOrCreateSecret(): string {
   return s;
 }
 const JWT_SECRET = loadOrCreateSecret();
+
+// Access tokens were 30d, so a token leaked out of localStorage stayed usable
+// for a month (#109). Shortened to 7d, with a long-lived refresh token the web
+// client trades in silently. 7d rather than minutes because the Android client
+// has no refresh logic yet and syncs every 6h — this keeps it working through
+// normal use while cutting the exposure window fourfold.
+const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
+const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
 
 // ── Image validation ──────────────────────────────────────────────────────────
 const MAGIC: [Buffer, string][] = [
@@ -111,6 +153,9 @@ function httpsGet(url: string): Promise<string> {
 }
 
 async function main() {
+  // Must run before any request is served (#87).
+  migrateGlobalDataToFirstUser();
+
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
   // this behind a reverse proxy, set trustProxy to that proxy's address specifically
@@ -118,7 +163,17 @@ async function main() {
   // X-Forwarded-For header lets anyone spoof their way around the limits.
   const app = Fastify({ logger: { level: 'info' } });
 
-  await app.register(cors, { origin: ALLOWED_ORIGIN });
+  // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
+  // does not reflect the routes actually registered. Every preflight therefore
+  // advertised those three methods, so a browser refused to send the real
+  // DELETE /api/photos/:filename or PATCH /api/auth/me whenever the web app was
+  // served from a different origin than the API (GitHub Pages, or a "Eigener
+  // Server" URL pointing elsewhere). Invisible in the same-origin install.sh
+  // deployment, where CORS is skipped entirely. (#112)
+  await app.register(cors, {
+    origin: ALLOWED_ORIGIN,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+  });
   await app.register(jwt, { secret: JWT_SECRET });
   // global: false — each /api/* route below opts in via its own `config.rateLimit`.
   // A global default would also throttle /photos/ and the SPA static assets,
@@ -345,19 +400,44 @@ async function main() {
     });
   });
 
+  // POST /api/admin/api-key/rotate — replace the admin API key
+  // Authorized with the *current* key, so an operator who still holds it can
+  // invalidate a leaked copy without shell access to the box. Previously the
+  // only rotation path was `rm data/.api_key` plus a restart (#108).
+  app.post('/api/admin/api-key/rotate', {
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async () => {
+    const apiKey = rotateApiKey();
+    console.warn('[SECURITY] Admin API key rotated — every previously issued key is now invalid.');
+    // Returned once, in the response to the authenticated rotation request
+    // itself: the caller needs it to keep working, and it is never recoverable
+    // from this endpoint again (only from data/.api_key on the host).
+    return { apiKey, rotatedAt: Date.now() };
+  });
+
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
     preHandler: requireApiKey,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
-    const lines = Math.min(parseInt((request.query as { lines?: string }).lines ?? '100'), 500);
-    const r = spawnSync(
-      'journalctl',
-      ['-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'],
-      { stdio: 'pipe', timeout: 6000 },
-    );
+    // parseInt returns NaN for junk like ?lines=abc, and Math.min(NaN, 500) is
+    // NaN — which used to reach journalctl as the literal string "NaN".
+    const requested = Number.parseInt((request.query as { lines?: string }).lines ?? '100', 10);
+    const lines = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 500) : 100;
+
+    const args = ['-u', SERVICE_NAME, '-n', String(lines), '--no-pager', '--output=short-iso'];
+    // install.sh grants exactly this invocation via /etc/sudoers.d, instead of
+    // putting the service user in the systemd-journal group — which would have
+    // granted read access to the whole system journal, not just our own unit
+    // (#110). Fall back to a direct call so deployments that provision journal
+    // access some other way (or run the server as root) keep working.
+    let r = spawnSync('sudo', ['-n', 'journalctl', ...args], { stdio: 'pipe', timeout: 6000 });
+    if (r.error || r.status !== 0) {
+      r = spawnSync('journalctl', args, { stdio: 'pipe', timeout: 6000 });
+    }
     if (r.status === 0) return { logs: r.stdout?.toString() ?? '', lines };
-    return { logs: r.stderr?.toString().trim() ?? 'journalctl nicht verfügbar', lines, error: true };
+    return { logs: r.stderr?.toString().trim() || 'journalctl nicht verfügbar', lines, error: true };
   });
 
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
@@ -365,14 +445,20 @@ async function main() {
   // ── User profile (JWT) ────────────────────────────────────────────────────────
 
   // GET /api/auth/me
-  app.get('/api/auth/me', { preHandler: requireJwt }, async (request) => {
+  app.get('/api/auth/me', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request) => {
     const { username } = request.user as { username: string };
     const user = getUser(username);
     return { username, email: user?.email ?? null, smtpConfigured: isEmailConfigured() };
   });
 
   // PATCH /api/auth/me
-  app.patch('/api/auth/me', { preHandler: requireJwt }, async (request, reply) => {
+  app.patch('/api/auth/me', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const { email } = request.body as { email?: string };
     if (!email || !isValidEmail(email)) {
@@ -397,12 +483,16 @@ async function main() {
   }
 
   // GET /api/reports/preview?period=week&date=2026-06-19
-  app.get('/api/reports/preview', { preHandler: requireJwt }, async (request, reply) => {
+  app.get('/api/reports/preview', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const query = request.query as { period?: string; date?: string };
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     return reply.type('text/html').send(html);
   });
 
@@ -414,6 +504,7 @@ async function main() {
     if (!isEmailConfigured()) {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
+    const { username } = request.user as { username: string };
     const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
     const toEmail = (rawToEmail ?? '').trim();
     if (!toEmail || !isValidEmail(toEmail)) {
@@ -425,7 +516,7 @@ async function main() {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
     try {
       await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     } catch (e: unknown) {
@@ -444,7 +535,11 @@ async function main() {
   });
 
   // POST /api/reports/schedule
-  app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
+  app.post('/api/reports/schedule', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const body = request.body as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
@@ -456,6 +551,9 @@ async function main() {
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
+      // Whoever last saved the schedule owns the collection it reports on —
+      // collections are per-user since #87, so the hourly job needs to know.
+      username,
     };
     setScheduleConfig(config);
     return { ok: true, config };
@@ -477,8 +575,7 @@ async function main() {
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     createUser(username, hashPassword(password));
-    const token = app.jwt.sign({ username, tokenVersion: 0 }, { expiresIn: '30d' });
-    return { token };
+    return issueTokens(username, 0);
   });
 
   // POST /api/auth/login
@@ -489,47 +586,214 @@ async function main() {
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
-    const token = app.jwt.sign({ username, tokenVersion: user.token_version ?? 0 }, { expiresIn: '30d' });
-    return { token };
+    return issueTokens(user.username, user.token_version ?? 0);
+  });
+
+  /**
+   * Mints an access/refresh pair. Both carry the user's current tokenVersion,
+   * so POST /api/auth/logout-all revokes refresh tokens too — otherwise a
+   * stolen refresh token would outlive the very thing meant to kill it.
+   *
+   * `token` keeps its old name and shape so existing clients (and the Android
+   * app, which ignores the rest) keep working; they simply get a 7-day token
+   * instead of a 30-day one and re-login when it lapses.
+   */
+  function issueTokens(username: string, tokenVersion: number) {
+    return {
+      token: app.jwt.sign({ username, tokenVersion, typ: 'access' }, { expiresIn: ACCESS_TOKEN_TTL }),
+      refreshToken: app.jwt.sign({ username, tokenVersion, typ: 'refresh' }, { expiresIn: REFRESH_TOKEN_TTL }),
+    };
+  }
+
+  // POST /api/auth/refresh — trade a refresh token for a fresh access token.
+  // Deliberately not behind requireJwt: the caller presents a refresh token in
+  // the body, not an access token in the header (the access token it is
+  // replacing has usually expired by then).
+  app.post('/api/auth/refresh', {
+    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { refreshToken } = request.body as { refreshToken?: string };
+    if (!refreshToken) return reply.code(400).send({ error: 'refreshToken erforderlich' });
+
+    let payload: { username?: string; tokenVersion?: number; typ?: string };
+    try {
+      payload = app.jwt.verify(refreshToken);
+    } catch {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    // An access token must not be usable as a refresh token — otherwise a
+    // leaked access token could be renewed indefinitely, undoing the short TTL.
+    if (payload.typ !== 'refresh' || !payload.username) {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    const user = getUser(payload.username);
+    if (!user || (payload.tokenVersion ?? 0) !== (user.token_version ?? 0)) {
+      return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
+    }
+    return issueTokens(payload.username, user.token_version ?? 0);
   });
 
   // POST /api/auth/logout-all — invalidate every previously issued token for
   // the current user (e.g. after a device is lost/stolen). No way to revoke
   // a single token without per-token tracking, but bumping the version
   // covers the actual threat: an attacker with a stolen long-lived token.
-  app.post('/api/auth/logout-all', { preHandler: requireJwt }, async (request) => {
+  app.post('/api/auth/logout-all', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request) => {
     const { username } = request.user as { username: string };
     bumpTokenVersion(username);
     return { ok: true };
   });
 
+  // Every sync route below reads/writes only the authenticated user's own
+  // collection. Previously they all operated on one global data.json, so any
+  // account could read — and /api/sync/push could wipe — another's data (#87).
+
   // GET /api/sync — aktuellen Stand abrufen (JWT)
   app.get('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async () => ({ data: getData() }));
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { data: getData(username) };
+  });
 
   // POST /api/sync — Daten zusammenführen (JWT)
   app.post('/api/sync', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data: clientData } = request.body as { data?: AppData };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
-    const merged = mergeData(getData(), clientData);
-    setData(merged);
+    const merged = mergeData(getData(username), clientData);
+    setData(username, merged);
     return { data: merged };
   });
 
   // POST /api/sync/push — fertig gemergten Stand hochladen (JWT)
+  // Merges against the current server state (rather than overwriting it) so a
+  // client push based on a slightly stale snapshot can't clobber writes made
+  // server-side in the meantime (e.g. by an AI background job).
   app.post('/api/sync/push', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { data } = request.body as { data?: AppData };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    setData(data);
+    // Merge rather than overwrite: AI jobs write to this user's collection in
+    // the background, and a client push built from a stale snapshot would
+    // otherwise silently drop those writes.
+    const merged = mergeData(getData(username), data);
+    setData(username, merged);
     return { ok: true };
+  });
+
+  // ── KI-Assistenz (AI Auto-Fill / Smart-Cart) ──────────────────────────────────
+
+  // GET /api/ai/settings — secrets are never sent back, only whether they're set
+  app.get('/api/ai/settings', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const config = getAiConfig();
+    return {
+      provider: config.provider,
+      openrouter: { model: config.openrouter.model, freeOnly: config.openrouter.freeOnly, hasApiKey: !!config.openrouter.apiKey },
+      gemini: { model: config.gemini.model, hasApiKey: !!config.gemini.apiKey },
+    };
+  });
+
+  // POST /api/ai/settings
+  app.post('/api/ai/settings', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const body = request.body as Partial<{
+      provider: AiConfig['provider'];
+      openrouter: Partial<{ apiKey: string; model: string; freeOnly: boolean }>;
+      gemini: Partial<{ apiKey: string; model: string }>;
+    }>;
+    if (body.provider !== 'openrouter' && body.provider !== 'gemini') {
+      return reply.code(400).send({ error: 'provider muss "openrouter" oder "gemini" sein' });
+    }
+    const current = getAiConfig();
+    const config: AiConfig = {
+      provider: body.provider,
+      openrouter: {
+        apiKey: body.openrouter?.apiKey !== undefined ? body.openrouter.apiKey : current.openrouter.apiKey,
+        model: body.openrouter?.model || current.openrouter.model,
+        freeOnly: body.openrouter?.freeOnly ?? current.openrouter.freeOnly,
+      },
+      gemini: {
+        apiKey: body.gemini?.apiKey !== undefined ? body.gemini.apiKey : current.gemini.apiKey,
+        model: body.gemini?.model || current.gemini.model,
+      },
+    };
+    setAiConfig(config);
+    return { ok: true };
+  });
+
+  // POST /api/ai/autofill — kick off a background job to research color/finish.
+  // Takes the polish's name/brand/num directly (not an id) — the result is
+  // handed back via the job for the client to apply itself, so this doesn't
+  // depend on the client having already synced the new polish to the server.
+  app.post('/api/ai/autofill', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { name, brand, num } = request.body as { name?: string; brand?: string; num?: string };
+    if (!name) return reply.code(400).send({ error: 'name erforderlich' });
+    const config = getAiConfig();
+    if (!isAiConfigured(config)) {
+      return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    }
+    const job: AiJob = {
+      id: uuidv4(), type: 'autofill', status: 'pending', username,
+      input: { polish: { name, brand: brand ?? '', num: num ?? '' } },
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    addAiJob(job);
+    setImmediate(() => { void processAiJobQueue(); });
+    return { jobId: job.id };
+  });
+
+  // POST /api/ai/smart-cart — kick off a background job to research + add cart items
+  app.post('/api/ai/smart-cart', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { prompt } = request.body as { prompt?: string };
+    if (!prompt || !prompt.trim()) return reply.code(400).send({ error: 'prompt erforderlich' });
+    const config = getAiConfig();
+    if (!isAiConfigured(config)) {
+      return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
+    }
+    const job: AiJob = { id: uuidv4(), type: 'smart-cart', status: 'pending', username, input: { prompt: prompt.trim() }, createdAt: Date.now(), updatedAt: Date.now() };
+    addAiJob(job);
+    setImmediate(() => { void processAiJobQueue(); });
+    return { jobId: job.id };
+  });
+
+  // GET /api/ai/jobs/:id — poll job status
+  // Generous limit: the client polls this every 2s for up to 2 minutes while a
+  // job runs (see pollAiJob), so ~60 requests per job is normal traffic.
+  app.get('/api/ai/jobs/:id', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { id } = request.params as { id: string };
+    const job = getAiJob(id);
+    // Job ids are UUIDs, but a job carries its owner's prompt and researched
+    // results, so ownership is checked rather than relying on unguessability.
+    // 404 rather than 403 — don't confirm that someone else's job id exists.
+    if (!job || job.username !== username) return reply.code(404).send({ error: 'Job nicht gefunden' });
+    return { job };
   });
 
   // ── SPA Fallback ──────────────────────────────────────────────────────────────
@@ -576,11 +840,19 @@ async function main() {
       refDate.setUTCMonth(now.getUTCMonth() - 1);
     }
 
+    // Configs written before per-user isolation carry no username; the account
+    // that bootstrapped the server owns the migrated collection (#87).
+    const reportUser = cfg.username ?? getFirstUsername();
+    if (!reportUser) {
+      console.warn('[reports] Scheduled report skipped: no user to report on.');
+      return;
+    }
+
     try {
       const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
       const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
       const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
+      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
       setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
       console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
@@ -588,6 +860,12 @@ async function main() {
       console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
     }
   }, 60 * 60 * 1000); // every hour
+
+  // ── AI job queue safety net ────────────────────────────────────────────────
+  // Jobs are normally picked up immediately (see setImmediate calls above); this
+  // interval just catches anything left pending after a restart.
+  setInterval(() => { void processAiJobQueue(); }, 30 * 1000);
+  void processAiJobQueue();
 
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
@@ -597,6 +875,15 @@ async function main() {
       console.log('│  (Unter Einstellungen ⚙ eintragen)                  │');
       console.log('│  Nur einmalig angezeigt — danach: cat data/.api_key  │');
       console.log('└─────────────────────────────────────────────────────┘\n');
+    } else {
+      const age = apiKeyAgeDays();
+      if (age !== null && age >= API_KEY_MAX_AGE_DAYS) {
+        console.warn(
+          `[SECURITY] Der Admin-API-Key ist ${age} Tage alt. Rotieren mit ` +
+          'POST /api/admin/api-key/rotate (mit dem aktuellen X-Api-Key) oder ' +
+          '`rm data/.api_key` + Neustart.',
+        );
+      }
     }
     if (isEmailConfigured() && !process.env.APP_URL) {
       console.warn('[reports] WARNING: SMTP is configured but APP_URL is not set — photo URLs in emails will be broken. Set APP_URL to the public base URL of this server.');

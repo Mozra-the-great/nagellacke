@@ -32,8 +32,8 @@ fi
 info "Paketlisten aktualisieren…"
 apt-get update -qq
 
-info "Installiere Abhängigkeiten (git, curl, gnupg)…"
-apt-get install -y -qq git curl ca-certificates gnupg
+info "Installiere Abhängigkeiten (git, curl, gnupg, sudo)…"
+apt-get install -y -qq git curl ca-certificates gnupg sudo
 
 # ── 2. Node.js 20 ──
 # NodeSource's documented signed-apt-repo method instead of curl-pipe-bash:
@@ -96,14 +96,41 @@ mkdir -p "$INSTALL_DIR/v3/server/data"
 
 # ── 7b. Dedicated unprivileged service user ──
 # The service only needs to bind port 3000 and read/write its own install
-# directory - no reason to run as root (see security issue #71). Reading the
-# systemd journal (GET /api/logs) needs membership in systemd-journal.
+# directory - no reason to run as root (see security issue #71).
 if ! id -u nagellacke &>/dev/null; then
   info "Systembenutzer 'nagellacke' anlegen…"
   useradd --system --no-create-home --shell /usr/sbin/nologin nagellacke
 fi
-usermod -aG systemd-journal nagellacke
 chown -R nagellacke:nagellacke "$INSTALL_DIR"
+
+# ── 7c. Scoped journal access for GET /api/logs ──
+# Membership in the systemd-journal group would grant read access to the ENTIRE
+# system journal (auth logs, kernel, every other unit), not just this service's
+# own logs (#110). Instead, allow exactly the one journalctl invocation the app
+# makes, via sudo. Each argument is matched literally except the line count,
+# which is restricted to digits - sudo wildcards never span argument boundaries,
+# so no extra flags can be smuggled in.
+info "Journal-Lesezugriff auf '$SERVICE_NAME' beschränken…"
+JOURNALCTL_BIN="$(command -v journalctl || echo /usr/bin/journalctl)"
+cat > /etc/sudoers.d/nagellacke-logs <<EOF
+# Managed by nagellacke install.sh - do not edit by hand.
+# Scoped replacement for systemd-journal group membership (#110): this is the
+# only privileged command the service is allowed to run.
+nagellacke ALL=(root) NOPASSWD: ${JOURNALCTL_BIN} -u ${SERVICE_NAME} -n [0-9]* --no-pager --output=short-iso
+EOF
+chmod 0440 /etc/sudoers.d/nagellacke-logs
+# A malformed sudoers drop-in breaks sudo host-wide, so validate before keeping it.
+if visudo -cf /etc/sudoers.d/nagellacke-logs >/dev/null; then
+  success "Journal-Zugriff auf '$SERVICE_NAME' begrenzt"
+else
+  rm -f /etc/sudoers.d/nagellacke-logs
+  warn "sudoers-Regel ungültig - entfernt. GET /api/logs bleibt ohne Journal-Zugriff."
+fi
+# Drop the over-broad group membership from earlier installs.
+if id -nG nagellacke 2>/dev/null | tr ' ' '\n' | grep -qx systemd-journal; then
+  info "Alte systemd-journal-Gruppenmitgliedschaft entfernen…"
+  gpasswd -d nagellacke systemd-journal >/dev/null
+fi
 
 # ── 8. Stop old v2 service if running ──
 if systemctl is-active --quiet nagellacke.service 2>/dev/null; then
