@@ -1,9 +1,11 @@
 package de.nagellacke.ui.stickers
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterStickers
 import de.nagellacke.domain.model.Sticker
@@ -29,6 +31,7 @@ data class StickersUiState(
 class StickersViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _search = MutableStateFlow("")
 
@@ -45,4 +48,10 @@ class StickersViewModel @Inject constructor(
     fun addSticker(s: Sticker)     = viewModelScope.launch { repo.addSticker(s) }
     fun updateSticker(s: Sticker)  = viewModelScope.launch { repo.updateSticker(s) }
     fun deleteSticker(id: String)  = viewModelScope.launch { repo.deleteSticker(id) }
+
+    /** Imports a picked photo (downsamples + compresses) and returns its local filename. */
+    suspend fun importPhoto(uri: Uri): String = photoRepository.importPhoto(uri)
+
+    /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
+    fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
 }

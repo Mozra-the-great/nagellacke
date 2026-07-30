@@ -139,6 +139,8 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
             onSave     = { p -> if (editing != null) vm.updatePolish(p) else vm.addPolish(p); showForm = false },
             onDelete   = editing?.let { { vm.deletePolish(it.id); showForm = false } },
             onDismiss  = { showForm = false },
+            resolvePhotoUri = vm::resolvePhotoUri,
+            importPhoto     = vm::importPhoto,
         )
     }
 }

@@ -1,5 +1,6 @@
 package de.nagellacke.ui.collection
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +49,7 @@ import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
+import de.nagellacke.ui.common.PhotoPickerField
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -57,6 +59,8 @@ fun PolishFormSheet(
     onSave: (Polish) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
+    resolvePhotoUri: (String) -> Uri,
+    importPhoto: suspend (Uri) -> String,
 ) {
     val now = System.currentTimeMillis()
     var name by remember(polish) { mutableStateOf(polish?.name ?: "") }
@@ -68,6 +72,7 @@ fun PolishFormSheet(
     var notes by remember(polish) { mutableStateOf(polish?.notes ?: "") }
     var rating by remember(polish) { mutableStateOf(polish?.rating ?: 0) }
     var selectedCats by remember(polish) { mutableStateOf(polish?.categories ?: emptyList()) }
+    var photo by remember(polish) { mutableStateOf(polish?.photo) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -85,6 +90,14 @@ fun PolishFormSheet(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(value = num, onValueChange = { num = it }, label = { Text("Nummer") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
+
+            PhotoPickerField(
+                photo = photo,
+                resolvePhotoUri = resolvePhotoUri,
+                importPhoto = importPhoto,
+                onPhotoChange = { photo = it },
+            )
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = color,
@@ -156,6 +169,7 @@ fun PolishFormSheet(
                             color = resolvedColor,
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
+                            photo = photo,
                             updatedAt = now,
                         ) ?: Polish(
                             id = generateId(),
@@ -163,6 +177,7 @@ fun PolishFormSheet(
                             color = resolvedColor,
                             finish = finish, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
+                            photo = photo,
                             createdAt = now, updatedAt = now,
                         )
                         onSave(result)

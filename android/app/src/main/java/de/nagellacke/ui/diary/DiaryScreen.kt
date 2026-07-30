@@ -1,5 +1,6 @@
 package de.nagellacke.ui.diary
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +62,7 @@ import de.nagellacke.domain.model.Polish
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
+import de.nagellacke.ui.common.PhotoListPickerField
 import de.nagellacke.ui.common.UnsupportedPhotoIndicator
 import de.nagellacke.ui.common.rememberPhotoModel
 import java.text.SimpleDateFormat
@@ -91,8 +93,11 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                 else -> LazyColumn(Modifier.weight(1f)) {
                     items(state.entries, key = { it.id }) { entry ->
                         val polishes = state.polishes.filter { entry.polishIds.contains(it.id) }
-                        val photoModel = rememberPhotoModel(state.photoResolution, entry.photo)
-                        val photoUnsupported = entry.photo != null && state.photoResolution is PhotoResolution.Unsupported
+                        // `photos`, not `photo`: ManicureEntity/Mappers only round-trip the list,
+                        // so `Manicure.photo` is always null once an entry has been through Room.
+                        val photoName = entry.photos.firstOrNull()
+                        val photoModel = rememberPhotoModel(state.photoResolution, photoName)
+                        val photoUnsupported = photoName != null && state.photoResolution is PhotoResolution.Unsupported
                         ListItem(
                             headlineContent   = { Text(formatDate(entry.date), color = MaterialTheme.colorScheme.primary) },
                             supportingContent = { Text(entry.notes.ifBlank { polishes.joinToString(", ") { it.name }.take(60) }) },
@@ -132,6 +137,8 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
             onSave = { m -> if (editing != null) vm.updateManicure(m) else vm.addManicure(m); showForm = false },
             onDelete = editing?.let { { vm.deleteManicure(it.id); showForm = false } },
             onDismiss = { showForm = false },
+            resolvePhotoUri = vm::resolvePhotoUri,
+            importPhoto = vm::importPhoto,
         )
     }
 }
@@ -144,11 +151,14 @@ fun DiaryFormSheet(
     onSave: (Manicure) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
+    resolvePhotoUri: (String) -> Uri,
+    importPhoto: suspend (Uri) -> String,
 ) {
     val now = System.currentTimeMillis()
     var date by remember(entry) { mutableStateOf(entry?.date ?: todayIso()) }
     var selectedIds by remember(entry) { mutableStateOf(entry?.polishIds ?: emptyList()) }
     var notes by remember(entry) { mutableStateOf(entry?.notes ?: "") }
+    var photos by remember(entry) { mutableStateOf(entry?.photos ?: emptyList()) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -177,6 +187,13 @@ fun DiaryFormSheet(
             }
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(notes, { notes = it }, label = { Text("Notizen") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+            Spacer(Modifier.height(8.dp))
+            PhotoListPickerField(
+                photos = photos,
+                resolvePhotoUri = resolvePhotoUri,
+                importPhoto = importPhoto,
+                onPhotosChange = { photos = it },
+            )
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (onDelete != null) TextButton(onClick = onDelete) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
@@ -184,8 +201,8 @@ fun DiaryFormSheet(
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(onClick = {
                     val result = entry?.copy(
-                        date = date, polishIds = selectedIds, notes = notes.trim(), updatedAt = now,
-                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), createdAt = now, updatedAt = now)
+                        date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos, updatedAt = now,
+                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos, createdAt = now, updatedAt = now)
                     onSave(result)
                 }) { Text("Speichern") }
             }

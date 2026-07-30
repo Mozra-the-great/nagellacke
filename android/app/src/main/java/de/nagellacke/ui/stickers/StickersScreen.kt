@@ -1,5 +1,6 @@
 package de.nagellacke.ui.stickers
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,7 @@ import de.nagellacke.domain.model.StickerType
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
+import de.nagellacke.ui.common.PhotoPickerField
 import de.nagellacke.ui.common.UnsupportedPhotoIndicator
 import de.nagellacke.ui.common.rememberPhotoModel
 
@@ -137,13 +139,22 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
             onSave = { s -> if (editing != null) vm.updateSticker(s) else vm.addSticker(s); showForm = false },
             onDelete = editing?.let { { vm.deleteSticker(it.id); showForm = false } },
             onDismiss = { showForm = false },
+            resolvePhotoUri = vm::resolvePhotoUri,
+            importPhoto = vm::importPhoto,
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (() -> Unit)?, onDismiss: () -> Unit) {
+fun StickerFormSheet(
+    sticker: Sticker?,
+    onSave: (Sticker) -> Unit,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit,
+    resolvePhotoUri: (String) -> Uri,
+    importPhoto: suspend (Uri) -> String,
+) {
     val now = System.currentTimeMillis()
     var name   by remember(sticker) { mutableStateOf(sticker?.name ?: "") }
     var brand  by remember(sticker) { mutableStateOf(sticker?.brand ?: "") }
@@ -152,6 +163,7 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
     var status by remember(sticker) { mutableStateOf(sticker?.status ?: PolishStatus.Ok) }
     var rating by remember(sticker) { mutableStateOf(sticker?.rating ?: 0) }
     var notes  by remember(sticker) { mutableStateOf(sticker?.notes ?: "") }
+    var photo  by remember(sticker) { mutableStateOf(sticker?.photo) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -161,6 +173,13 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
             OutlinedTextField(brand, { brand = it }, label = { Text("Marke") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(style, { style = it }, label = { Text("Stil") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            PhotoPickerField(
+                photo = photo,
+                resolvePhotoUri = resolvePhotoUri,
+                importPhoto = importPhoto,
+                onPhotoChange = { photo = it },
+            )
             Spacer(Modifier.height(8.dp))
             Text("Typ", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -190,11 +209,12 @@ fun StickerFormSheet(sticker: Sticker?, onSave: (Sticker) -> Unit, onDelete: (()
                         val result = sticker?.copy(
                             name = name.trim(), brand = brand.trim(), style = style.trim(),
                             type = type, status = status, rating = rating, notes = notes.trim(),
+                            photo = photo,
                             updatedAt = now,
                         ) ?: Sticker(
                             id = generateId(), name = name.trim(), brand = brand.trim(), style = style.trim(),
                             type = type, status = status, rating = rating, notes = notes.trim(),
-                            colors = listOf("#ff6699"), createdAt = now, updatedAt = now,
+                            colors = listOf("#ff6699"), photo = photo, createdAt = now, updatedAt = now,
                         )
                         onSave(result)
                     },

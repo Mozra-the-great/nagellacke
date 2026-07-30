@@ -1,9 +1,11 @@
 package de.nagellacke.ui.diary
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterManicures
 import de.nagellacke.domain.model.Manicure
@@ -28,6 +30,7 @@ data class DiaryUiState(
 class DiaryViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
 
     val uiState = combine(repo.observeData(), configStore.configFlow) { data, cfg ->
@@ -42,4 +45,10 @@ class DiaryViewModel @Inject constructor(
     fun addManicure(m: Manicure)    = viewModelScope.launch { repo.addManicure(m) }
     fun updateManicure(m: Manicure) = viewModelScope.launch { repo.updateManicure(m) }
     fun deleteManicure(id: String)  = viewModelScope.launch { repo.deleteManicure(id) }
+
+    /** Imports a picked photo (downsamples + compresses) and returns its local filename. */
+    suspend fun importPhoto(uri: Uri): String = photoRepository.importPhoto(uri)
+
+    /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
+    fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
 }

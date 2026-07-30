@@ -1,11 +1,13 @@
 package de.nagellacke.ui.collection
 
+import android.net.Uri
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.nagellacke.data.repo.DisplayPrefsStore
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.data.sync.DropboxAdapter
@@ -48,6 +50,7 @@ class CollectionViewModel @Inject constructor(
     private val repo: NagellackeRepository,
     private val displayPrefsStore: DisplayPrefsStore,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
 ) : ViewModel() {
     private val _filter = MutableStateFlow(FilterState())
 
@@ -78,6 +81,12 @@ class CollectionViewModel @Inject constructor(
     fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }
     fun addCategory(label: String)   = viewModelScope.launch { repo.addCategory(label) }
+
+    /** Imports a picked photo (downsamples + compresses) and returns its local filename. */
+    suspend fun importPhoto(uri: Uri): String = photoRepository.importPhoto(uri)
+
+    /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
+    fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
 }
 
 /**
