@@ -1,6 +1,8 @@
 package de.nagellacke.data.sync
 
 import de.nagellacke.data.repo.SyncConfig
+import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.ui.settings.OAuthClientIds
 import kotlinx.serialization.encodeToString
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
@@ -12,25 +14,47 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
 
-class DropboxAdapter(private val config: SyncConfig) : SyncAdapter {
+class DropboxAdapter(
+    private val config: SyncConfig,
+    private val configStore: SyncConfigStore? = null,
+) : SyncAdapter {
     override val provider = SyncProvider.Dropbox
 
     private val json = Json { ignoreUnknownKeys = true }
     private val content = "https://content.dropboxapi.com/2"
     private val api = "https://api.dropboxapi.com/2"
     private val dataPath = "/nagellacke/nagellacke-data.json"
+    private val tokenEndpoint = "https://api.dropboxapi.com/oauth2/token"
+
+    @Volatile private var accessToken = config.accessToken
 
     private val client = OkHttpClient.Builder()
         .addInterceptor { chain ->
             chain.proceed(
                 chain.request().newBuilder()
-                    .header("Authorization", "Bearer ${config.accessToken}")
+                    .header("Authorization", "Bearer $accessToken")
                     .build()
             )
         }
         .build()
 
-    private suspend fun downloadData(): AppData? {
+    /** Unauthenticated client used for the token-refresh POST itself. */
+    private val plainClient = OkHttpClient.Builder().build()
+
+    /** Refreshes [accessToken] if it's expired (60s skew margin). Returns false if it can't be made valid. */
+    private fun ensureFreshAccessToken(): Boolean {
+        val now = System.currentTimeMillis()
+        val skewMs = 60_000L
+        if (accessToken.isNotBlank() && now < config.tokenExpiry - skewMs) return true
+        val refreshToken = config.refreshToken
+        if (refreshToken.isBlank()) return false
+        val refreshed = refreshOAuthToken(plainClient, json, tokenEndpoint, OAuthClientIds.Dropbox, refreshToken) ?: return false
+        accessToken = refreshed.accessToken
+        configStore?.saveTokens(provider, refreshed.accessToken, refreshed.refreshToken ?: refreshToken, now + refreshed.expiresIn * 1000)
+        return true
+    }
+
+    private fun fetchRemote(): RemoteFetchResult {
         val arg = """{"path":"$dataPath"}"""
         val res = client.newCall(
             Request.Builder().url("$content/files/download")
@@ -38,28 +62,50 @@ class DropboxAdapter(private val config: SyncConfig) : SyncAdapter {
                 .header("Dropbox-API-Arg", arg)
                 .build()
         ).execute()
-        val body = res.body?.string()
-        res.close()
-        return if (res.isSuccessful && body != null) runCatching { json.decodeFromString<AppData>(body) }.getOrNull() else null
+        return res.use { r ->
+            when {
+                // Dropbox reports a missing file as HTTP 409 with a path/not_found error body.
+                r.code == 409 -> RemoteFetchResult.NotFound
+                r.isSuccessful -> {
+                    val body = r.body?.string()
+                    val parsed = body?.let { runCatching { json.decodeFromString<AppData>(it) }.getOrNull() }
+                    if (parsed != null) RemoteFetchResult.Found(parsed)
+                    else RemoteFetchResult.Error("Antwort konnte nicht gelesen werden")
+                }
+                else -> RemoteFetchResult.Error("Lesefehler (HTTP ${r.code})")
+            }
+        }
     }
 
-    private suspend fun uploadData(data: AppData) {
-        val arg = """{"path":"$dataPath","mode":"overwrite","autorename":false}"""
-        val body = json.encodeToString(data)
-        client.newCall(
-            Request.Builder().url("$content/files/upload")
-                .post(body.toRequestBody("application/octet-stream".toMediaType()))
-                .header("Dropbox-API-Arg", arg)
-                .build()
-        ).execute().close()
+    override suspend fun sync(local: AppData): SyncResult {
+        if (!ensureFreshAccessToken()) {
+            return SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
+        }
+        return try {
+            when (val fetch = fetchRemote()) {
+                is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
+                else -> {
+                    val remote = (fetch as? RemoteFetchResult.Found)?.data
+                    val merged = if (remote != null) mergeData(local, remote) else local
+                    val arg = """{"path":"$dataPath","mode":"overwrite","autorename":false}"""
+                    val body = json.encodeToString(merged)
+                    val putRes = client.newCall(
+                        Request.Builder().url("$content/files/upload")
+                            .post(body.toRequestBody("application/octet-stream".toMediaType()))
+                            .header("Dropbox-API-Arg", arg)
+                            .build()
+                    ).execute()
+                    val ok = putRes.isSuccessful
+                    val code = putRes.code
+                    putRes.close()
+                    if (!ok) SyncResult(success = false, merged = local, error = "Schreibfehler (HTTP $code)")
+                    else SyncResult(success = true, merged = merged)
+                }
+            }
+        } catch (e: Exception) {
+            SyncResult(success = false, merged = local, error = e.message)
+        }
     }
-
-    override suspend fun sync(local: AppData): SyncResult = runCatching {
-        val remote = downloadData()
-        val merged = if (remote != null) mergeData(local, remote) else local
-        uploadData(merged)
-        SyncResult(success = true, merged = merged)
-    }.getOrElse { e -> SyncResult(success = false, merged = local, error = e.message) }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         val filename = "${UUID.randomUUID()}.jpg"

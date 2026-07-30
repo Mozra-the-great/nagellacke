@@ -20,12 +20,12 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
-fun createAdapter(config: SyncConfig): SyncAdapter = when (config.provider) {
+fun createAdapter(config: SyncConfig, configStore: SyncConfigStore? = null): SyncAdapter = when (config.provider) {
     SyncProvider.Server     -> ServerAdapter(config)
     SyncProvider.Nextcloud  -> NextcloudAdapter(config)
-    SyncProvider.GoogleDrive -> GoogleDriveAdapter(config)
-    SyncProvider.OneDrive   -> OneDriveAdapter(config)
-    SyncProvider.Dropbox    -> DropboxAdapter(config)
+    SyncProvider.GoogleDrive -> GoogleDriveAdapter(config, configStore)
+    SyncProvider.OneDrive   -> OneDriveAdapter(config, configStore)
+    SyncProvider.Dropbox    -> DropboxAdapter(config, configStore)
 }
 
 @Singleton
@@ -49,7 +49,7 @@ class SyncManager @Inject constructor(
         val config = configStore.getConfig() ?: return SyncResult(
             success = false, merged = repository.getCurrentData(), error = "Kein Sync konfiguriert"
         )
-        val adapter = createAdapter(config)
+        val adapter = createAdapter(config, configStore)
         val local = repository.getCurrentData()
         val result = adapter.sync(local)
         if (result.success) {

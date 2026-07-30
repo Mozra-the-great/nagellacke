@@ -50,24 +50,45 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         }
     }
 
-    override suspend fun sync(local: AppData): SyncResult = runCatching {
-        ensureDir("nagellacke")
+    private fun fetchRemote(): RemoteFetchResult {
         val getRes = client.newCall(
             Request.Builder().url(dataUrl).get().header("Authorization", authHeader).build()
         ).execute()
-        val remote: AppData? = if (getRes.isSuccessful) {
-            runCatching { json.decodeFromString<AppData>(getRes.body!!.string()) }.getOrNull()
-        } else null
-        getRes.close()
+        return getRes.use { res ->
+            when {
+                res.code == 404 -> RemoteFetchResult.NotFound
+                res.isSuccessful -> {
+                    val bodyStr = res.body?.string()
+                    val parsed = bodyStr?.let { runCatching { json.decodeFromString<AppData>(it) }.getOrNull() }
+                    if (parsed != null) RemoteFetchResult.Found(parsed)
+                    else RemoteFetchResult.Error("Antwort konnte nicht gelesen werden")
+                }
+                else -> RemoteFetchResult.Error("Lesefehler (HTTP ${res.code})")
+            }
+        }
+    }
 
-        val merged = if (remote != null) mergeData(local, remote) else local
-        val body = json.encodeToString(merged).toRequestBody("application/json".toMediaType())
-        client.newCall(
-            Request.Builder().url(dataUrl).put(body).header("Authorization", authHeader).build()
-        ).execute().close()
-
-        SyncResult(success = true, merged = merged)
-    }.getOrElse { e -> SyncResult(success = false, merged = local, error = e.message) }
+    override suspend fun sync(local: AppData): SyncResult = try {
+        ensureDir("nagellacke")
+        when (val fetch = fetchRemote()) {
+            is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
+            else -> {
+                val remote = (fetch as? RemoteFetchResult.Found)?.data
+                val merged = if (remote != null) mergeData(local, remote) else local
+                val body = json.encodeToString(merged).toRequestBody("application/json".toMediaType())
+                val putRes = client.newCall(
+                    Request.Builder().url(dataUrl).put(body).header("Authorization", authHeader).build()
+                ).execute()
+                val ok = putRes.isSuccessful
+                val code = putRes.code
+                putRes.close()
+                if (!ok) SyncResult(success = false, merged = local, error = "Schreibfehler (HTTP $code)")
+                else SyncResult(success = true, merged = merged)
+            }
+        }
+    } catch (e: Exception) {
+        SyncResult(success = false, merged = local, error = e.message)
+    }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         ensureDir("nagellacke/photos")
