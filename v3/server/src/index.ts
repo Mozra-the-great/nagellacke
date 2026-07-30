@@ -710,9 +710,13 @@ async function main() {
 
   // GET /api/ai/jobs/:id — poll job status
   app.get('/api/ai/jobs/:id', { preHandler: requireJwt }, async (request, reply) => {
+    const { username } = request.user as { username: string };
     const { id } = request.params as { id: string };
     const job = getAiJob(id);
-    if (!job) return reply.code(404).send({ error: 'Job nicht gefunden' });
+    // Job ids are UUIDs, but a job carries its owner's prompt and researched
+    // results, so ownership is checked rather than relying on unguessability.
+    // 404 rather than 403 — don't confirm that someone else's job id exists.
+    if (!job || job.username !== username) return reply.code(404).send({ error: 'Job nicht gefunden' });
     return { job };
   });
 
