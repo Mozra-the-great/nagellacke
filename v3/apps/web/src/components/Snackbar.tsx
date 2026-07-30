@@ -22,28 +22,50 @@ export function useSnackbar(): SnackbarContextValue {
 export function SnackbarProvider({ children }: { children: ReactNode }) {
   const [snack, setSnack] = useState<SnackbarState | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Held outside React state so a pending commit can be flushed synchronously
+  // without running side effects inside a state updater.
+  const pendingCommitRef = useRef<(() => void) | null>(null);
 
-  const showSnackbar = useCallback((message: string, undoFn?: () => void, commitFn?: () => void) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    const id = Date.now();
-    setSnack({ message, undoFn, commitFn, id });
-    timerRef.current = setTimeout(() => {
-      setSnack((prev) => {
-        if (prev?.id === id) { prev.commitFn?.(); return null; }
-        return prev;
-      });
-    }, 3000);
+  // Runs the outstanding commit (if any) and disarms its timer. Idempotent:
+  // the ref is cleared first, so a later flush can't run the same commit twice.
+  const flushPending = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const commit = pendingCommitRef.current;
+    pendingCommitRef.current = null;
+    commit?.();
   }, []);
 
+  const showSnackbar = useCallback((message: string, undoFn?: () => void, commitFn?: () => void) => {
+    // A second delete before the first snackbar times out replaces it, taking
+    // away that item's undo affordance — so treat the outgoing snack as
+    // implicitly committed rather than dropping its cleanup (which used to
+    // orphan the first item's photo on the server).
+    flushPending();
+    const id = Date.now();
+    pendingCommitRef.current = commitFn ?? null;
+    setSnack({ message, undoFn, commitFn, id });
+    timerRef.current = setTimeout(() => {
+      flushPending();
+      setSnack(null);
+    }, 3000);
+  }, [flushPending]);
+
   const handleUndo = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    // Undone, not committed: drop the cleanup instead of running it.
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    pendingCommitRef.current = null;
     snack?.undoFn?.();
     setSnack(null);
   };
 
   const handleDismiss = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    snack?.commitFn?.();
+    flushPending();
     setSnack(null);
   };
 
