@@ -97,6 +97,29 @@ cat /opt/nagellacke/backend/data/.api_key
 cat /opt/nagellacke/v3/server/data/.api_key
 ```
 
+### Schlüssel rotieren
+
+Der Schlüssel läuft nicht ab. Er autorisiert `/api/update/apply` — und damit
+das Ausführen beliebigen Repo-Codes auf dem Host — deshalb ist ein Leak wie ein
+verlorener Shell-Zugang zu behandeln. Nach einem verlorenen Gerät, einem
+geteilten Browser oder einfach turnusmäßig rotieren:
+
+```bash
+# Variante 1 — im laufenden Betrieb, mit dem aktuellen Schlüssel.
+# Antwortet mit dem neuen Schlüssel; der alte ist ab sofort ungültig.
+curl -X POST http://localhost:3000/api/admin/api-key/rotate \
+  -H "X-Api-Key: $ALTER_SCHLUESSEL"
+
+# Variante 2 — ohne den aktuellen Schlüssel (z. B. wenn er verloren ist).
+# Erfordert Shell-Zugriff; der neue Schlüssel steht beim Start in der Konsole.
+rm /opt/nagellacke/v3/server/data/.api_key
+systemctl restart nagellacke-v3
+journalctl -u nagellacke-v3 -n 20
+```
+
+Danach den neuen Schlüssel in der App unter **⚙ → Einstellungen** eintragen.
+Ist der Schlüssel älter als 180 Tage, weist der Server beim Start darauf hin.
+
 ---
 
 ## Sync-Account anlegen (v3, einmalig)

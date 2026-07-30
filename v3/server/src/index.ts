@@ -40,16 +40,45 @@ if (!/^[a-zA-Z0-9_.-]+$/.test(SERVICE_NAME)) {
 }
 
 // ── X-Api-Key auth (v2-kompatibel) ────────────────────────────────────────────
+// NOTE: this key is effectively a root credential — it authorizes
+// /api/update/apply, which pulls and executes arbitrary repo code. Treat losing
+// it like losing a shell on the host, and rotate it (see rotateApiKey below).
 const API_KEY_FILE = path.join(DATA_DIR, '.api_key');
+// Age after which startup nags about rotating (#108). Not enforced: the key is
+// the only way in for admin endpoints, so expiring it automatically would lock
+// the operator out of a self-hosted box with no recovery path.
+const API_KEY_MAX_AGE_DAYS = 180;
+
 let API_KEY: string;
 let API_KEY_IS_NEW = false;
+
+function writeApiKey(key: string): void {
+  fs.writeFileSync(API_KEY_FILE, key, { mode: 0o600 });
+}
 
 if (fs.existsSync(API_KEY_FILE)) {
   API_KEY = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
 } else {
   API_KEY = crypto.randomBytes(24).toString('hex');
-  fs.writeFileSync(API_KEY_FILE, API_KEY, { mode: 0o600 });
+  writeApiKey(API_KEY);
   API_KEY_IS_NEW = true;
+}
+
+/** Age of the current key in days, or null if it can't be determined. */
+function apiKeyAgeDays(): number | null {
+  try {
+    const { mtimeMs } = fs.statSync(API_KEY_FILE);
+    return Math.floor((Date.now() - mtimeMs) / 86_400_000);
+  } catch {
+    return null;
+  }
+}
+
+/** Generates and persists a fresh key, replacing the current one immediately. */
+function rotateApiKey(): string {
+  API_KEY = crypto.randomBytes(24).toString('hex');
+  writeApiKey(API_KEY);
+  return API_KEY;
 }
 
 // ── JWT secret (persistent) ────────────────────────────────────────────────────
@@ -345,6 +374,22 @@ async function main() {
     });
   });
 
+  // POST /api/admin/api-key/rotate — replace the admin API key
+  // Authorized with the *current* key, so an operator who still holds it can
+  // invalidate a leaked copy without shell access to the box. Previously the
+  // only rotation path was `rm data/.api_key` plus a restart (#108).
+  app.post('/api/admin/api-key/rotate', {
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async () => {
+    const apiKey = rotateApiKey();
+    console.warn('[SECURITY] Admin API key rotated — every previously issued key is now invalid.');
+    // Returned once, in the response to the authenticated rotation request
+    // itself: the caller needs it to keep working, and it is never recoverable
+    // from this endpoint again (only from data/.api_key on the host).
+    return { apiKey, rotatedAt: Date.now() };
+  });
+
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
     preHandler: requireApiKey,
@@ -606,6 +651,15 @@ async function main() {
       console.log('│  (Unter Einstellungen ⚙ eintragen)                  │');
       console.log('│  Nur einmalig angezeigt — danach: cat data/.api_key  │');
       console.log('└─────────────────────────────────────────────────────┘\n');
+    } else {
+      const age = apiKeyAgeDays();
+      if (age !== null && age >= API_KEY_MAX_AGE_DAYS) {
+        console.warn(
+          `[SECURITY] Der Admin-API-Key ist ${age} Tage alt. Rotieren mit ` +
+          'POST /api/admin/api-key/rotate (mit dem aktuellen X-Api-Key) oder ' +
+          '`rm data/.api_key` + Neustart.',
+        );
+      }
     }
     if (isEmailConfigured() && !process.env.APP_URL) {
       console.warn('[reports] WARNING: SMTP is configured but APP_URL is not set — photo URLs in emails will be broken. Set APP_URL to the public base URL of this server.');
