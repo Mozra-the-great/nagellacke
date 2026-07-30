@@ -86,7 +86,11 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
   const topBrands = Object.entries(brandCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxBrand = topBrands[0]?.[1] ?? 1;
 
-  const periodLabel = period === 'week' ? 'Woche' : 'Monat';
+  // Full compound noun rather than `${'Woche'}sbericht` — German needs the -n
+  // linking form here ("Wochenbericht"), so the shared "s" suffix that works for
+  // "Monatsbericht" produced "Wochesbericht" for the weekly report. Matches the
+  // email subject line, which already builds "Wochen"/"Monats" + "bericht".
+  const periodLabel = period === 'week' ? 'Wochenbericht' : 'Monatsbericht';
 
   const css = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -189,14 +193,14 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Nagellacke ${periodLabel}sbericht · ${escHtml(label)}</title>
+  <title>Nagellacke ${periodLabel} · ${escHtml(label)}</title>
   <style>${css}</style>
 </head>
 <body>
   <div class="cover">
     <div class="cover-emoji">💅</div>
     <div class="cover-title">Nagellacke</div>
-    <div class="cover-sub">${periodLabel}sbericht · ${escHtml(label)}</div>
+    <div class="cover-sub">${periodLabel} · ${escHtml(label)}</div>
     <div class="cover-chips">
       <div class="chip"><strong>${newPolishes.length}</strong>neue Lacke</div>
       <div class="chip"><strong>${newStickers.length}</strong>neue Sticker</div>
