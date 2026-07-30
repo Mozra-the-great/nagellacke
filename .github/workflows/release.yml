@@ -1,0 +1,71 @@
+name: Release
+
+# Creates the git tag and the GitHub release in one manually-triggered step.
+# Tags are created server-side here rather than pushed from a workstation, so
+# the release always points at a commit that is already on the default branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create, e.g. v3.2.0-rc.1'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as a pre-release'
+        required: true
+        type: boolean
+        default: true
+      notes_file:
+        description: 'Release notes file, relative to the repo root'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          NOTES_FILE: ${{ inputs.notes_file }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Tag ${TAG} already exists locally — refusing to move it."
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists — refusing to overwrite it."
+            exit 1
+          fi
+
+          args=(--title "${TAG}" --target "${GITHUB_SHA}")
+          if [ "${PRERELEASE}" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          if [ -n "${NOTES_FILE}" ]; then
+            if [ ! -f "${NOTES_FILE}" ]; then
+              echo "Notes file '${NOTES_FILE}' not found."
+              exit 1
+            fi
+            args+=(--notes-file "${NOTES_FILE}")
+          else
+            args+=(--generate-notes)
+          fi
+
+          # gh creates the tag at --target when it doesn't exist yet.
+          gh release create "${TAG}" "${args[@]}"
+          echo "Created ${TAG} at ${GITHUB_SHA}"
