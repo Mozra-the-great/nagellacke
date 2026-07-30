@@ -7,6 +7,10 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+---
+
+## [3.2.0-rc.1] – 2026-07-30
+
 ### Sicherheit
 - **Android: HTTP-Logging-Interceptor nicht mehr in Release-Builds aktiv**: `ServerAdapter` und `NextcloudAdapter` fügten `HttpLoggingInterceptor(Level.BASIC)` bedingungslos hinzu, wodurch jede Sync-Anfrage auch in Produktions-Builds ins Logcat geschrieben wurde. Bei Nextcloud steckt der Nextcloud-Benutzername in der WebDAV-Basis-URL und wurde damit bei jedem Sync geloggt. Der Interceptor wird jetzt nur noch in Debug-Builds registriert (`BuildConfig.DEBUG`). (#94)
 - **systemd-Service läuft nicht mehr als root**: `install.sh` legt jetzt einen dedizierten Systembenutzer `nagellacke` an, dem das komplette Installationsverzeichnis gehört (`User=`/`Group=` in der Unit). Das Selbst-Update (`POST /api/update/apply`) rief bisher `systemctl restart` auf sich selbst auf, was Root-Rechte gebraucht hätte — stattdessen beendet sich der Prozess jetzt einfach selbst (`process.exit(0)`), `Restart=always` in der Unit startet ihn automatisch neu. Ein geleakter oder erratener Admin-API-Key gibt einem Angreifer damit nur noch Rechte innerhalb `/opt/nagellacke`, nicht mehr Root-RCE auf dem Host. (#71)
