@@ -445,14 +445,20 @@ async function main() {
   // ── User profile (JWT) ────────────────────────────────────────────────────────
 
   // GET /api/auth/me
-  app.get('/api/auth/me', { preHandler: requireJwt }, async (request) => {
+  app.get('/api/auth/me', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request) => {
     const { username } = request.user as { username: string };
     const user = getUser(username);
     return { username, email: user?.email ?? null, smtpConfigured: isEmailConfigured() };
   });
 
   // PATCH /api/auth/me
-  app.patch('/api/auth/me', { preHandler: requireJwt }, async (request, reply) => {
+  app.patch('/api/auth/me', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const { email } = request.body as { email?: string };
     if (!email || !isValidEmail(email)) {
@@ -477,7 +483,10 @@ async function main() {
   }
 
   // GET /api/reports/preview?period=week&date=2026-06-19
-  app.get('/api/reports/preview', { preHandler: requireJwt }, async (request, reply) => {
+  app.get('/api/reports/preview', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const query = request.query as { period?: string; date?: string };
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
@@ -526,7 +535,10 @@ async function main() {
   });
 
   // POST /api/reports/schedule
-  app.post('/api/reports/schedule', { preHandler: requireJwt }, async (request, reply) => {
+  app.post('/api/reports/schedule', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const body = request.body as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
@@ -625,7 +637,10 @@ async function main() {
   // the current user (e.g. after a device is lost/stolen). No way to revoke
   // a single token without per-token tracking, but bumping the version
   // covers the actual threat: an attacker with a stolen long-lived token.
-  app.post('/api/auth/logout-all', { preHandler: requireJwt }, async (request) => {
+  app.post('/api/auth/logout-all', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request) => {
     const { username } = request.user as { username: string };
     bumpTokenVersion(username);
     return { ok: true };
@@ -679,7 +694,10 @@ async function main() {
   // ── KI-Assistenz (AI Auto-Fill / Smart-Cart) ──────────────────────────────────
 
   // GET /api/ai/settings — secrets are never sent back, only whether they're set
-  app.get('/api/ai/settings', { preHandler: requireJwt }, async () => {
+  app.get('/api/ai/settings', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
     const config = getAiConfig();
     return {
       provider: config.provider,
@@ -689,7 +707,10 @@ async function main() {
   });
 
   // POST /api/ai/settings
-  app.post('/api/ai/settings', { preHandler: requireJwt }, async (request, reply) => {
+  app.post('/api/ai/settings', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const body = request.body as Partial<{
       provider: AiConfig['provider'];
       openrouter: Partial<{ apiKey: string; model: string; freeOnly: boolean }>;
@@ -759,7 +780,12 @@ async function main() {
   });
 
   // GET /api/ai/jobs/:id — poll job status
-  app.get('/api/ai/jobs/:id', { preHandler: requireJwt }, async (request, reply) => {
+  // Generous limit: the client polls this every 2s for up to 2 minutes while a
+  // job runs (see pollAiJob), so ~60 requests per job is normal traffic.
+  app.get('/api/ai/jobs/:id', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const { id } = request.params as { id: string };
     const job = getAiJob(id);
