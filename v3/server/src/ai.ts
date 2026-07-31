@@ -15,6 +15,25 @@ function isConfigured(config: AiConfig): boolean {
 
 // ── Provider clients ───────────────────────────────────────────────────────────
 
+/** OpenRouter's own free-model router: picks a free model per request and
+ *  filters for the capabilities the request needs. */
+const OPENROUTER_FREE_ROUTER = 'openrouter/free';
+
+/**
+ * Restricts a model id to free inference.
+ *
+ * ":free" is a *variant* suffix on a provider-hosted model
+ * ("deepseek/deepseek-r1:free"). OpenRouter's own routers — "openrouter/auto",
+ * "openrouter/free" — are not provider models, so blindly appending the suffix
+ * produced ids like "openrouter/auto:free" and "openrouter/free:free", which
+ * are not valid variants and are rejected. Routers are mapped to the free
+ * router instead, which is what the setting means anyway.
+ */
+function toFreeModel(model: string): string {
+  if (model.startsWith('openrouter/')) return OPENROUTER_FREE_ROUTER;
+  return model.endsWith(':free') ? model : `${model}:free`;
+}
+
 async function callOpenRouter(
   config: AiConfig['openrouter'],
   systemPrompt: string,
@@ -23,8 +42,7 @@ async function callOpenRouter(
 ): Promise<string> {
   if (!config.apiKey) throw new Error('OpenRouter-API-Schlüssel fehlt');
   let model = config.model || 'openrouter/auto';
-  // OpenRouter marks free variants of a model with a ":free" suffix.
-  if (config.freeOnly && !model.endsWith(':free')) model = `${model}:free`;
+  if (config.freeOnly) model = toFreeModel(model);
 
   const body: Record<string, unknown> = {
     model,
