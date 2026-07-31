@@ -18,8 +18,11 @@ import {
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob } from './db';
 import { processAiJobQueue, isAiConfigured } from './ai';
+import type { SearchBackend } from './websearch';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
+
+const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
 const PORT         = Number(process.env.PORT ?? 3000);
 
@@ -703,6 +706,11 @@ async function main() {
       provider: config.provider,
       openrouter: { model: config.openrouter.model, freeOnly: config.openrouter.freeOnly, hasApiKey: !!config.openrouter.apiKey },
       gemini: { model: config.gemini.model, hasApiKey: !!config.gemini.apiKey },
+      webSearch: {
+        backend: config.webSearch.backend,
+        searxngUrl: config.webSearch.searxngUrl,
+        hasBraveApiKey: !!config.webSearch.braveApiKey,
+      },
     };
   });
 
@@ -715,6 +723,7 @@ async function main() {
       provider: AiConfig['provider'];
       openrouter: Partial<{ apiKey: string; model: string; freeOnly: boolean }>;
       gemini: Partial<{ apiKey: string; model: string }>;
+      webSearch: Partial<{ backend: SearchBackend; searxngUrl: string; braveApiKey: string }>;
     }>;
     if (body.provider !== 'openrouter' && body.provider !== 'gemini') {
       return reply.code(400).send({ error: 'provider muss "openrouter" oder "gemini" sein' });
@@ -730,6 +739,13 @@ async function main() {
       gemini: {
         apiKey: body.gemini?.apiKey !== undefined ? body.gemini.apiKey : current.gemini.apiKey,
         model: body.gemini?.model || current.gemini.model,
+      },
+      webSearch: {
+        backend: SEARCH_BACKENDS.includes(body.webSearch?.backend as SearchBackend)
+          ? body.webSearch!.backend as SearchBackend
+          : current.webSearch.backend,
+        searxngUrl: body.webSearch?.searxngUrl !== undefined ? body.webSearch.searxngUrl.trim() : current.webSearch.searxngUrl,
+        braveApiKey: body.webSearch?.braveApiKey !== undefined ? body.webSearch.braveApiKey : current.webSearch.braveApiKey,
       },
     };
     setAiConfig(config);

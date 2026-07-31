@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AppData } from '@nagellacke/core';
+import type { WebSearchConfig } from './websearch';
+import { DEFAULT_WEB_SEARCH } from './websearch';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
@@ -221,6 +223,8 @@ export interface AiConfig {
   provider: AiProvider;
   openrouter: { apiKey: string; model: string; freeOnly: boolean };
   gemini: { apiKey: string; model: string };
+  /** Server-side web search offered to the model as a tool (see websearch.ts). */
+  webSearch: WebSearchConfig;
 }
 
 const AI_CONFIG_FILE = path.join(DATA_DIR, 'ai_config.json');
@@ -229,6 +233,7 @@ const DEFAULT_AI_CONFIG: AiConfig = {
   provider: 'openrouter',
   openrouter: { apiKey: '', model: 'openrouter/auto', freeOnly: false },
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },
+  webSearch: DEFAULT_WEB_SEARCH,
 };
 
 export function getAiConfig(): AiConfig {
@@ -239,6 +244,7 @@ export function getAiConfig(): AiConfig {
       provider: raw.provider === 'gemini' ? 'gemini' : 'openrouter',
       openrouter: { ...DEFAULT_AI_CONFIG.openrouter, ...raw.openrouter },
       gemini: { ...DEFAULT_AI_CONFIG.gemini, ...raw.gemini },
+      webSearch: { ...DEFAULT_WEB_SEARCH, ...raw.webSearch },
     };
   } catch {
     return DEFAULT_AI_CONFIG;
