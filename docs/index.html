@@ -94,9 +94,9 @@
       <path d="M45 85 L48 87" style="stroke:var(--pencil)" stroke-width="1" opacity=".5" fill="none"/>
       <path class="bottle-empty" d="M14 100 C13 108 13 116 15 122 C20 125 44 125 49 122 C51 116 51 108 50 100 Z" style="fill:var(--paper);opacity:var(--fx-empty,0)"/>
       <path d="M18 78 C17 76 47 76 46 78 C47 90 47 98 46 100 C47 102 17 102 18 100 C17 98 17 90 18 78 Z" style="fill:var(--paper);stroke:var(--ink)" opacity=".85" stroke-width="1.4"/>
-      <path d="M23 83 q3.5 -4 7 0 q3.5 4 7 0 q3.5 -4 7 0" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-      <path d="M23 91 q4 -3.5 8 0 q4 3.5 8 0" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-      <path d="M25 98 q3 -3 6 0 q3 3 6 0" style="stroke:var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      <path d="M22 84 c1.6 -3.4 2.6 1.6 4 -.6 c1.2 -2 2.6 2.6 4.2 .4 c1.4 -1.9 2.2 1.8 3.6 .2 c1.5 -1.7 2.4 2 4 .2 c1.2 -1.4 2.6 1.2 3.8 -.2" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M22 91 c1.8 -2.8 2.8 1.8 4.4 -.4 c1.4 -1.9 2.4 2.2 4 .2 c1.6 -2 2.6 1.6 4 -.2 c1.1 -1.3 2.2 1 3 .2" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M23 97.5 c2 -2.4 3 1.6 4.6 -.2 c1.4 -1.6 2.4 1.8 3.8 .2 c1.1 -1.2 2 .8 2.8 .2" style="stroke:var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
       <path d="M25 47 L25 32 C25 30 39 30 39 32 L39 47 Z" style="fill:var(--polish,#b3122e);stroke:var(--ink)" stroke-width="2"/>
       <path d="M20 8 C20 4 44 4 44 8 L44 30 L20 30 Z" style="fill:var(--cap,#2c2c31);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
       <path d="M25 10 L25 26" style="stroke:#ffffff" stroke-width="1.5" opacity=".4" fill="none" stroke-linecap="round"/>
@@ -136,32 +136,103 @@
       </ul>
     </div>
     <div class="hero-art">
-      <svg viewBox="0 0 420 380" aria-hidden="true" class="hero-illustration" style="overflow:visible">
-        <g filter="url(#rough)">
-          <!-- Kaffeetasse -->
-          <path pathLength="100" d="M305 70 L367 70 L361 102 C360 110 312 110 311 102 Z" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M367 76 C378 76 378 96 366 96" fill="none" stroke="var(--ink)" stroke-width="2"/>
-          <ellipse cx="336" cy="109" rx="34" ry="6" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="1.6"/>
-          <path d="M322 63 C320 54 326 49 323 40" fill="none" stroke="var(--pencil)" stroke-width="1.2" stroke-linecap="round"/>
-          <path d="M342 63 C340 54 346 49 343 40" fill="none" stroke="var(--pencil)" stroke-width="1.2" stroke-linecap="round"/>
-          <!-- Pinsel, liegend: Stiel, Zwinge, gefächerte Borsten -->
-          <path pathLength="100" d="M22 352 L145 332" fill="none" stroke="var(--ink)" stroke-width="3.4" stroke-linecap="round"/>
-          <path d="M132 337 L148 340 L146 348 L130 345 Z" fill="var(--pencil-soft)" stroke="var(--ink)" stroke-width="1"/>
-          <path d="M148 338 L163 330" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M149 342 L165 338" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M148 346 L164 346" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M147 349 L162 353" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
-          <!-- Farbkleckse -->
-          <path d="M170 345 C165 339 173 335 179 339 C185 343 181 351 173 351 C169 351 168 348 170 345 Z" fill="#c2185b" opacity=".85"/>
-          <path d="M195 355 C190 349 198 346 203 350 C207 354 202 360 196 359 C193 358 193 357 195 355 Z" fill="#8aa87a" opacity=".8"/>
-          <!-- Pfeil-Notiz, zeigt aufs mittlere Fläschchen -->
-          <path d="M75 48 C120 65 165 100 208 132" fill="none" stroke="var(--ink)" stroke-width="2"/>
-          <path d="M198 118 L210 138 L226 124" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Stillleben auf einer Tischplatte. Alle Objekte stehen auf derselben
+           Fläche: hintere Kante y≈301, vordere Kante y≈350, dazwischen die
+           Tischplatte. Was weiter hinten steht, ist kleiner und setzt höher auf
+           (grün 293 · rot 299 · blau 306) — daraus liest sich die Tiefe.
+           Reihenfolge = Tiefe: Fläche → Fläschchen → offenes Fläschchen →
+           Pinsel → Swatches → Tasse (ganz vorn) → Notiz (über allem). -->
+      <svg viewBox="0 14 420 350" aria-hidden="true" class="hero-illustration" style="overflow:visible">
+
+        <!-- Tischplatte: zwei Kanten, Auflageschatten, etwas Bleistift-Schraffur -->
+        <g>
+          <path d="M-4 302 C110 297 246 305 424 299 L424 350 C286 354 120 346 -4 351.5 Z" fill="var(--paper-3)"/>
+          <ellipse cx="106" cy="293" rx="24" ry="4.5" fill="var(--pencil)" opacity=".16"/>
+          <ellipse cx="145" cy="299" rx="27" ry="5" fill="var(--pencil)" opacity=".16"/>
+          <ellipse cx="194" cy="306" rx="34" ry="6" fill="var(--pencil)" opacity=".18"/>
+          <ellipse cx="307" cy="297" rx="27" ry="5" fill="var(--pencil)" opacity=".16"/>
+          <ellipse cx="92" cy="328" rx="50" ry="8" fill="var(--pencil)" opacity=".15"/>
+          <path pathLength="100" d="M-2 302 C110 297 246 305 422 299" fill="none" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round"/>
+          <path pathLength="100" d="M-2 351 C120 346 286 354 422 349.5" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M8 358 C132 353 274 361 412 356" fill="none" stroke="var(--pencil)" stroke-width="1.4" opacity=".5" stroke-linecap="round"/>
+          <path d="M220 309 C232 308 242 307 250 306" fill="none" stroke="var(--pencil)" stroke-width="1.3" opacity=".4" stroke-linecap="round"/>
+          <path d="M214 313 C230 313 244 311 254 310" fill="none" stroke="var(--pencil)" stroke-width="1.3" opacity=".3" stroke-linecap="round"/>
+          <path d="M322 299 C334 298 344 297 352 296" fill="none" stroke="var(--pencil)" stroke-width="1.3" opacity=".4" stroke-linecap="round"/>
+          <path d="M318 303 C332 303 344 301 354 300" fill="none" stroke="var(--pencil)" stroke-width="1.3" opacity=".28" stroke-linecap="round"/>
         </g>
-        <text x="18" y="40" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".5">Lieblingslack ♥</text>
-        <use href="#bottleTpl" transform="translate(48,190) scale(1.15)" style="--polish:#b3122e"/>
-        <use href="#bottleTpl" transform="translate(168,120) scale(1.5)" style="--polish:#24418f"/>
-        <use href="#bottleTpl" transform="translate(300,225) scale(.95)" style="--polish:#8aa87a"/>
+
+        <!-- Drei geschlossene Fläschchen, von hinten nach vorn -->
+        <use href="#bottleTpl" transform="translate(72.8,185.9) scale(.85)" style="--polish:#8aa87a"/>
+        <use href="#bottleTpl" transform="translate(105.4,170.5) scale(1.02)" style="--polish:#b3122e"/>
+        <use href="#bottleTpl" transform="translate(144.4,142.2) scale(1.3)" style="--polish:#24418f"/>
+
+        <!-- Offenes Fläschchen: Hals ohne Deckel, dunkle Lackfläche im Hals -->
+        <g>
+          <g filter="url(#roughSoft)">
+            <path pathLength="100" d="M278 232 C277 252 277 278 280 291 C281 295 285 296 300 296 C315 296 319 295 320 291 C323 278 323 252 322 232 C311 229 289 229 278 232 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M285 239 C284 258 284 278 286 289" fill="none" stroke="#ffffff" stroke-width="2" opacity=".3" stroke-linecap="round"/>
+            <path d="M286 262 C285 260 314 260 313 262 C314 270 314 276 313 278 C314 280 286 280 287 278 C286 276 286 270 286 262 Z" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.4" opacity=".9"/>
+            <path d="M290 267 c1.6 -2.6 2.6 1.6 4.2 -.4 c1.4 -1.8 2.4 2 4 .2 c1.4 -1.7 2.4 1.4 3.6 -.2 c1.2 -1.4 2.2 1 3.2 .2" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M291 274 c1.8 -2.2 2.8 1.6 4.4 -.2 c1.4 -1.5 2.4 1.6 3.8 .2 c1 -1 1.8 .8 2.6 .2" fill="none" stroke="var(--ink)" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M288 233 L288 216 C288 212.5 312 212.5 312 216 L312 233 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+            <ellipse cx="300" cy="214" rx="12.4" ry="4.4" fill="#7d0c30" stroke="var(--ink)" stroke-width="1.8"/>
+            <path d="M293 213 C296 210.6 304 210.6 307 213" fill="none" stroke="#ffffff" stroke-width="1.3" opacity=".3" stroke-linecap="round"/>
+          </g>
+        </g>
+
+        <!-- Pinsel, gerade herausgezogen: Kappe = Griff, Zwinge, flacher
+             Borstenkopf, darunter ein Tropfen, der zurück ins Fläschchen fällt.
+             Feine Teile → weichere Wackel-Filterstufe (siehe .hero-fine). -->
+        <g class="hero-fine" transform="translate(303,201) rotate(14) scale(1.1)">
+          <path d="M-7.4 -25 L-12.4 -3.4 C-12.5 -1.2 -11.2 -.2 -9.2 .4 C-4.8 1.4 4.8 1.4 9.2 .4 C11.2 -.2 12.5 -1.2 12.4 -3.4 L7.4 -25 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M-5 -22 L-7.8 -1.2" fill="none" stroke="#7d0c30" stroke-width="1.6" opacity=".7" stroke-linecap="round"/>
+          <path d="M0 -22 L0 -.2" fill="none" stroke="#7d0c30" stroke-width="1.6" opacity=".7" stroke-linecap="round"/>
+          <path d="M5 -22 L7.8 -1.2" fill="none" stroke="#7d0c30" stroke-width="1.6" opacity=".7" stroke-linecap="round"/>
+          <path d="M-6.4 -21 L-10.2 -3.4" fill="none" stroke="#ffffff" stroke-width="1.4" opacity=".22" stroke-linecap="round"/>
+          <path d="M-9 -37 L9 -37 L7.4 -25 L-7.4 -25 Z" fill="var(--pencil-soft)" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M-8.6 -31 L8.6 -31" fill="none" stroke="var(--ink)" stroke-width="1" opacity=".45"/>
+          <path d="M-5.2 -35.4 L-4.8 -26.6" fill="none" stroke="#ffffff" stroke-width="1.5" opacity=".5" stroke-linecap="round"/>
+          <path d="M-4 -37 L-4 -74 L4 -74 L4 -37 Z" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/>
+          <path d="M-13 -74 L-13 -112 C-13 -117.5 13 -117.5 13 -112 L13 -74 Z" fill="#2c2c31" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M-6.6 -110 L-6.6 -79" fill="none" stroke="#ffffff" stroke-width="1.7" opacity=".38" stroke-linecap="round"/>
+        </g>
+        <g class="hero-fine">
+          <path d="M303 204 C306.6 208 307.2 211.4 303.6 212.8 C299.6 211.4 300.2 208 303 204 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="1.2"/>
+          <!-- zwei kleine Glanz-Sternchen am Pinsel, in der Akzentfarbe der Seite -->
+          <path d="M300 92 C300.9 97.4 302.6 99.1 308 100 C302.6 100.9 300.9 102.6 300 108 C299.1 102.6 297.4 100.9 292 100 C297.4 99.1 299.1 97.4 300 92 Z" fill="var(--accent)"/>
+          <path d="M286 196 C286.6 199.4 287.6 200.4 291 201 C287.6 201.6 286.6 202.6 286 206 C285.4 202.6 284.4 201.6 281 201 C284.4 200.4 285.4 199.4 286 196 Z" fill="var(--accent)"/>
+        </g>
+
+        <!-- Frische Swatches auf der Platte, in den Farben, die gerade offen sind -->
+        <g>
+          <path d="M230 321 C244 316 268 317 288 320 C298 321.5 305 322.5 305 325 C305 327.5 298 328.5 288 330 C268 333 244 336 230 339 C221.5 335 221.5 325 230 321 Z" fill="#c2185b" opacity=".9"/>
+          <path d="M240 324 C254 321 272 321.5 288 323.5" fill="none" stroke="#ffffff" stroke-width="1.8" opacity=".3" stroke-linecap="round"/>
+          <path d="M310 338 C318 333.5 330 331 342 331 C349 331 352.5 333 352.5 336 C352.5 339 349 341.5 342 342 C330 343 316 342 310 338 Z" fill="#24418f" opacity=".85"/>
+          <path d="M318 337 C326 334.5 334 333.5 342 334" fill="none" stroke="#ffffff" stroke-width="1.4" opacity=".22" stroke-linecap="round"/>
+        </g>
+
+        <!-- Kaffeetasse, ganz vorn auf derselben Platte: Untertasse angesetzt,
+             Tasse steht darauf, Dampf steigt auf -->
+        <g>
+          <ellipse cx="84" cy="326" rx="48" ry="8" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="1.8"/>
+          <path d="M37 327 C46 336 122 336 131 327" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round"/>
+          <path d="M120 297 C137 296 137 314 117 313" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>
+          <path pathLength="100" d="M48 291 C49 305 51 315 55 319 C60 323 108 323 113 319 C117 315 119 305 120 291 Z" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M58 297 C59 307 61 314 64 318" fill="none" stroke="var(--pencil)" stroke-width="1.2" opacity=".45" stroke-linecap="round"/>
+          <path d="M104 298 C103 308 101 315 98 319" fill="none" stroke="var(--pencil)" stroke-width="1.2" opacity=".35" stroke-linecap="round"/>
+          <ellipse cx="84" cy="291" rx="36" ry="6.6" fill="var(--paper-3)" stroke="var(--ink)" stroke-width="2"/>
+          <ellipse cx="84" cy="291.5" rx="29" ry="4.6" fill="#6f4a34" opacity=".85"/>
+          <path d="M70 281 C66 274 74 268 70 259 C67 253 73 248 71 242" fill="none" stroke="var(--pencil)" stroke-width="1.4" opacity=".7" stroke-linecap="round"/>
+          <path d="M95 281 C91 274 99 268 95 259 C92 253 98 248 96 243" fill="none" stroke="var(--pencil)" stroke-width="1.4" opacity=".55" stroke-linecap="round"/>
+        </g>
+
+        <!-- Notiz: ein Zug von der Handschrift bis an die Kappe des blauen
+             Fläschchens, die Spitze läuft als eine Linie durch den Pfeilkopf -->
+        <g>
+          <path pathLength="100" d="M52 64 C104 84 128 122 150 152 C157 162 162 169 169 170" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M156.9 174.8 L169 170 L158.8 162" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <text x="16" y="46" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="27" letter-spacing=".5">Lieblingslack ♥</text>
       </svg>
     </div>
   </div>
