@@ -670,6 +670,14 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .hero-illustration use {
   filter: url(#rough);
 }
+/* The brush is the one object in the still life built from parts barely
+   wider than #rough's 2.2-unit displacement (the shaft is 8 units, the
+   drop and the glints smaller still) — at full wobble it falls apart into
+   unrelated marks. Opt those groups down to the softer filter; specificity
+   beats the rule above without needing !important. */
+.hero-illustration > g.hero-fine {
+  filter: url(#roughSoft);
+}
 
 
 /* =========================================================================
@@ -1058,10 +1066,12 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 .bottle:hover svg { transform: rotate(-2deg) translateY(-2px); }
 
-/* #bottleTpl's label kritzel (the two wavy "handwriting" strokes, 9th/10th
-   path in the template) render almost invisibly thin at shelf scale —
-   thicken them everywhere the template is <use>d, without touching the
-   HTML template itself. */
+/* #bottleTpl's label kritzel (the first two of the three "handwriting"
+   strokes, 9th/10th path in the template — path 8 is the label patch they
+   sit on) renders almost invisibly thin at shelf scale — thicken it
+   everywhere the template is <use>d, without touching the HTML template
+   itself. These are nth-of-type selectors: keep the template's path order
+   and path count intact when editing #bottleTpl. */
 #bottleTpl path:nth-of-type(8) { opacity: .95; }
 #bottleTpl path:nth-of-type(9),
 #bottleTpl path:nth-of-type(10) { stroke-width: 2; }
