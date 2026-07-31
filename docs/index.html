@@ -1,20 +1,651 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nagellacke</title>
-  <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 4rem auto; padding: 0 1rem; color: #222; }
-    h1 { font-size: 1.8rem; }
-    a { color: #c2185b; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nagellacke — deine Lacksammlung als Skizzenbuch</title>
+<meta name="description" content="Nagellacke ist dein digitales Skizzenbuch für die eigene Lacksammlung: Farben ausprobieren, das Regal führen, jede Maniküre im Tagebuch festhalten – ganz ohne Tracking.">
+<meta name="theme-color" content="#f6f1e6">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Nagellacke — deine Lacksammlung als Skizzenbuch">
+<meta property="og:description" content="Farbe wählen, Finish ausprobieren, jede Maniküre im Tagebuch festhalten — dein Skizzenbuch für die eigene Nagellack-Sammlung, ganz ohne Tracking.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='20' y='10' width='16' height='12' rx='3' fill='%232c2c31' stroke='%2323314e' stroke-width='2'/%3E%3Cpath d='M18 26 C17 40 17 52 20 58 C24 61 40 61 44 58 C47 52 47 40 46 26 C38 23 26 23 18 26 Z' fill='%23c2185b' stroke='%2323314e' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/sketch.css">
+<script>document.documentElement.classList.add('js');</script>
 </head>
-<body>
-  <h1>Nagellacke</h1>
-  <p>Persönliche Nagellackverwaltung für Android.</p>
-  <ul>
-    <li><a href="privacy-policy.html">Datenschutzerklärung / Privacy Policy</a></li>
+<body id="top">
+<a class="skip-link" href="#main">Zum Inhalt springen</a>
+
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+<defs>
+
+  <filter id="rough" x="-20%" y="-20%" width="140%" height="140%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="7" result="noise"/>
+    <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.2"/>
+  </filter>
+  <filter id="roughSoft" x="-20%" y="-20%" width="140%" height="140%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="7" result="noiseSoft"/>
+    <feDisplacementMap in="SourceGraphic" in2="noiseSoft" scale="1.2"/>
+  </filter>
+
+  <radialGradient id="gShimmer" cx="35%" cy="30%" r="75%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity=".55"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+  </radialGradient>
+
+  <linearGradient id="gChrome" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity=".85"/>
+    <stop offset="50%" stop-color="#ffffff" stop-opacity="0"/>
+    <stop offset="100%" stop-color="#000000" stop-opacity=".35"/>
+  </linearGradient>
+
+  <linearGradient id="gHolo" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%"   stop-color="#ff7a7a" stop-opacity=".5"/>
+    <stop offset="20%"  stop-color="#ffd76a" stop-opacity=".5"/>
+    <stop offset="40%"  stop-color="#8be79a" stop-opacity=".5"/>
+    <stop offset="60%"  stop-color="#6ab6ff" stop-opacity=".5"/>
+    <stop offset="80%"  stop-color="#b988ff" stop-opacity=".5"/>
+    <stop offset="100%" stop-color="#ff7ac2" stop-opacity=".5"/>
+  </linearGradient>
+
+  <linearGradient id="gMatte" x1="0%" y1="0%" x2="0%" y2="100%">
+    <stop offset="0%" stop-color="#ffffff" stop-opacity=".10"/>
+    <stop offset="100%" stop-color="#ffffff" stop-opacity=".10"/>
+  </linearGradient>
+
+  <pattern id="pGlitter" width="8" height="8" patternUnits="userSpaceOnUse">
+    <circle cx="1.5" cy="2" r=".6" fill="#ffffff"/>
+    <circle cx="5.2" cy="5.4" r=".5" fill="#cfd6e4"/>
+    <rect x="6" y="0.6" width="1.1" height="1.1" fill="#ffffff" transform="rotate(45 6.5 1.1)"/>
+    <circle cx="2.8" cy="6.6" r=".4" fill="#ffffff"/>
+  </pattern>
+
+  <!-- Finger-Template: Basis (0,0), Fingerspitze bei y≈-101. Die Füllung reicht bis y=9
+       unter die Basis, die Konturlinie endet dagegen bei y=0 und lässt die Basis offen —
+       so verschmilzt der Finger nahtlos mit der Handfläche, ohne sichtbare Kante. (y=9 bleibt
+       innerhalb des Tagebuch-Freiraums unter der Basis, damit Datum/Name dort nicht verdeckt werden.) -->
+  <g id="fingerTpl">
+    <g filter="url(#roughSoft)">
+      <path d="M-13 0 C-14 -58 -12 -84 -6 -96 C-2 -101 2 -101 6 -96 C12 -84 14 -58 13 0 L13 9 L-13 9 Z" style="fill:var(--skin)"/>
+      <path pathLength="100" d="M-13 0 C-14 -58 -12 -84 -6 -96 C-2 -101 2 -101 6 -96 C12 -84 14 -58 13 0" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 -14 C9.5 -40 9 -64 6.5 -84" style="stroke:var(--pencil)" stroke-width="1" opacity=".4" fill="none" stroke-linecap="round"/>
+      <path d="M-11 -34 C-4 -30 5 -30 11 -34" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <path d="M-10 -62 C-4 -58 4 -58 10 -62" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+      <path class="nail-fill" d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:var(--polish,#b3122e)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
+      <path d="M-4.5 -90 C-5 -85 -4 -80 -3 -76" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- Fläschchen-Template, viewBox-Ausschnitt 0 0 64 130 -->
+  <g id="bottleTpl">
+    <g filter="url(#roughSoft)">
+      <path pathLength="100" class="bottle-body" d="M11 47 C10 70 10 100 12 120 C13 125 17 126 32 126 C47 126 51 125 52 120 C54 100 54 70 53 47 C40 44 24 44 11 47 Z" style="fill:var(--polish,#b3122e);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M18 52 C17 75 17 100 19 118" style="stroke:#ffffff" stroke-width="2" opacity=".3" fill="none" stroke-linecap="round"/>
+      <path d="M45 55 L48 57" style="stroke:var(--pencil)" stroke-width="1" opacity=".5" fill="none"/>
+      <path d="M45 65 L48 67" style="stroke:var(--pencil)" stroke-width="1" opacity=".5" fill="none"/>
+      <path d="M45 75 L48 77" style="stroke:var(--pencil)" stroke-width="1" opacity=".5" fill="none"/>
+      <path d="M45 85 L48 87" style="stroke:var(--pencil)" stroke-width="1" opacity=".5" fill="none"/>
+      <path class="bottle-empty" d="M14 100 C13 108 13 116 15 122 C20 125 44 125 49 122 C51 116 51 108 50 100 Z" style="fill:var(--paper);opacity:var(--fx-empty,0)"/>
+      <path d="M18 78 C17 76 47 76 46 78 C47 90 47 98 46 100 C47 102 17 102 18 100 C17 98 17 90 18 78 Z" style="fill:var(--paper);stroke:var(--ink)" opacity=".85" stroke-width="1.4"/>
+      <path d="M23 83 q3.5 -4 7 0 q3.5 4 7 0 q3.5 -4 7 0" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M23 91 q4 -3.5 8 0 q4 3.5 8 0" style="stroke:var(--ink)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M25 98 q3 -3 6 0 q3 3 6 0" style="stroke:var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      <path d="M25 47 L25 32 C25 30 39 30 39 32 L39 47 Z" style="fill:var(--polish,#b3122e);stroke:var(--ink)" stroke-width="2"/>
+      <path d="M20 8 C20 4 44 4 44 8 L44 30 L20 30 Z" style="fill:var(--cap,#2c2c31);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M25 10 L25 26" style="stroke:#ffffff" stroke-width="1.5" opacity=".4" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+
+</defs>
+</svg>
+
+<header class="topbar">
+  <a class="logo" href="#top">Nagellacke<svg class="logo-underline" viewBox="0 0 140 14" aria-hidden="true" style="overflow:visible"><path filter="url(#roughSoft)" d="M2 8 C20 2 40 12 60 6 S100 2 138 8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/><path filter="url(#roughSoft)" d="M4 9.5 C24 4 42 13 62 7.5 S102 4 136 9.5" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" opacity=".55"/></svg></a>
+  <nav aria-label="Hauptnavigation">
+    <a href="#studio">Studio</a>
+    <a href="#regal">Regal</a>
+    <a href="#tagebuch">Tagebuch</a>
+    <a href="#app">App</a>
+    <a href="privacy-policy.html" class="nav-privacy">Datenschutz</a>
+  </nav>
+</header>
+
+<main id="main">
+
+<section id="hero" class="section reveal">
+  <div class="hero-grid">
+    <div class="hero-text">
+      <p class="kicker">Sammeln · Tragen · Festhalten</p>
+      <h1>Nagellacke<svg class="squiggle" viewBox="0 0 260 20" aria-hidden="true" style="overflow:visible"><path pathLength="100" filter="url(#roughSoft)" d="M4 12 C40 2 70 18 110 8 S180 2 256 12" fill="none" stroke="var(--accent)" stroke-width="2.3" stroke-linecap="round"/><path filter="url(#roughSoft)" d="M8 14.5 C44 5 74 20.5 114 11 S184 5 252 14.5" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></svg></h1>
+      <p class="lead">Jedes Fläschchen im Regal hat seine eigene Stimmung – und irgendwann sein eigenes Kapitel. Nagellacke ist dein Skizzenbuch dafür: vom ersten Swatch auf der Nagelhaut bis zu der Mani, die du am Ende doch drei Wochen lang nicht mehr los wolltest.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#studio">Farbe ausprobieren</a>
+        <a class="btn btn-secondary" href="#app">Was die App kann</a>
+      </div>
+      <ul class="fact-row">
+        <li>kein Tracking</li>
+        <li>deine Daten bleiben bei dir</li>
+        <li>offline nutzbar</li>
+      </ul>
+    </div>
+    <div class="hero-art">
+      <svg viewBox="0 0 420 380" aria-hidden="true" class="hero-illustration" style="overflow:visible">
+        <g filter="url(#rough)">
+          <!-- Kaffeetasse -->
+          <path pathLength="100" d="M305 70 L367 70 L361 102 C360 110 312 110 311 102 Z" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M367 76 C378 76 378 96 366 96" fill="none" stroke="var(--ink)" stroke-width="2"/>
+          <ellipse cx="336" cy="109" rx="34" ry="6" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="1.6"/>
+          <path d="M322 63 C320 54 326 49 323 40" fill="none" stroke="var(--pencil)" stroke-width="1.2" stroke-linecap="round"/>
+          <path d="M342 63 C340 54 346 49 343 40" fill="none" stroke="var(--pencil)" stroke-width="1.2" stroke-linecap="round"/>
+          <!-- Pinsel, liegend: Stiel, Zwinge, gefächerte Borsten -->
+          <path pathLength="100" d="M22 352 L145 332" fill="none" stroke="var(--ink)" stroke-width="3.4" stroke-linecap="round"/>
+          <path d="M132 337 L148 340 L146 348 L130 345 Z" fill="var(--pencil-soft)" stroke="var(--ink)" stroke-width="1"/>
+          <path d="M148 338 L163 330" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M149 342 L165 338" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M148 346 L164 346" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M147 349 L162 353" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Farbkleckse -->
+          <path d="M170 345 C165 339 173 335 179 339 C185 343 181 351 173 351 C169 351 168 348 170 345 Z" fill="#c2185b" opacity=".85"/>
+          <path d="M195 355 C190 349 198 346 203 350 C207 354 202 360 196 359 C193 358 193 357 195 355 Z" fill="#8aa87a" opacity=".8"/>
+          <!-- Pfeil-Notiz, zeigt aufs mittlere Fläschchen -->
+          <path d="M75 48 C120 65 165 100 208 132" fill="none" stroke="var(--ink)" stroke-width="2"/>
+          <path d="M198 118 L210 138 L226 124" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <text x="18" y="40" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".5">Lieblingslack ♥</text>
+        <use href="#bottleTpl" transform="translate(48,190) scale(1.15)" style="--polish:#b3122e"/>
+        <use href="#bottleTpl" transform="translate(168,120) scale(1.5)" style="--polish:#24418f"/>
+        <use href="#bottleTpl" transform="translate(300,225) scale(.95)" style="--polish:#8aa87a"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section id="studio" class="section reveal">
+  <h2>Das Lack-Studio</h2>
+  <p class="section-lead">Farbe wählen, Finish wählen – und direkt an der Hand sehen, wie es aussieht, noch bevor der Pinsel ausgepackt ist.</p>
+  <div class="studio-grid">
+    <div class="studio-hand-wrap">
+      <svg id="studioHand" viewBox="0 0 320 360" role="img" data-finish="classic" style="--polish:#b3122e;overflow:visible">
+        <title>Hand mit lackierten Nägeln</title>
+        <g filter="url(#roughSoft)">
+          <!-- Handfläche + Handgelenk: eine durchgehende Kontur, nach unten schmaler werdend,
+               oben eine leicht gebogene Linie statt einer geraden Kante -->
+          <path pathLength="100" d="M116 359 C104 332 90 306 86 280 C82 258 78 236 86 218 C92 206 102 199 111 196 C118 194 124 194 129 195 C141 189 152 187 163 187 C176 187 189 190 199 196 C212 202 224 208 235 213 C244 217 250 224 253 234 C257 258 255 296 247 328 C242 346 229 356 212 359 C190 361 138 361 116 359 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <!-- Schattierung am Handballen (Daumenballen) -->
+          <path d="M100 230 L120 222" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M95 244 L117 236" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M92 258 L115 250" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M91 272 L114 265" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".5" fill="none" stroke-linecap="round"/>
+          <path d="M92 286 L113 280" style="stroke:var(--pencil)" stroke-width="1.1" opacity=".45" fill="none" stroke-linecap="round"/>
+          <!-- Handgelenk-Falte -->
+          <path d="M124 336 C150 344 178 344 204 336" style="stroke:var(--pencil)" stroke-width="1.3" opacity=".5" fill="none" stroke-linecap="round"/>
+        </g>
+
+        <!-- Daumen: eigene Form (kein Finger-Template), entspringt unten am Handballen mit
+             erkennbarem Daumenballen, liegt schräg nach außen -->
+        <g transform="translate(99,264) rotate(-52)">
+          <g filter="url(#roughSoft)">
+            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0 L19 24 L-19 24 Z" style="fill:var(--skin)"/>
+            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M-13 -14 C-6 -10 6 -10 13 -14" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            <path d="M13 -24 C13.5 -38 12 -50 8 -60" style="stroke:var(--pencil)" stroke-width="1" opacity=".4" fill="none" stroke-linecap="round"/>
+            <path class="nail-fill" d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
+            <path d="M-4 -60 C-4.5 -56 -3.5 -52 -2.5 -49" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
+          </g>
+        </g>
+
+        <use href="#fingerTpl" transform="translate(228,214) rotate(18) scale(0.74)"/>
+        <use href="#fingerTpl" transform="translate(198,200) rotate(7) scale(0.95)"/>
+        <use href="#fingerTpl" transform="translate(163,196) rotate(-3) scale(1.05)"/>
+        <use href="#fingerTpl" transform="translate(130,204) rotate(-12) scale(0.92)"/>
+      </svg>
+      <p class="hand-tip">Tipp: Zwei Schichten. Immer.</p>
+    </div>
+
+    <div class="studio-controls paper-card">
+      <div class="palette" role="group" aria-label="Farbe wählen">
+        <button class="swatch" type="button" data-color="#b3122e" data-name="Kirschkern" style="--polish:#b3122e" aria-pressed="true">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M4 18 C2 8 14 2 22 4 C32 6 38 14 34 24 C30 32 14 32 8 28 C4 25 5 22 4 18 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Kirschkern</span>
+        </button>
+        <button class="swatch" type="button" data-color="#d98a9a" data-name="Altrosa" style="--polish:#d98a9a" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M6 20 C3 10 12 3 24 5 C34 7 36 18 30 26 C24 34 10 30 6 24 C4 22 5 21 6 20 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Altrosa</span>
+        </button>
+        <button class="swatch" type="button" data-color="#5a1f45" data-name="Beerennacht" style="--polish:#5a1f45" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M8 16 C6 6 20 2 28 8 C36 13 34 24 26 30 C18 35 6 30 5 22 C4 19 6 17 8 16 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Beerennacht</span>
+        </button>
+        <button class="swatch" type="button" data-color="#7a3b8f" data-name="Pflaume" style="--polish:#7a3b8f" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M4 18 C2 8 14 2 22 4 C32 6 38 14 34 24 C30 32 14 32 8 28 C4 25 5 22 4 18 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Pflaume</span>
+        </button>
+        <button class="swatch" type="button" data-color="#24418f" data-name="Tintenblau" style="--polish:#24418f" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M6 20 C3 10 12 3 24 5 C34 7 36 18 30 26 C24 34 10 30 6 24 C4 22 5 21 6 20 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Tintenblau</span>
+        </button>
+        <button class="swatch" type="button" data-color="#8fc7e8" data-name="Eisblau" style="--polish:#8fc7e8" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M8 16 C6 6 20 2 28 8 C36 13 34 24 26 30 C18 35 6 30 5 22 C4 19 6 17 8 16 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Eisblau</span>
+        </button>
+        <button class="swatch" type="button" data-color="#8aa87a" data-name="Salbei" style="--polish:#8aa87a" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M4 18 C2 8 14 2 22 4 C32 6 38 14 34 24 C30 32 14 32 8 28 C4 25 5 22 4 18 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Salbei</span>
+        </button>
+        <button class="swatch" type="button" data-color="#1f5f43" data-name="Tannengrün" style="--polish:#1f5f43" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M6 20 C3 10 12 3 24 5 C34 7 36 18 30 26 C24 34 10 30 6 24 C4 22 5 21 6 20 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Tannengrün</span>
+        </button>
+        <button class="swatch" type="button" data-color="#b9793f" data-name="Karamell" style="--polish:#b9793f" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M8 16 C6 6 20 2 28 8 C36 13 34 24 26 30 C18 35 6 30 5 22 C4 19 6 17 8 16 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Karamell</span>
+        </button>
+        <button class="swatch" type="button" data-color="#f2c14e" data-name="Sonnengelb" style="--polish:#f2c14e" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M4 18 C2 8 14 2 22 4 C32 6 38 14 34 24 C30 32 14 32 8 28 C4 25 5 22 4 18 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Sonnengelb</span>
+        </button>
+        <button class="swatch" type="button" data-color="#e9dfd2" data-name="Perlmutt" style="--polish:#e9dfd2" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M6 20 C3 10 12 3 24 5 C34 7 36 18 30 26 C24 34 10 30 6 24 C4 22 5 21 6 20 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Perlmutt</span>
+        </button>
+        <button class="swatch" type="button" data-color="#3a2a24" data-name="Espresso" style="--polish:#3a2a24" aria-pressed="false">
+          <svg viewBox="0 0 40 34" aria-hidden="true" style="overflow:visible"><path d="M8 16 C6 6 20 2 28 8 C36 13 34 24 26 30 C18 35 6 30 5 22 C4 19 6 17 8 16 Z" filter="url(#roughSoft)" style="fill:var(--polish)"/></svg>
+          <span>Espresso</span>
+        </button>
+      </div>
+
+      <div class="own-color">
+        <label for="ownColor">Eigene Farbe mischen</label>
+        <input type="color" id="ownColor" value="#b3122e">
+      </div>
+
+      <div class="finishes" role="group" aria-label="Finish wählen">
+        <button class="finish" type="button" data-finish="classic" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <span>Classic</span>
+        </button>
+        <button class="finish" type="button" data-finish="shimmer" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gShimmer)"/></svg>
+          <span>Shimmer</span>
+        </button>
+        <button class="finish" type="button" data-finish="glitter" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#pGlitter)"/></svg>
+          <span>Glitter</span>
+        </button>
+        <button class="finish" type="button" data-finish="matte" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gMatte)"/></svg>
+          <span>Matt</span>
+        </button>
+        <button class="finish" type="button" data-finish="chrome" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gChrome)"/></svg>
+          <span>Chrome</span>
+        </button>
+        <button class="finish" type="button" data-finish="holo" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gHolo)"/></svg>
+          <span>Holo</span>
+        </button>
+      </div>
+
+      <div class="studio-readout paper-card">
+        <p class="readout-name" id="swName">Kirschkern</p>
+        <p class="readout-hex" id="swHex">#B3122E</p>
+        <p class="readout-finish">Finish: <span id="swFinish">Classic</span></p>
+        <p class="readout-mood" id="swMood">Mutig und ein bisschen frech — der Lack für Tage, an denen du auffallen willst.</p>
+      </div>
+
+      <button id="addToShelf" class="btn btn-primary" type="button">Aufs Regal stellen</button>
+      <p class="studio-hint">Bleibt nur in deinem Browser, nichts wird hochgeladen.</p>
+      <button id="clearShelf" class="btn btn-text" type="button" hidden>Eigene Lacke entfernen</button>
+    </div>
+  </div>
+</section>
+
+<section id="regal" class="section reveal">
+  <h2>Dein Regal</h2>
+  <p class="section-lead">Was du besitzt, was noch auf die Wunschliste soll und was leider schon leer getropft ist – dein ganzes Sammelsurium auf einen Blick.</p>
+
+  <div class="filters" role="group" aria-label="Regal filtern">
+    <button class="chip" type="button" data-filter="all" aria-pressed="true">Alle</button>
+    <button class="chip" type="button" data-filter="ok" aria-pressed="false">Vorhanden</button>
+    <button class="chip" type="button" data-filter="wish" aria-pressed="false">Wunschliste</button>
+    <button class="chip" type="button" data-filter="empty" aria-pressed="false">Aufgebraucht</button>
+  </div>
+
+  <div id="shelf" class="shelf">
+    <button class="bottle" type="button" data-status="ok" data-name="Kirschkern-Kuss" data-brand="OPI" data-finish="Classic" data-color="#b3122e" data-worn="14" data-note="Perfekt für Herbstabende, deckt zuverlässig in zwei Schichten.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#b3122e"/></svg>
+      <span class="bottle-label">Kirschkern-Kuss</span>
+    </button>
+    <button class="bottle" type="button" data-status="ok" data-name="Altrosa-Wolke" data-brand="Essie" data-finish="Shimmer" data-color="#d98a9a" data-worn="9" data-note="Mein Alltagslack, liegt eigentlich immer griffbereit vorn.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#d98a9a"/></svg>
+      <span class="bottle-label">Altrosa-Wolke</span>
+    </button>
+    <button class="bottle" type="button" data-status="ok" data-name="Tintenblau-Traum" data-brand="Catrice" data-finish="Chrome" data-color="#24418f" data-worn="6" data-note="Hält erstaunlich lange, ohne an den Spitzen abzusplittern.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#24418f"/></svg>
+      <span class="bottle-label">Tintenblau-Traum</span>
+    </button>
+    <button class="bottle" type="button" data-status="ok" data-name="Sonnengelb-Sommer" data-brand="Kiko Milano" data-finish="Glitter" data-color="#f2c14e" data-worn="3" data-note="Nur für richtig sonnige Tage, sonst wirkt es zu grell.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#f2c14e"/></svg>
+      <span class="bottle-label">Sonnengelb-Sommer</span>
+    </button>
+    <button class="bottle" type="button" data-status="ok" data-name="Salbei-Ruhe" data-brand="Zoya" data-finish="Matt" data-color="#8aa87a" data-worn="7" data-note="Beruhigende Farbe für Wochen, in denen alles zu viel ist.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#8aa87a"/></svg>
+      <span class="bottle-label">Salbei-Ruhe</span>
+    </button>
+    <button class="bottle is-wish" type="button" data-status="wish" data-name="Pflaumenmus" data-brand="Sally Hansen" data-finish="Holo" data-color="#7a3b8f" data-worn="0" data-note="Steht schon seit dem Frühling auf der Wunschliste.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#7a3b8f"/></svg>
+      <span class="bottle-label">Pflaumenmus</span>
+    </button>
+    <button class="bottle is-wish" type="button" data-status="wish" data-name="Espresso-Note" data-brand="Kure Bazaar" data-finish="Classic" data-color="#3a2a24" data-worn="0" data-note="Für den Winter vorgemerkt, sobald es kälter wird.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#3a2a24"/></svg>
+      <span class="bottle-label">Espresso-Note</span>
+    </button>
+    <button class="bottle is-empty" type="button" data-status="empty" data-name="Eisblau-Frost" data-brand="Barry M" data-finish="Shimmer" data-color="#8fc7e8" data-worn="22" data-note="Leergetragen – war den ganzen letzten Sommer mein Favorit.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#8fc7e8"/></svg>
+      <span class="bottle-label">Eisblau-Frost</span>
+    </button>
+    <button class="bottle is-empty" type="button" data-status="empty" data-name="Karamell-Latte" data-brand="Nails Inc." data-finish="Classic" data-color="#b9793f" data-worn="18" data-note="Die letzten Tropfen sind leider schon eingetrocknet.">
+      <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#b9793f"/></svg>
+      <span class="bottle-label">Karamell-Latte</span>
+    </button>
+  </div>
+  <p class="shelf-empty" hidden>Hier ist gerade nichts zu sehen — versuch einen anderen Filter.</p>
+
+  <div id="shelfDetail" class="shelf-detail paper-card" aria-live="polite">
+    <p class="placeholder">Tippe auf ein Fläschchen im Regal, um mehr darüber zu erfahren.</p>
+  </div>
+</section>
+
+<section id="tagebuch" class="section reveal">
+  <h2>Das Tagebuch</h2>
+  <p class="section-lead">Welche Mani wann dran war, mit einer kleinen Notiz dazu – zum Zurückblättern, wenn du wieder nicht weißt, was du dir wünschst.</p>
+
+  <div class="diary-grid">
+    <button class="diary-card" type="button" aria-pressed="false">
+      <span class="diary-face diary-front">
+        <svg viewBox="0 0 160 116" aria-hidden="true" style="overflow:visible">
+          <g transform="translate(24,108) scale(1.05)" style="--polish:#b3122e"><use href="#fingerTpl"/></g>
+          <g transform="translate(64,108) scale(1.05)" style="--polish:#b3122e"><use href="#fingerTpl"/></g>
+          <g transform="translate(104,108) scale(1.05)" style="--polish:#b3122e"><use href="#fingerTpl"/></g>
+          <g transform="translate(144,108) scale(1.05)" style="--polish:#b3122e"><use href="#fingerTpl"/></g>
+        </svg>
+        <span class="diary-date">3. März</span>
+        <span class="diary-polish">Kirschkern-Kuss</span>
+      </span>
+      <span class="diary-face diary-back">
+        <span class="diary-note">Regnerischer Dienstag, Kaffee statt Steuererklärung. Hat elf Tage ohne einen einzigen Abplatzer gehalten.</span>
+        <span class="diary-stars" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+        </span>
+      </span>
+    </button>
+
+    <button class="diary-card" type="button" aria-pressed="false">
+      <span class="diary-face diary-front">
+        <svg viewBox="0 0 160 116" aria-hidden="true" style="overflow:visible">
+          <g transform="translate(24,108) scale(1.05)" style="--polish:#e9dfd2">
+            <use href="#fingerTpl"/>
+            <path filter="url(#roughSoft)" d="M-6.5 -87 C-6.5 -91 -4 -95 0 -95 C4 -95 6.5 -91 6.5 -87 C3.2 -84.5 -3.2 -84.5 -6.5 -87 Z" fill="#ffffff" stroke="var(--ink)" stroke-width="1"/>
+          </g>
+          <g transform="translate(64,108) scale(1.05)" style="--polish:#e9dfd2">
+            <use href="#fingerTpl"/>
+            <path filter="url(#roughSoft)" d="M-6.5 -87 C-6.5 -91 -4 -95 0 -95 C4 -95 6.5 -91 6.5 -87 C3.2 -84.5 -3.2 -84.5 -6.5 -87 Z" fill="#ffffff" stroke="var(--ink)" stroke-width="1"/>
+          </g>
+          <g transform="translate(104,108) scale(1.05)" style="--polish:#e9dfd2">
+            <use href="#fingerTpl"/>
+            <path filter="url(#roughSoft)" d="M-6.5 -87 C-6.5 -91 -4 -95 0 -95 C4 -95 6.5 -91 6.5 -87 C3.2 -84.5 -3.2 -84.5 -6.5 -87 Z" fill="#ffffff" stroke="var(--ink)" stroke-width="1"/>
+          </g>
+          <g transform="translate(144,108) scale(1.05)" style="--polish:#e9dfd2">
+            <use href="#fingerTpl"/>
+            <path filter="url(#roughSoft)" d="M-6.5 -87 C-6.5 -91 -4 -95 0 -95 C4 -95 6.5 -91 6.5 -87 C3.2 -84.5 -3.2 -84.5 -6.5 -87 Z" fill="#ffffff" stroke="var(--ink)" stroke-width="1"/>
+          </g>
+        </svg>
+        <span class="diary-date">18. April</span>
+        <span class="diary-polish">Perlmutt &amp; Altrosa</span>
+      </span>
+      <span class="diary-face diary-back">
+        <span class="diary-note">Erster Frühlingsspaziergang im Park. Nach einer Woche schon leicht angeknabbert an den Spitzen.</span>
+        <span class="diary-stars" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="none" stroke="var(--pencil)" stroke-width="1"/></svg>
+        </span>
+      </span>
+    </button>
+
+    <button class="diary-card" type="button" aria-pressed="false">
+      <span class="diary-face diary-front">
+        <svg viewBox="0 0 160 116" aria-hidden="true" style="overflow:visible">
+          <g transform="translate(24,108) scale(1.05)" style="--polish:#24418f"><use href="#fingerTpl"/></g>
+          <g transform="translate(64,108) scale(1.05)" style="--polish:#24418f"><use href="#fingerTpl"/></g>
+          <g transform="translate(104,108) scale(1.05)" style="--polish:#a9c3ea">
+            <use href="#fingerTpl"/>
+            <path filter="url(#roughSoft)" d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" fill="url(#pGlitter)"/>
+            <path filter="url(#roughSoft)" d="M-3 -90 L1 -86 M1 -90 L-3 -86" stroke="#ffffff" stroke-width="1" stroke-linecap="round"/>
+            <path filter="url(#roughSoft)" d="M3 -82 L6 -79 M6 -82 L3 -79" stroke="#ffffff" stroke-width=".8" stroke-linecap="round"/>
+          </g>
+          <g transform="translate(144,108) scale(1.05)" style="--polish:#24418f"><use href="#fingerTpl"/></g>
+        </svg>
+        <span class="diary-date">9. Juni</span>
+        <span class="diary-polish">Tintenblau + Glitzerakzent</span>
+      </span>
+      <span class="diary-face diary-back">
+        <span class="diary-note">Geburtstagsfeier bei K., am Tag danach das Standesamt. Der Glitzer hat glatt bis zum Sommerurlaub gehalten.</span>
+        <span class="diary-stars" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+        </span>
+      </span>
+    </button>
+
+    <button class="diary-card" type="button" aria-pressed="false">
+      <span class="diary-face diary-front">
+        <svg viewBox="0 0 160 116" aria-hidden="true" style="overflow:visible">
+          <g transform="translate(24,108) scale(1.05)" style="--polish:#8aa87a">
+            <use href="#fingerTpl"/>
+            <g filter="url(#roughSoft)" fill="#f3c9d8" stroke="var(--ink)" stroke-width=".5">
+              <circle cx="-3" cy="-84" r="3.2"/><circle cx="3" cy="-84" r="3.2"/><circle cx="0" cy="-87" r="3.2"/><circle cx="0" cy="-81" r="3.2"/>
+            </g>
+            <circle cx="0" cy="-84" r="1.6" fill="#f2c14e"/>
+          </g>
+          <g transform="translate(64,108) scale(1.05)" style="--polish:#8aa87a"><use href="#fingerTpl"/></g>
+          <g transform="translate(104,108) scale(1.05)" style="--polish:#8aa87a"><use href="#fingerTpl"/></g>
+          <g transform="translate(144,108) scale(1.05)" style="--polish:#8aa87a">
+            <use href="#fingerTpl"/>
+            <g filter="url(#roughSoft)" fill="#f3c9d8" stroke="var(--ink)" stroke-width=".5">
+              <circle cx="-3" cy="-84" r="3.2"/><circle cx="3" cy="-84" r="3.2"/><circle cx="0" cy="-87" r="3.2"/><circle cx="0" cy="-81" r="3.2"/>
+            </g>
+            <circle cx="0" cy="-84" r="1.6" fill="#f2c14e"/>
+          </g>
+        </svg>
+        <span class="diary-date">27. Juli</span>
+        <span class="diary-polish">Salbei mit Blütensticker</span>
+      </span>
+      <span class="diary-face diary-back">
+        <span class="diary-note">Heißer Nachmittag im Garten, Sticker etwas zu früh aufgetragen. Zwei sind schon nach drei Tagen abgefallen.</span>
+        <span class="diary-stars" aria-hidden="true">
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="none" stroke="var(--pencil)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="none" stroke="var(--pencil)" stroke-width="1"/></svg>
+        </span>
+      </span>
+    </button>
+  </div>
+  <p class="diary-tally">4 von 132 Einträgen</p>
+</section>
+
+<section id="app" class="section reveal">
+  <h2>So sieht's im Alltag aus</h2>
+  <p class="section-lead">Wisch durch die Ansichten und schau, was dich im Alltag mit der App erwartet.</p>
+
+  <div class="phone-tabs" role="tablist" aria-label="App-Ansicht wählen">
+    <button class="tab" type="button" role="tab" id="tab-sammlung" data-screen="sammlung" aria-selected="true" aria-controls="panel-sammlung">Sammlung</button>
+    <button class="tab" type="button" role="tab" id="tab-tagebuch" data-screen="tagebuch" aria-selected="false" aria-controls="panel-tagebuch" tabindex="-1">Tagebuch</button>
+    <button class="tab" type="button" role="tab" id="tab-statistik" data-screen="statistik" aria-selected="false" aria-controls="panel-statistik" tabindex="-1">Statistik</button>
+    <button class="tab" type="button" role="tab" id="tab-sticker" data-screen="sticker" aria-selected="false" aria-controls="panel-sticker" tabindex="-1">Sticker</button>
+  </div>
+
+  <div class="app-showcase">
+    <svg id="phone" viewBox="0 0 300 600" aria-hidden="true" class="phone-illustration" style="overflow:visible">
+      <g filter="url(#rough)">
+        <path pathLength="100" d="M20 20 C18 12 30 6 150 6 C270 6 282 12 280 20 C284 200 284 400 280 580 C282 588 270 594 150 594 C30 594 18 588 20 580 C16 400 16 200 20 20 Z" fill="var(--paper-2)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M120 16 L180 16" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+        <path d="M282 220 L286 220 L286 270 L282 270 Z" fill="var(--ink)"/>
+      </g>
+
+      <g class="screen" data-screen="sammlung">
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Sammlung</text>
+        <g filter="url(#roughSoft)">
+          <rect x="40" y="78" width="220" height="28" rx="14" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/>
+          <circle cx="248" cy="92" r="5" fill="none" stroke="var(--pencil)" stroke-width="1.4"/>
+          <path d="M252 96 L257 101" stroke="var(--pencil)" stroke-width="1.4" stroke-linecap="round"/>
+          <rect x="40" y="122" width="58" height="22" rx="11" fill="var(--paper-3)" stroke="var(--ink)" stroke-width="1.2"/>
+          <rect x="104" y="122" width="58" height="22" rx="11" fill="var(--paper-3)" stroke="var(--ink)" stroke-width="1.2"/>
+          <rect x="168" y="122" width="58" height="22" rx="11" fill="var(--paper-3)" stroke="var(--ink)" stroke-width="1.2"/>
+        </g>
+        <use href="#bottleTpl" transform="translate(44,172) scale(.55)" style="--polish:#b3122e"/>
+        <use href="#bottleTpl" transform="translate(130,172) scale(.55)" style="--polish:#24418f"/>
+        <use href="#bottleTpl" transform="translate(216,172) scale(.55)" style="--polish:#f2c14e"/>
+        <use href="#bottleTpl" transform="translate(44,285) scale(.55)" style="--polish:#8aa87a"/>
+        <use href="#bottleTpl" transform="translate(130,285) scale(.55)" style="--polish:#e9dfd2"/>
+        <use href="#bottleTpl" transform="translate(216,285) scale(.55)" style="--polish:#3a2a24"/>
+      </g>
+
+      <g class="screen" data-screen="tagebuch" hidden>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Tagebuch</text>
+        <g filter="url(#roughSoft)">
+          <rect x="40" y="90" width="54" height="54" rx="6" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 132 C48 112 49 96 58 96 C66 96 68 112 66 132 Z" fill="#b3122e" opacity=".8"/>
+          <path d="M110 108 q30 -8 60 0" stroke="var(--pencil)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M110 120 q45 -8 90 0" stroke="var(--pencil-soft)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <rect x="40" y="210" width="54" height="54" rx="6" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 252 C48 232 49 216 58 216 C66 216 68 232 66 252 Z" fill="#24418f" opacity=".8"/>
+          <path d="M110 228 q30 -8 60 0" stroke="var(--pencil)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M110 240 q45 -8 90 0" stroke="var(--pencil-soft)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          <rect x="40" y="330" width="54" height="54" rx="6" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 372 C48 352 49 336 58 336 C66 336 68 352 66 372 Z" fill="#8aa87a" opacity=".8"/>
+          <path d="M110 348 q30 -8 60 0" stroke="var(--pencil)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M110 360 q45 -8 90 0" stroke="var(--pencil-soft)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        </g>
+      </g>
+
+      <g class="screen" data-screen="statistik" hidden>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Statistik</text>
+        <g filter="url(#roughSoft)">
+          <rect x="50" y="100" width="180" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
+          <rect x="50" y="140" width="140" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
+          <rect x="50" y="180" width="100" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
+          <rect x="50" y="220" width="70" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
+          <path d="M50 100 L230 100" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 140 L190 140" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 180 L150 180" stroke="var(--ink)" stroke-width="1.4"/>
+          <path d="M50 220 L120 220" stroke="var(--ink)" stroke-width="1.4"/>
+        </g>
+      </g>
+
+      <g class="screen" data-screen="sticker" hidden>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Sticker</text>
+        <g filter="url(#roughSoft)">
+          <path d="M65 105 C55 95 40 105 50 118 C58 128 65 132 65 132 C65 132 72 128 80 118 C90 105 75 95 65 105 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="1.2"/>
+          <path d="M125 95 L129 106 L141 106 L131 113 L135 124 L125 117 L115 124 L119 113 L109 106 L121 106 Z" fill="#f2c14e" stroke="var(--ink)" stroke-width="1"/>
+          <g fill="#f3c9d8" stroke="var(--ink)" stroke-width=".6">
+            <circle cx="180" cy="112" r="5"/><circle cx="192" cy="112" r="5"/><circle cx="186" cy="106" r="5"/><circle cx="186" cy="118" r="5"/>
+          </g>
+          <circle cx="186" cy="112" r="2.5" fill="#f2c14e"/>
+          <g fill="var(--pencil)"><circle cx="235" cy="106" r="3"/><circle cx="248" cy="112" r="3"/><circle cx="238" cy="120" r="3"/></g>
+          <path d="M65 165 C55 155 40 165 50 178 C58 188 65 192 65 192 C65 192 72 188 80 178 C90 165 75 155 65 165 Z" fill="none" stroke="var(--pencil)" stroke-width="1.2"/>
+          <path d="M125 155 L129 166 L141 166 L131 173 L135 184 L125 177 L115 184 L119 173 L109 166 L121 166 Z" fill="none" stroke="var(--pencil)" stroke-width="1"/>
+          <path d="M180 170 C186 164 196 168 196 176 C196 186 180 194 180 194 C180 194 164 186 164 176 C164 168 174 164 180 170 Z" fill="#8fc7e8" stroke="var(--ink)" stroke-width="1"/>
+          <path d="M225 168 q7 -10 14 0 q7 10 -7 20 q-14 -10 -7 -20 Z" fill="#7a3b8f" stroke="var(--ink)" stroke-width="1"/>
+        </g>
+      </g>
+    </svg>
+
+    <div class="screen-notes">
+      <div class="screen-note" id="panel-sammlung" role="tabpanel" aria-labelledby="tab-sammlung" data-screen="sammlung">Durchsuch deine ganze Sammlung nach Farbe, Marke oder Finish und sieh auf einen Blick, was noch fehlt.</div>
+      <div class="screen-note" id="panel-tagebuch" role="tabpanel" aria-labelledby="tab-tagebuch" data-screen="tagebuch">Halt fest, welchen Lack du wann getragen hast – mit Foto, Datum und ein paar Worten dazu.</div>
+      <div class="screen-note" id="panel-statistik" role="tabpanel" aria-labelledby="tab-statistik" data-screen="statistik">Sieh, welche Marken und Farbfamilien dein Regal wirklich dominieren.</div>
+      <div class="screen-note" id="panel-sticker" role="tabpanel" aria-labelledby="tab-sticker" data-screen="sticker">Verwalte auch deine Nailart-Sticker und Folien, griffbereit für die nächste Maniküre.</div>
+    </div>
+  </div>
+
+  <ul class="platform-row">
+    <li>Android</li>
+    <li>Web-App im Browser</li>
+    <li>alles offline nutzbar</li>
   </ul>
+</section>
+
+<section id="zahlen" class="section reveal">
+  <h2>Was das Regal verrät</h2>
+  <p class="section-lead">Nach ein paar Monaten Sammeln erzählt das Regal einiges über den eigenen Geschmack.</p>
+
+  <div class="charts">
+    <div class="chart">
+      <h3>Top Marken</h3>
+      <div class="bar-list">
+        <div class="bar-row"><span class="bar-label">OPI</span><span class="bar-track"><div class="bar" style="--w:100%"></div></span><span class="bar-value">12</span></div>
+        <div class="bar-row"><span class="bar-label">Essie</span><span class="bar-track"><div class="bar" style="--w:75%"></div></span><span class="bar-value">9</span></div>
+        <div class="bar-row"><span class="bar-label">Catrice</span><span class="bar-track"><div class="bar" style="--w:58%"></div></span><span class="bar-value">7</span></div>
+        <div class="bar-row"><span class="bar-label">Kiko Milano</span><span class="bar-track"><div class="bar" style="--w:42%"></div></span><span class="bar-value">5</span></div>
+        <div class="bar-row"><span class="bar-label">Zoya</span><span class="bar-track"><div class="bar" style="--w:25%"></div></span><span class="bar-value">3</span></div>
+      </div>
+    </div>
+    <div class="chart">
+      <h3>Farbfamilien</h3>
+      <div class="bar-list">
+        <div class="bar-row"><span class="bar-label">Rot</span><span class="bar-track"><div class="bar" style="--w:100%;--barcolor:#b3122e"></div></span><span class="bar-value">18</span></div>
+        <div class="bar-row"><span class="bar-label">Rosé</span><span class="bar-track"><div class="bar" style="--w:78%;--barcolor:#d98a9a"></div></span><span class="bar-value">14</span></div>
+        <div class="bar-row"><span class="bar-label">Blau</span><span class="bar-track"><div class="bar" style="--w:50%;--barcolor:#24418f"></div></span><span class="bar-value">9</span></div>
+        <div class="bar-row"><span class="bar-label">Grün</span><span class="bar-track"><div class="bar" style="--w:33%;--barcolor:#1f5f43"></div></span><span class="bar-value">6</span></div>
+        <div class="bar-row"><span class="bar-label">Nude</span><span class="bar-track"><div class="bar" style="--w:28%;--barcolor:#e9dfd2"></div></span><span class="bar-value">5</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="big-numbers">
+    <p class="big-number">48<span>Lacke</span></p>
+    <p class="big-number">132<span>Manis</span></p>
+    <p class="big-number">7<span>Wünsche</span></p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p class="footer-note">Gebaut mit Bleistift, Kuli und ein bisschen Code.</p>
+  <ul class="footer-links">
+    <li><a class="footer-privacy" href="privacy-policy.html">Datenschutzerklärung</a></li>
+    <li><a href="#top">Zum Seitenanfang</a></li>
+    <li><a href="https://github.com/Mozra-the-great/nagellacke" rel="noopener" target="_blank">Projekt auf GitHub</a></li>
+  </ul>
+  <p class="footer-fine">Eine private, werbefreie App. Keine Cookies, kein Tracking auf dieser Seite.</p>
+</footer>
+
+<script src="assets/sketch.js" defer></script>
 </body>
 </html>
