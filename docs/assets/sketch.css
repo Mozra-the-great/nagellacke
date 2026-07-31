@@ -1,0 +1,1538 @@
+/*
+ * Nagellacke — sketchbook stylesheet
+ * Handmade paper, ballpoint ink, pencil shading. No webfonts, no external
+ * resources — everything below is self-contained (data: URIs are inlined
+ * base64 SVG, generated once and pasted in).
+ *
+ * Class/ID contract: see /docs (spec). This file only styles names that are
+ * part of that contract, plus a small number of conventional names for
+ * pieces the spec leaves undocumented (flagged inline with "ASSUMPTION:").
+ */
+
+
+/* =========================================================================
+   1. RESET
+   ========================================================================= */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden; /* belt & braces against any stray wide child */
+}
+
+img, svg { max-width: 100%; display: block; }
+
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+a { color: inherit; text-decoration: none; }
+
+input { font: inherit; color: inherit; }
+
+/* Every real thing is a <button>/<a> per spec; keep [hidden] authoritative
+   even on SVG <g> elements, which some very old UAs get wrong. */
+[hidden] { display: none !important; }
+
+
+/* =========================================================================
+   2. DESIGN TOKENS
+   ========================================================================= */
+
+:root {
+  /* --- paper / ink (light, default) --- */
+  --paper:        #f6f1e6;
+  --paper-2:      #efe8d8;
+  --paper-3:      #e6dcc8;
+  --ink:          #23314e;
+  --ink-soft:     #4a5c80;
+  --pencil:       #5d5d67;
+  --pencil-soft:  #9a9aa4;
+  --accent:       #c2185b;
+  --accent-soft:  #f3c9d8;
+  --on-accent:    #fffaf5; /* readable text/icon colour on top of --accent */
+  --skin:         #f0d7c6;
+  --tape:         rgba(226, 205, 124, .45);
+
+  /* --- type --- */
+  --font-hand: 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', ui-rounded, cursive;
+  --font-body: ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* --- layout --- */
+  --container-max: 1080px;
+  --pad-inline: clamp(1rem, 4vw, 2.5rem);
+  --gap: clamp(1.25rem, 3vw, 2.5rem);
+
+  /* --- hand-drawn wobble radii: intentionally varied, never identical --- */
+  --wobble-1: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  --wobble-2: 15px 225px 20px 250px / 250px 15px 225px 15px;
+  --wobble-3: 200px 20px 200px 25px / 25px 200px 25px 200px;
+  --wobble-4: 25px 180px 30px 210px / 210px 25px 190px 25px;
+  --wobble-5: 8px 90px 12px 100px / 90px 12px 90px 10px;
+  --wobble-pill: 999px 12px 999px 18px / 18px 999px 14px 999px;
+
+  /* --- motion --- */
+  --dur-fast: .2s;
+  --dur: .35s;
+  --dur-slow: .8s;
+  --ease-hand: cubic-bezier(.34, 1.15, .64, 1);
+
+  /* --- nail finish layers (studio hand), see section 10 --- */
+  --fx-shimmer: 0;
+  --fx-chrome: 0;
+  --fx-holo: 0;
+  --fx-glitter: 0;
+  --fx-matte: 0;
+  --fx-gloss: .75;
+  --fx-empty: 0;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:        #1b1a18;
+    --paper-2:      #232220;
+    --paper-3:      #2c2a27;
+    --ink:          #ece6d7;
+    --ink-soft:     #c3bcab;
+    --pencil:       #b3ac9d;
+    --pencil-soft:  #7c766a;
+    --accent:       #ff8fb1;
+    --accent-soft:  #5a2c3d;
+    --on-accent:    #2a1420;
+    --skin:         #4c3a31;
+    --tape:         rgba(226, 205, 124, .28);
+
+    color-scheme: dark;
+  }
+}
+
+/* explicit light/dark override hooks, in case a future theme toggle stamps
+   this on <html>; prefers-color-scheme above stays the primary signal */
+:root[data-theme="dark"] {
+  --paper: #1b1a18; --paper-2: #232220; --paper-3: #2c2a27;
+  --ink: #ece6d7; --ink-soft: #c3bcab; --pencil: #b3ac9d; --pencil-soft: #7c766a;
+  --accent: #ff8fb1; --accent-soft: #5a2c3d; --on-accent: #2a1420; --skin: #4c3a31;
+  --tape: rgba(226, 205, 124, .28);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --paper: #f6f1e6; --paper-2: #efe8d8; --paper-3: #e6dcc8;
+  --ink: #23314e; --ink-soft: #4a5c80; --pencil: #5d5d67; --pencil-soft: #9a9aa4;
+  --accent: #c2185b; --accent-soft: #f3c9d8; --on-accent: #fffaf5; --skin: #f0d7c6;
+  --tape: rgba(226, 205, 124, .45);
+  color-scheme: light;
+}
+
+
+/* =========================================================================
+   3. PAPER — texture, vignette, base body styling
+   ========================================================================= */
+
+/* Fine fibre grain, feTurbulence baked into a tiny base64 SVG tile (alpha
+   only, ~5% max opacity — grain, not noise). Squiggle underlines below use
+   the same technique. All generated once, offline, no build step. */
+:root {
+  --tex-grain: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQwIj48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44NSIgbnVtT2N0YXZlcz0iMiIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPjxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwLjA1IDAiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjbikiLz48L3N2Zz4K");
+  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzIxODViIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY4ZmIxIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+  }
+}
+:root[data-theme="dark"] {
+  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY4ZmIxIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+}
+
+body {
+  background-color: var(--paper);
+  font-family: var(--font-body);
+  font-size: clamp(1rem, .95rem + .25vw, 1.0625rem);
+  line-height: 1.65;
+  color: var(--ink);
+  position: relative;
+  isolation: isolate;
+}
+
+/* fixed full-page overlay: grain + vignette, never intercepts clicks,
+   sits above the paper colour but below all real content */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .10) 100%),
+    var(--tex-grain);
+  background-repeat: no-repeat, repeat;
+  background-size: cover, 240px 240px;
+  mix-blend-mode: multiply;
+  opacity: .8;
+}
+@media (prefers-color-scheme: dark) {
+  body::before { mix-blend-mode: soft-light; opacity: .9; }
+}
+:root[data-theme="dark"] body::before { mix-blend-mode: soft-light; opacity: .9; }
+
+
+/* =========================================================================
+   4. TYPOGRAPHY
+   ========================================================================= */
+
+h1, h2, h3, h4 {
+  font-family: var(--font-hand);
+  font-weight: 400; /* handwriting fonts fake their own weight */
+  color: var(--ink);
+  line-height: 1.2;
+  margin: 0 0 .5em;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 2rem + 3vw, 4.5rem);
+  transform: rotate(-.6deg);
+}
+
+.section h2 {
+  font-size: clamp(1.8rem, 1.5rem + 1.6vw, 2.6rem);
+  display: inline-block;
+  position: relative;
+  transform: rotate(-.6deg);
+}
+
+h3 { font-size: clamp(1.2rem, 1.05rem + .6vw, 1.5rem); }
+
+/* hand-drawn squiggle underneath h1 and every section heading */
+h1::after,
+.section h2::after {
+  content: "";
+  display: block;
+  width: 8.5em;
+  max-width: 100%;
+  height: .4em;
+  margin-top: .05em;
+  background-image: var(--tex-squiggle);
+  background-repeat: repeat-x;
+  background-size: 3.4em 100%;
+  opacity: .9;
+}
+
+p { margin: 0 0 1em; }
+p:last-child { margin-bottom: 0; }
+
+small, .fine-print {
+  font-size: .8em;
+  color: var(--ink-soft);
+}
+
+/* pencil-style small caption text (kicker, hints) — never for body copy */
+.kicker {
+  font-family: var(--font-hand);
+  color: var(--pencil);
+  font-size: clamp(1rem, .95rem + .3vw, 1.2rem);
+  letter-spacing: .02em;
+}
+
+a:not(.btn) {
+  color: var(--accent);
+  text-underline-offset: .2em;
+  text-decoration: underline wavy 1px;
+}
+a:not(.btn):hover { text-decoration-thickness: 2px; }
+
+::selection { background: var(--accent-soft); color: var(--ink); }
+
+
+/* =========================================================================
+   5. LAYOUT HELPERS
+   ========================================================================= */
+
+.section {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding: clamp(2.5rem, 6vw, 5rem) var(--pad-inline);
+}
+
+.section > .section-head {
+  max-width: 62ch;
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  align-items: center;
+}
+@media (max-width: 860px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* sprite host: hidden per spec 3.1, never rendered directly */
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+
+/* =========================================================================
+   6. HAND-DRAWN FRAME — reusable "drawn twice" box
+   ========================================================================= */
+
+/*
+ * Base recipe used both as a standalone utility class (.hand-frame) and
+ * folded directly into every spec-named component below (cards, buttons,
+ * chips, notes) so it works regardless of which class the markup carries.
+ * The second, offset outline (::after) is the "pen went over it twice" line.
+ */
+.hand-frame,
+.paper-card,
+.studio-controls,
+.studio-readout,
+#shelfDetail,
+.finishes,
+.diary-face,
+.chart,
+.legal {
+  position: relative;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-1);
+}
+
+.hand-frame::after,
+.paper-card::after,
+.studio-controls::after,
+.studio-readout::after,
+#shelfDetail::after,
+.diary-face::after,
+.chart::after,
+.legal::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--wobble-2);
+  opacity: .35;
+  pointer-events: none;
+  transform: rotate(-.35deg);
+}
+
+/* variety: give a handful of components their own wobble so nothing
+   lines up identically */
+.studio-controls { border-radius: var(--wobble-3); }
+.studio-controls::after { border-radius: var(--wobble-4); }
+.chart { border-radius: var(--wobble-4); }
+.chart::after { border-radius: var(--wobble-3); }
+#shelfDetail { border-radius: var(--wobble-2); }
+#shelfDetail::after { border-radius: var(--wobble-1); }
+
+/* card variant: generous padding, soft lift */
+.hand-frame--card,
+.paper-card {
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+/* button variant: no ::after by default (buttons get their own, see .btn) */
+.hand-frame--button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wobble-5);
+}
+.hand-frame--button::after { border-radius: var(--wobble-pill); inset: -4px; }
+
+/* chip variant: pill-ish wobble, compact */
+.hand-frame--chip {
+  border-radius: var(--wobble-pill);
+  padding: .35em 1em;
+}
+.hand-frame--chip::after { border-radius: var(--wobble-pill); inset: -3px; }
+
+/* note variant: sticky-note look, used for the studio readout & similar */
+.hand-frame--note {
+  background: var(--paper-3);
+  border-radius: var(--wobble-4);
+}
+
+
+/* =========================================================================
+   7. FOCUS & INTERACTIVE STATES
+   ========================================================================= */
+
+:is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3.5rem;
+  z-index: 1000;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-5);
+  padding: .6em 1.2em;
+  font-family: var(--font-hand);
+  transition: top var(--dur) var(--ease-hand);
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+
+/* =========================================================================
+   8. TOPBAR
+   ========================================================================= */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem var(--pad-inline);
+  background: var(--paper);
+  border-bottom: 2px solid var(--ink);
+  box-shadow: 0 3px 0 -1px var(--paper-3);
+}
+
+/* wordmark logo: first link/text inside the topbar, no dedicated class in
+   the spec, so target it structurally */
+.topbar > a:first-child,
+.topbar .wordmark {
+  font-family: var(--font-hand);
+  font-size: clamp(1.3rem, 1.15rem + .6vw, 1.7rem);
+  color: var(--ink);
+  text-decoration: none;
+  position: relative;
+  flex: none;
+}
+.topbar > a:first-child::after,
+.topbar .wordmark::after {
+  content: "";
+  display: block;
+  height: .35em;
+  margin-top: -.1em;
+  background-image: var(--tex-squiggle);
+  background-repeat: repeat-x;
+  background-size: 2.6em 100%;
+}
+
+.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(.75rem, 2vw, 1.5rem);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  padding-block: .2rem; /* room for focus ring */
+}
+
+.topbar nav a {
+  white-space: nowrap;
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  padding: .25em .1em;
+  border-bottom: 2px solid transparent;
+}
+.topbar nav a:hover { border-bottom-color: var(--accent); }
+
+.topbar nav a.nav-privacy {
+  color: var(--ink-soft);
+  font-family: var(--font-body);
+  font-size: .85rem;
+  border-left: 1px dashed var(--pencil-soft);
+  padding-left: clamp(.75rem, 2vw, 1.5rem);
+}
+
+
+/* =========================================================================
+   9. HERO
+   ========================================================================= */
+
+#hero .lead {
+  font-size: clamp(1rem, .95rem + .3vw, 1.15rem);
+  max-width: 46ch;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4em;
+  font-family: var(--font-hand);
+  font-size: 1.1rem;
+  padding: .55em 1.4em;
+  position: relative;
+  background: var(--paper-2);
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-5);
+  transition: transform var(--dur-fast) var(--ease-hand);
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--wobble-pill);
+  opacity: .35;
+  pointer-events: none;
+}
+.btn:hover { transform: rotate(-1deg) translateY(-1px); }
+.btn:active { transform: rotate(1deg) translateY(0); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.btn-primary::after { border-color: var(--accent); }
+
+/* ASSUMPTION: secondary hero button — spec calls it "Sekundär" without
+   naming a class; .btn-secondary follows the .btn-primary naming pattern. */
+.btn-secondary {
+  background: transparent;
+}
+
+.hero-actions,
+#hero .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block: 1.5rem;
+}
+
+/* ASSUMPTION: the three "kein Tracking / …" scribbles — no class given.
+   .hero-facts / .hero-fact is a best guess; a plain <ul> inside #hero
+   also picks up sane styling via the fallback rule below. */
+.hero-facts,
+#hero .facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-top: 1.5rem;
+  padding: 0;
+}
+.hero-facts li,
+.hero-facts .hero-fact,
+#hero .facts li {
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+  position: relative;
+  padding-left: 1.3em;
+}
+.hero-facts li::before,
+.hero-facts .hero-fact::before,
+#hero .facts li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.hero-illustration svg,
+#hero .illustration svg {
+  filter: url(#rough);
+}
+
+
+/* =========================================================================
+   10. STUDIO — palette, finishes, readout, the hand
+   ========================================================================= */
+
+#studio .layout,
+#studio .studio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  align-items: start;
+}
+@media (max-width: 860px) {
+  #studio .layout,
+  #studio .studio-grid {
+    grid-template-columns: 1fr;
+  }
+  /* hand first, controls after, per spec 3.4 */
+  #studioHand, #studio svg[role="img"] { order: -1; }
+}
+
+.studio-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+/* --- palette -------------------------------------------------------- */
+
+.palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: .75rem 1rem;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  padding: .25rem;
+  border-radius: var(--wobble-5);
+}
+
+.swatch svg {
+  width: 48px;
+  height: 48px;
+  filter: url(#roughSoft);
+  transition: transform var(--dur-fast) var(--ease-hand);
+}
+
+/* colour blob fill: markup/JS sets --swatch on the button (mirrors the
+   --polish convention used on bottles / the studio hand elsewhere in the
+   spec). Falls back to a neutral pencil tone if that never happens. */
+.swatch [data-blob],
+.swatch svg :is(path, circle, use) {
+  fill: var(--swatch, var(--pencil-soft));
+}
+
+.swatch span {
+  font-family: var(--font-hand);
+  font-size: .85rem;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.swatch:hover svg { transform: rotate(-3deg) scale(1.05); }
+
+.swatch[aria-pressed="true"] {
+  background: var(--paper-3);
+}
+.swatch[aria-pressed="true"] svg {
+  transform: scale(1.08);
+  filter: url(#roughSoft) drop-shadow(0 0 0 var(--accent));
+}
+.swatch[aria-pressed="true"] span {
+  color: var(--accent);
+  font-weight: 600;
+}
+.swatch[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px dashed var(--accent);
+  border-radius: var(--wobble-5);
+  pointer-events: none;
+}
+
+/* --- own colour mixer ------------------------------------------------ */
+
+.own-color {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.own-color label {
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+}
+
+#ownColor {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-3);
+  background: var(--paper);
+  cursor: pointer;
+  position: relative;
+}
+#ownColor::-webkit-color-swatch-wrapper { padding: 3px; }
+#ownColor::-webkit-color-swatch { border: none; border-radius: var(--wobble-4); }
+#ownColor::-moz-color-swatch { border: none; border-radius: var(--wobble-4); }
+
+/* --- finishes ---------------------------------------------------------- */
+
+.finishes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .6rem;
+  padding: 1rem;
+}
+@media (max-width: 480px) {
+  .finishes { grid-template-columns: repeat(2, 1fr); }
+}
+
+.finish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  padding: .6em .4em;
+  border: 1.5px solid var(--pencil-soft);
+  border-radius: var(--wobble-5);
+  font-family: var(--font-hand);
+  font-size: .95rem;
+  transition: transform var(--dur-fast) var(--ease-hand), border-color var(--dur-fast);
+}
+.finish:hover { transform: rotate(-1.5deg); }
+
+/* small drawn symbol per finish, built from gradients/shadows only —
+   no extra markup required */
+.finish::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+}
+.finish[data-finish="classic"]::before { background: var(--pencil-soft); }
+.finish[data-finish="shimmer"]::before {
+  background: radial-gradient(circle at 35% 30%, #fff 0%, transparent 60%), var(--pencil-soft);
+}
+.finish[data-finish="glitter"]::before {
+  background:
+    radial-gradient(circle at 20% 30%, #fff 0 2px, transparent 3px),
+    radial-gradient(circle at 60% 60%, #fff 0 2px, transparent 3px),
+    radial-gradient(circle at 75% 25%, #fff 0 1.5px, transparent 2.5px),
+    var(--pencil-soft);
+}
+.finish[data-finish="matte"]::before { background: var(--pencil); }
+.finish[data-finish="chrome"]::before {
+  background: linear-gradient(135deg, #fff, var(--pencil) 50%, #111);
+}
+.finish[data-finish="holo"]::before {
+  background: conic-gradient(from 90deg, #ffb3c6, #ffe6a7, #c9f2c7, #a9d8ff, #d9b3ff, #ffb3c6);
+}
+
+.finish[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--paper-3);
+  color: var(--accent);
+}
+.finish[aria-pressed="true"]::before {
+  box-shadow: 0 0 0 2px var(--paper-2), 0 0 0 4px var(--accent);
+}
+
+/* --- readout note ------------------------------------------------------ */
+
+.studio-readout {
+  padding: 1.5rem 1.25rem 1.25rem;
+  background: var(--paper-3);
+  border-radius: var(--wobble-4);
+  transform: rotate(.6deg);
+}
+.studio-readout::after { border-radius: var(--wobble-3); }
+
+/* washi tape strip across the top corner */
+.studio-readout::before {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: 20%;
+  width: 90px;
+  height: 30px;
+  background: var(--tape);
+  transform: rotate(-4deg);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .08);
+}
+
+.studio-readout dl,
+.studio-readout p { margin: 0; }
+
+#swName {
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  color: var(--ink);
+}
+#swHex {
+  font-family: var(--font-hand);
+  color: var(--ink-soft);
+  font-size: 1rem;
+  letter-spacing: .04em;
+}
+#swFinish {
+  font-family: var(--font-hand);
+  color: var(--accent);
+}
+#swMood {
+  margin-top: .5rem;
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.studio-controls .fine-print {
+  color: var(--pencil);
+}
+
+#addToShelf { align-self: flex-start; }
+
+#clearShelf {
+  font-family: var(--font-body);
+  font-size: .85rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  padding: .3em 0;
+}
+
+
+/* =========================================================================
+   11. THE HAND — #studioHand & finish switching (spec 4.1)
+   ========================================================================= */
+
+#studioHand {
+  width: min(100%, 340px);
+  margin-inline: auto;
+  filter: url(#rough);
+}
+
+.nail-fill {
+  transition: fill .35s ease;
+}
+
+#studioHand[data-finish="shimmer"] { --fx-shimmer: 1; }
+#studioHand[data-finish="glitter"] { --fx-glitter: 1; }
+#studioHand[data-finish="chrome"]  { --fx-chrome: 1; }
+#studioHand[data-finish="holo"]    { --fx-holo: 1; }
+#studioHand[data-finish="matte"]   { --fx-matte: 1; --fx-gloss: 0; }
+/* classic: all fx layers stay at their :root defaults (0), gloss at .75 */
+
+.studio-hint {
+  text-align: center;
+  font-family: var(--font-hand);
+  color: var(--pencil);
+  margin-top: .75rem;
+}
+
+
+/* =========================================================================
+   12. REGAL — shelf, bottles, filters, detail card
+   ========================================================================= */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  padding: .75rem 0;
+}
+
+.chip {
+  padding: .4em 1.1em;
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-pill);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  background: var(--paper-2);
+  transition: transform var(--dur-fast) var(--ease-hand), background var(--dur-fast);
+}
+.chip:hover { transform: rotate(-1.5deg); }
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 2.5rem 1rem;
+  margin-top: 2rem;
+  padding-top: .5rem;
+}
+
+.bottle {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .5rem 1.1rem;
+  border-radius: var(--wobble-5);
+  transition: transform var(--dur-fast) var(--ease-hand);
+}
+
+/* the "board" the bottle stands on */
+.bottle::after {
+  content: "";
+  position: absolute;
+  left: -6%;
+  right: -6%;
+  bottom: .35rem;
+  height: 10px;
+  background: linear-gradient(var(--paper-3), var(--paper-3)) padding-box,
+    repeating-linear-gradient(90deg, transparent 0 18px, rgba(0, 0, 0, .06) 18px 19px);
+  border: 1.5px solid var(--ink);
+  border-radius: 4px 4px 8px 8px / 3px 3px 6px 6px;
+  box-shadow: 0 4px 0 -2px rgba(0, 0, 0, .12);
+}
+
+.bottle svg {
+  width: 56px;
+  height: 110px;
+  filter: url(#roughSoft);
+  position: relative;
+  z-index: 1;
+  transition: transform var(--dur-fast) var(--ease-hand);
+}
+
+.bottle-label {
+  font-family: var(--font-hand);
+  font-size: .85rem;
+  text-align: center;
+  color: var(--ink-soft);
+  position: relative;
+  z-index: 1;
+}
+
+.bottle:hover svg { transform: rotate(-2deg) translateY(-2px); }
+
+.bottle.is-selected {
+  background: var(--paper-3);
+}
+.bottle.is-selected::before {
+  content: "";
+  position: absolute;
+  inset: -4px 0 auto;
+  top: -2px;
+  bottom: 2rem;
+  border: 2px dashed var(--accent);
+  border-radius: var(--wobble-5);
+  pointer-events: none;
+}
+
+/* wish-list bottles: sketched, dashed outline, pale */
+.bottle.is-wish svg use {
+  stroke: var(--ink);
+  stroke-dasharray: 4 3;
+  opacity: .8;
+}
+.bottle.is-wish .bottle-label { color: var(--pencil); font-style: italic; }
+
+/* used-up bottles: greyed out, half-empty */
+.bottle.is-empty svg use { --fx-empty: .75; }
+.bottle.is-empty { opacity: .55; }
+.bottle.is-empty svg { filter: url(#roughSoft) grayscale(.6); }
+
+.shelf-empty {
+  grid-column: 1 / -1;
+  font-family: var(--font-hand);
+  font-size: 1.2rem;
+  color: var(--pencil);
+  text-align: center;
+  padding: 2rem 0;
+}
+
+/* --- detail card: lined index card ------------------------------------ */
+
+#shelfDetail {
+  margin-top: 2.5rem;
+  padding: 1.5rem 1.5rem 1.5rem 3rem;
+  background-image:
+    linear-gradient(var(--paper-2), var(--paper-2)),
+    repeating-linear-gradient(
+      to bottom, transparent 0 1.85em, rgba(0, 0, 0, .07) 1.85em calc(1.85em + 1px)
+    );
+  background-blend-mode: normal;
+  position: relative;
+}
+#shelfDetail::before {
+  content: "";
+  position: absolute;
+  left: 1.6rem;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: rgba(194, 24, 91, .35);
+}
+#shelfDetail h3 { margin-top: 0; }
+#shelfDetail .worn,
+#shelfDetail .hex {
+  font-family: var(--font-hand);
+  color: var(--accent);
+}
+#shelfDetail p { color: var(--ink); }
+
+
+/* =========================================================================
+   13. TAGEBUCH — polaroids, tape, 3D flip
+   ========================================================================= */
+
+#tagebuch {
+  perspective: 1400px;
+}
+
+.diary-grid,
+#tagebuch .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: clamp(1.5rem, 4vw, 3rem);
+  margin-top: 2rem;
+}
+
+.diary-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  transform-style: preserve-3d;
+  transition: transform var(--dur-slow) var(--ease-hand);
+  border-radius: 6px;
+}
+
+/* varied resting rotation — set per-card via nth-child so no two match */
+.diary-card:nth-of-type(1) { transform: rotate(-2.5deg); }
+.diary-card:nth-of-type(2) { transform: rotate(1.5deg); }
+.diary-card:nth-of-type(3) { transform: rotate(-1deg); }
+.diary-card:nth-of-type(4) { transform: rotate(2deg); }
+.diary-card.is-flipped:nth-of-type(1) { transform: rotate(-2.5deg) rotateY(180deg); }
+.diary-card.is-flipped:nth-of-type(2) { transform: rotate(1.5deg) rotateY(180deg); }
+.diary-card.is-flipped:nth-of-type(3) { transform: rotate(-1deg) rotateY(180deg); }
+.diary-card.is-flipped:nth-of-type(4) { transform: rotate(2deg) rotateY(180deg); }
+
+/* ASSUMPTION: front/back faces need dedicated child elements for the 3D
+   flip; the spec describes the two sides but not their markup. Front/back
+   classes below are the expected contract with index.html. */
+.diary-face,
+.diary-front,
+.diary-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  padding: .9rem .9rem 2rem;
+  display: flex;
+  flex-direction: column;
+  background: #fdfbf5;
+  border: 2px solid var(--ink);
+  border-radius: var(--wobble-3);
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, .18);
+}
+@media (prefers-color-scheme: dark) {
+  .diary-face, .diary-front, .diary-back { background: #2a2825; }
+}
+:root[data-theme="dark"] .diary-face,
+:root[data-theme="dark"] .diary-front,
+:root[data-theme="dark"] .diary-back { background: #2a2825; }
+
+.diary-back {
+  transform: rotateY(180deg);
+  background-image: repeating-linear-gradient(
+    to bottom, transparent 0 1.6em, rgba(0, 0, 0, .08) 1.6em calc(1.6em + 1px)
+  );
+}
+
+.diary-front .tape,
+.diary-card > .tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  translate: -50% 0;
+  width: 70px;
+  height: 26px;
+  background: var(--tape);
+  transform: rotate(-3deg);
+  z-index: 2;
+}
+
+.diary-date,
+.diary-name {
+  font-family: var(--font-hand);
+  text-align: center;
+}
+.diary-date { font-size: .8rem; color: var(--pencil); }
+.diary-name { font-size: 1.05rem; color: var(--ink); }
+
+.diary-note {
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  color: var(--ink);
+  flex: 1;
+}
+
+.stars {
+  display: flex;
+  gap: .15rem;
+  font-size: 1.1rem;
+  color: var(--pencil-soft);
+}
+.stars .is-filled,
+.stars [data-filled="true"] { color: var(--accent); }
+
+.diary-margin-note {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-family: var(--font-hand);
+  color: var(--pencil);
+}
+
+
+/* =========================================================================
+   14. APP — phone mock, tabs, screen notes
+   ========================================================================= */
+
+#app .layout,
+#app .app-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) 1fr;
+  gap: var(--gap);
+  align-items: start;
+}
+@media (max-width: 860px) {
+  #app .layout,
+  #app .app-grid { grid-template-columns: 1fr; }
+}
+
+.phone-wrap { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+
+.phone-tabs {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tab {
+  padding: .4em 1em;
+  border: 1.5px solid var(--pencil-soft);
+  border-radius: var(--wobble-pill);
+  font-family: var(--font-hand);
+  font-size: .95rem;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.tab[aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#phone {
+  width: min(100%, 300px);
+  filter: url(#rough);
+}
+
+/* text lines inside the phone screens are scribbles, not real glyphs */
+.screen .scribble,
+.screen .line {
+  stroke: var(--pencil-soft);
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+.screen .screen-title {
+  font-family: var(--font-hand);
+}
+
+.screen-note {
+  max-width: 42ch;
+  background: var(--paper-2);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.25rem;
+  border-radius: 0 var(--wobble-5);
+  font-size: .98rem;
+}
+
+.app-notes,
+#app .notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin-top: 2rem;
+  font-family: var(--font-hand);
+  color: var(--ink-soft);
+}
+
+
+/* =========================================================================
+   15. ZAHLEN — bar charts & big numbers
+   ========================================================================= */
+
+#zahlen .charts,
+#zahlen .charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+}
+@media (max-width: 860px) {
+  #zahlen .charts,
+  #zahlen .charts-grid { grid-template-columns: 1fr; }
+}
+
+/* ASSUMPTION: no class is given for the bar chart itself in the spec beyond
+   "<div>s mit --w"; .chart / .bar-row / .bar-track / .bar-fill follow the
+   naming style used elsewhere (.big-number, .bottle-label, …). */
+.chart {
+  padding: 1.5rem;
+  overflow-x: auto;
+}
+.chart h3 { margin-top: 0; }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr 2.5rem;
+  align-items: center;
+  gap: .6rem;
+  margin-block: .6rem;
+  font-family: var(--font-hand);
+}
+
+.bar-track {
+  height: 1.1rem;
+  background: var(--paper-3);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--wobble-5);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: var(--w, 0%);
+  border-radius: inherit;
+  background-color: var(--bar-color, var(--pencil-soft));
+  background-image: repeating-linear-gradient(
+    45deg, rgba(0, 0, 0, .12) 0 4px, transparent 4px 8px
+  );
+}
+/* colour-family bars carry their own hue via --bar-color set inline */
+
+.bar-value { text-align: right; color: var(--ink-soft); }
+
+/* width animates from 0 → --w only once JS + scroll-reveal are active;
+   without JS the bar sits at its target width immediately (a11y §7) */
+html.js .bar-fill {
+  width: 0;
+  transition: width var(--dur-slow) var(--ease-hand);
+}
+html.js .is-visible .bar-fill {
+  width: var(--w, 0%);
+}
+
+.big-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(1.5rem, 5vw, 3.5rem);
+  margin-top: clamp(2rem, 5vw, 3rem);
+  justify-content: center;
+  text-align: center;
+}
+
+.big-number {
+  font-family: var(--font-hand);
+  font-size: clamp(2rem, 1.6rem + 1.6vw, 3rem);
+  color: var(--accent);
+  transform: rotate(-1.2deg);
+  position: relative;
+}
+
+
+/* =========================================================================
+   16. FOOTER
+   ========================================================================= */
+
+footer {
+  border-top: 2px solid var(--ink);
+  padding: clamp(2rem, 5vw, 3rem) var(--pad-inline);
+  margin-top: clamp(3rem, 8vw, 5rem);
+}
+
+footer .footer-inner {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+footer .signoff {
+  font-family: var(--font-hand);
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+footer nav,
+footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 2rem;
+}
+
+footer a { text-decoration: underline; }
+footer a.footer-privacy {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+footer .fine-print {
+  max-width: 60ch;
+}
+
+
+/* =========================================================================
+   17. SCROLL REVEAL
+   ========================================================================= */
+
+/* No-JS default: everything fully visible, nothing gated behind a
+   never-fired IntersectionObserver (a11y §7). */
+.reveal {
+  opacity: 1;
+  transform: none;
+}
+html.js .reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity var(--dur-slow) var(--ease-hand), transform var(--dur-slow) var(--ease-hand);
+}
+html.js .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* staggered fade for direct children of a revealed section, e.g. cards */
+html.js .reveal.is-visible > * { transition-delay: calc(var(--i, 0) * 60ms); }
+
+/* hand-drawn path "ink in" — normalised via pathLength="100" on the SVG
+   path itself (see markup contract, §3.1/4). Visible by default; only
+   drawn-in once JS is present. */
+path[pathLength="100"] {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+}
+html.js .reveal path[pathLength="100"] {
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 1.1s var(--ease-hand);
+}
+html.js .reveal.is-visible path[pathLength="100"] {
+  stroke-dashoffset: 0;
+}
+/* stagger multiple paths within one illustration */
+html.js .reveal path[pathLength="100"]:nth-of-type(1) { transition-delay: 0ms; }
+html.js .reveal path[pathLength="100"]:nth-of-type(2) { transition-delay: 90ms; }
+html.js .reveal path[pathLength="100"]:nth-of-type(3) { transition-delay: 180ms; }
+html.js .reveal path[pathLength="100"]:nth-of-type(4) { transition-delay: 270ms; }
+html.js .reveal path[pathLength="100"]:nth-of-type(5) { transition-delay: 360ms; }
+html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms; }
+
+
+/* =========================================================================
+   18. DECORATIVE BITS — tape, dog-ear, coffee stain, sparkle
+   (utility classes; applied where index.html opts in)
+   ========================================================================= */
+
+.deco-tape {
+  position: absolute;
+  width: 70px;
+  height: 26px;
+  background: var(--tape);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .08);
+}
+
+.deco-dogear {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, transparent 50%, var(--paper) 50%);
+  border-top: 1.5px solid var(--pencil-soft);
+  border-left: 1.5px solid var(--pencil-soft);
+  box-shadow: -1px -1px 2px rgba(0, 0, 0, .08);
+}
+
+.deco-stain {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 45% 55% 60% 40% / 50% 45% 55% 50%;
+  border: 1.5px solid rgba(140, 100, 60, .35);
+  background: radial-gradient(circle, transparent 55%, rgba(140, 100, 60, .12) 100%);
+  pointer-events: none;
+}
+
+.deco-sparkle {
+  position: absolute;
+  color: var(--accent);
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+  pointer-events: none;
+}
+
+
+/* =========================================================================
+   19. HOVER TILT — small, universal, never more than the spec allows
+   ========================================================================= */
+
+@media (hover: hover) {
+  .diary-card:not(.is-flipped):hover { transform: rotate(0deg) scale(1.02); }
+  .diary-card:nth-of-type(1):not(.is-flipped):hover { transform: rotate(-1deg) scale(1.02); }
+  .diary-card:nth-of-type(2):not(.is-flipped):hover { transform: rotate(.5deg) scale(1.02); }
+  .diary-card:nth-of-type(3):not(.is-flipped):hover { transform: rotate(-.5deg) scale(1.02); }
+  .diary-card:nth-of-type(4):not(.is-flipped):hover { transform: rotate(1deg) scale(1.02); }
+}
+
+
+/* =========================================================================
+   20. LEGAL PAGE — docs/privacy-policy.html
+   ========================================================================= */
+
+.legal-head {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding: 1.25rem var(--pad-inline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 2px solid var(--ink);
+}
+.legal-head .wordmark {
+  font-family: var(--font-hand);
+  font-size: 1.4rem;
+}
+
+.back-link {
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.back-link:hover { text-decoration: underline; }
+
+.legal {
+  max-width: 72ch;
+  margin: clamp(2rem, 5vw, 3.5rem) auto;
+  padding: clamp(1.5rem, 5vw, 3rem);
+}
+
+.legal h1 {
+  font-size: clamp(1.8rem, 1.5rem + 1.5vw, 2.4rem);
+  transform: none;
+}
+.legal h1::after { display: none; }
+
+.legal h2 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--ink);
+  margin-top: 2em;
+  transform: none;
+}
+.legal h2::after { display: none; }
+
+.legal h3 {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.legal p, .legal li {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.legal ul, .legal ol {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 0 0 1em;
+}
+.legal ol { list-style: decimal; }
+.legal li { margin-bottom: .4em; }
+
+.legal code {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: .9em;
+  background: var(--paper-3);
+  padding: .1em .35em;
+  border-radius: 4px;
+}
+
+.legal a { text-decoration: underline; }
+
+.legal-foot {
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding: 1.5rem var(--pad-inline) 2.5rem;
+  border-top: 2px solid var(--ink);
+  margin-top: 2rem;
+}
+
+
+/* =========================================================================
+   21. REDUCED MOTION
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  html.js .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  html.js .reveal path[pathLength="100"] {
+    stroke-dashoffset: 0;
+  }
+  html.js .bar-fill {
+    width: var(--w, 0%);
+  }
+  .diary-card { transition: none; }
+  .nail-fill { transition: none; }
+}
+
+
+/* =========================================================================
+   22. PRINT
+   ========================================================================= */
+
+@media print {
+  body::before { display: none; }
+  body { background: #fff; color: #000; }
+  .topbar, .skip-link, .studio-controls, .filters, #addToShelf,
+  #clearShelf, .phone-tabs, .deco-tape, .deco-dogear, .deco-stain,
+  .deco-sparkle, .sprite {
+    display: none !important;
+  }
+  .hand-frame, .paper-card, .studio-readout, #shelfDetail, .chart, .legal {
+    border-color: #000;
+    background: #fff;
+  }
+  .hand-frame::after, .paper-card::after, .studio-readout::after,
+  #shelfDetail::after, .chart::after, .legal::after {
+    display: none;
+  }
+  a { color: #000; text-decoration: underline; }
+  h1, h2, h3, h4 { color: #000; transform: none; }
+  h1::after, .section h2::after { display: none; }
+}
