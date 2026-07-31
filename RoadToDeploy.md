@@ -253,7 +253,7 @@ Work through them top-to-bottom; each step depends on the previous one being com
    - Use a dedicated Google account (e.g. `nagellacke.dev@gmail.com`) rather than your personal one — you cannot transfer an app to a different developer account later.
 3. Pay the one-time **$25 USD** registration fee with a credit or debit card.
 4. Fill in the developer profile:
-   - **Developer name**: This appears publicly on the Play Store page, e.g. `Moritz Schran` or a studio name.
+   - **Developer name**: This appears publicly on the Play Store page — use a handle or studio name rather than your legal name if you would rather not have it indexed.
    - **Contact email**: Must be a valid address Google can reach you at (not necessarily the account email).
 5. Accept the Developer Distribution Agreement.
 6. Wait for account approval — usually a few hours, up to 1 business day.
