@@ -5,6 +5,12 @@ import {
   getAiConfig, getNextPendingAiJob, updateAiJob, getData, setData,
 } from './db';
 import type { AiConfig, AiJob } from './db';
+import type { WebSearchConfig } from './websearch';
+import { isWebSearchConfigured } from './websearch';
+import {
+  MAX_TOOL_ROUNDS, geminiText, geminiToolSpec, openAiToolSpec,
+  parseGeminiToolCalls, parseOpenAiToolCalls, runWebSearchTool,
+} from './tooling';
 
 const FINISH_VALUES = FINISH_OPTIONS.map((o) => o.value);
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -35,79 +41,127 @@ function toFreeModel(model: string): string {
   return model.endsWith(':free') ? model : `${model}:free`;
 }
 
-async function callOpenRouter(
+export async function callOpenRouter(
   config: AiConfig['openrouter'],
   systemPrompt: string,
   userPrompt: string,
   webSearch: boolean,
+  search: WebSearchConfig,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('OpenRouter-API-Schlüssel fehlt');
   let model = config.model || 'openrouter/auto';
   if (config.freeOnly) model = toFreeModel(model);
 
-  const body: Record<string, unknown> = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-  };
-  // The "web" plugin is billed per request (observed: $0.005) on top of
-  // inference, and that charge applies even when the model itself is a ":free"
-  // variant costing $0 — the request comes back 200 with usage.cost = 0.005.
-  // "Nur kostenlose Modelle" therefore cannot include web search: honour the
-  // setting by researching from the model's own knowledge instead of quietly
-  // spending the user's credits.
-  if (webSearch && !config.freeOnly) body.plugins = [{ id: 'web' }];
+  // Research runs through our own `web_search` tool (websearch.ts), never
+  // through OpenRouter's `web` plugin: the plugin is billed ~$0.005 per request
+  // even when the model itself is a free variant costing $0 (#125). Tool calls
+  // are ordinary completions, so this stays free on a free model.
+  const messages: unknown[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`OpenRouter-Fehler ${res.status}: ${errText.slice(0, 300)}`);
+  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    // On the last round the tools are withdrawn, and any tool call that comes
+    // back anyway is ignored rather than looped on — otherwise a model that
+    // keeps requesting tools it was not offered would spin forever.
+    const offerTools = webSearch && round < MAX_TOOL_ROUNDS;
+    const body: Record<string, unknown> = { model, messages };
+    if (offerTools) body.tools = openAiToolSpec();
+
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`OpenRouter-Fehler ${res.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await res.json() as { choices?: { message?: Record<string, unknown> }[] };
+    const message = data.choices?.[0]?.message;
+    const calls = offerTools ? parseOpenAiToolCalls(message) : [];
+
+    if (calls.length === 0) {
+      const content = message?.content;
+      if (typeof content !== 'string' || !content) throw new Error('OpenRouter hat keine Antwort geliefert');
+      return content;
+    }
+
+    // Echo the assistant turn back verbatim, then one tool result per call —
+    // the API rejects a tool message that doesn't answer a preceding call.
+    messages.push(message);
+    for (const call of calls) {
+      messages.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call.name,
+        content: await runWebSearchTool(call, search),
+      });
+    }
   }
-  const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error('OpenRouter hat keine Antwort geliefert');
-  return content;
+  // The loop always returns or throws on its final iteration.
+  throw new Error('OpenRouter hat keine Antwort geliefert');
 }
 
-async function callGemini(
+export async function callGemini(
   config: AiConfig['gemini'],
   systemPrompt: string,
   userPrompt: string,
   webSearch: boolean,
+  search: WebSearchConfig,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('Gemini-API-Schlüssel fehlt');
   const model = config.model || 'gemini-2.5-flash';
-
-  const body: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-  };
-  // Google AI Studio's web-grounding tool.
-  if (webSearch) body.tools = [{ googleSearch: {} }];
-
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`Gemini-Fehler ${res.status}: ${errText.slice(0, 300)}`);
+
+  // Our own tool rather than Gemini's googleSearch grounding, which is not in
+  // the free tier and 429s on a free key (#120).
+  const contents: unknown[] = [{ role: 'user', parts: [{ text: userPrompt }] }];
+
+  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    // See callOpenRouter: withdrawing the tools is not enough on its own.
+    const offerTools = webSearch && round < MAX_TOOL_ROUNDS;
+    const body: Record<string, unknown> = {
+      contents,
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+    };
+    if (offerTools) body.tools = geminiToolSpec();
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Gemini-Fehler ${res.status}: ${errText.slice(0, 300)}`);
+    }
+    const data = await res.json() as { candidates?: { content?: { parts?: unknown[] } }[] };
+    const parts = data.candidates?.[0]?.content?.parts;
+    const calls = offerTools ? parseGeminiToolCalls(parts) : [];
+
+    if (calls.length === 0) {
+      const content = geminiText(parts);
+      if (!content) throw new Error('Gemini hat keine Antwort geliefert');
+      return content;
+    }
+
+    contents.push({ role: 'model', parts });
+    contents.push({
+      role: 'user',
+      parts: await Promise.all(calls.map(async (call) => ({
+        functionResponse: {
+          name: call.name,
+          response: { results: await runWebSearchTool(call, search) },
+        },
+      }))),
+    });
   }
-  const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
-  const content = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-  if (!content) throw new Error('Gemini hat keine Antwort geliefert');
-  return content;
+  throw new Error('Gemini hat keine Antwort geliefert');
 }
 
 /**
@@ -138,26 +192,37 @@ interface LlmAnswer {
   webSearchUsed: boolean;
 }
 
-/** Whether a web-researched answer is even attempted for this config. */
-function webSearchAvailable(config: AiConfig): boolean {
-  // "Nur kostenlose Modelle" suppresses OpenRouter's billed web plugin.
-  return config.provider === 'gemini' || !config.openrouter.freeOnly;
+/**
+ * Whether a web-researched answer is even attempted.
+ *
+ * Research now runs through our own server-side `web_search` tool, so this no
+ * longer depends on the provider's plan at all — only on whether a search
+ * backend is configured. "Nur kostenlose Modelle" stays free *and* researched.
+ */
+function webSearchAvailable(search: WebSearchConfig): boolean {
+  return isWebSearchConfigured(search);
 }
 
-async function callLlm(config: AiConfig, systemPrompt: string, userPrompt: string, webSearch = true): Promise<LlmAnswer> {
-  const call = (search: boolean) => config.provider === 'gemini'
-    ? callGemini(config.gemini, systemPrompt, userPrompt, search)
-    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, search);
+async function callLlm(
+  config: AiConfig,
+  search: WebSearchConfig,
+  systemPrompt: string,
+  userPrompt: string,
+  webSearch = true,
+): Promise<LlmAnswer> {
+  const call = (useSearch: boolean) => config.provider === 'gemini'
+    ? callGemini(config.gemini, systemPrompt, userPrompt, useSearch, search)
+    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, useSearch, search);
 
-  const attemptSearch = webSearch && webSearchAvailable(config);
+  const attemptSearch = webSearch && webSearchAvailable(search);
   if (!attemptSearch) return { text: await call(false), webSearchUsed: false };
   try {
     return { text: await call(true), webSearchUsed: true };
   } catch (e) {
     if (!isSearchQuotaError(e)) throw e;
-    // Answer from the model's own knowledge rather than failing the job. Less
-    // reliable for obscure polishes, but far better than no result at all.
-    console.warn('[ai] Web-Recherche nicht verfügbar (Kontingent) — Anfrage ohne Websuche wiederholt.');
+    // A model that can't do tool calls at all, or a provider-side limit, should
+    // not sink the job — retry plainly and mark the answer as unresearched.
+    console.warn('[ai] Werkzeug-Aufrufe nicht verfügbar — Anfrage ohne Websuche wiederholt.');
     return { text: await call(false), webSearchUsed: false };
   }
 }
@@ -179,11 +244,11 @@ interface AutofillResult {
   finish: FinishType;
 }
 
-async function researchAutofill(config: AiConfig, polish: { name: string; brand: string; num: string }): Promise<AutofillResult & { webSearchUsed: boolean }> {
-  const canResearch = webSearchAvailable(config);
+async function researchAutofill(config: AiConfig, search: WebSearchConfig, polish: { name: string; brand: string; num: string }): Promise<AutofillResult & { webSearchUsed: boolean }> {
+  const canResearch = webSearchAvailable(search);
   const system = `Du bist ein Assistent, der Fakten zu Nagellacken ${canResearch ? 'recherchiert' : 'aus deinem Modellwissen beantwortet'}. ${canResearch ? '' : 'Du hast KEINEN Internetzugriff — schätze anhand dessen, was du über die Produktlinie weisst. '}Antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne weiteren Text im Format {"color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}. "color" ist die tatsächliche Lackfarbe als Hex-Code, "finish" die Oberflächenart.`;
   const user = `Nagellack: Name="${polish.name}", Nummer="${polish.num}", Hersteller="${polish.brand}". ${canResearch ? 'Recherchiere im Internet die tatsächliche' : 'Nenne die'} Farbe und das Finish dieses konkreten Lacks.`;
-  const { text, webSearchUsed } = await callLlm(config, system, user, true);
+  const { text, webSearchUsed } = await callLlm(config, search, system, user, true);
   const parsed = extractJson(text) as Partial<AutofillResult>;
   const color = typeof parsed.color === 'string' && HEX_RE.test(parsed.color) ? parsed.color : '#ff6699';
   const finish = FINISH_VALUES.includes(parsed.finish as FinishType) ? (parsed.finish as FinishType) : 'Classic';
@@ -202,6 +267,7 @@ interface SmartCartSuggestion {
 
 async function researchSmartCart(
   config: AiConfig,
+  search: WebSearchConfig,
   prompt: string,
   collection: Polish[],
   cart: Polish[],
@@ -210,7 +276,7 @@ async function researchSmartCart(
   const collectionSummary = collection.map(describe).join('; ') || 'leer';
   const cartSummary = cart.map(describe).join('; ') || 'leer';
 
-  const canResearch = webSearchAvailable(config);
+  const canResearch = webSearchAvailable(search);
   // Without web search the model cannot confirm a product exists. Demanding
   // "only confirmed-real products" anyway just pushes it to invent article
   // numbers that look verified — the worst outcome for a shopping list. Ask
@@ -222,7 +288,7 @@ async function researchSmartCart(
   const system = `Du bist ein Assistent für Nagellack-Kaufempfehlungen. Analysiere die bestehende Sammlung und den aktuellen Einkaufswagen des Nutzers, ermittle anhand des Nutzer-Prompts fehlende Eigenschaften (z.B. fehlende Farben), ${sourcing} Antworte AUSSCHLIESSLICH mit einem JSON-Array ohne weiteren Text im Format [{"name": "...", "brand": "...", "num": "...", "color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}]. Maximal 10 Vorschläge. Falls du keine passenden Produkte findest, gib ein leeres Array zurück.`;
   const user = `Bestehende Sammlung: ${collectionSummary}\nAktueller Einkaufswagen: ${cartSummary}\nAnfrage: ${prompt}`;
 
-  const { text, webSearchUsed } = await callLlm(config, system, user, true);
+  const { text, webSearchUsed } = await callLlm(config, search, system, user, true);
   const parsed = extractJson(text);
   if (!Array.isArray(parsed)) return { suggestions: [], webSearchUsed };
   const suggestions = parsed
@@ -248,19 +314,20 @@ let processing = false;
 
 async function runJob(job: AiJob): Promise<void> {
   const config = getAiConfig();
+  const search = config.webSearch;
   if (job.type === 'autofill') {
     const polish = job.input.polish;
     if (!polish) throw new Error('Lack-Daten fehlen');
     // The result is handed back via the job, not written to data.json here —
     // the client applies it to its own state and syncs, so this doesn't race
     // against the client's local edits/sync cycle.
-    const result = await researchAutofill(config, polish);
+    const result = await researchAutofill(config, search, polish);
     updateAiJob(job.id, { status: 'done', result });
   } else {
     const data = getData(job.username);
     const collection = data.polishes.filter((p) => !p.deletedAt && p.status !== 'wish');
     const cart = data.polishes.filter((p) => !p.deletedAt && p.status === 'wish');
-    const { suggestions, webSearchUsed } = await researchSmartCart(config, job.input.prompt ?? '', collection, cart);
+    const { suggestions, webSearchUsed } = await researchSmartCart(config, search, job.input.prompt ?? '', collection, cart);
     const createdAt = Date.now();
     const newPolishes: Polish[] = suggestions.map((s) => ({
       id: uuidv4(),

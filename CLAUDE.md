@@ -54,3 +54,4 @@ npm start      # node dist/index.js
 - Env vars of note: `PORT`, `ALLOWED_ORIGIN`, `SERVICE_NAME`, `JWT_SECRET`, `JWT_ACCESS_TTL` (default `7d`), `JWT_REFRESH_TTL` (default `30d`), `DATA_DIR`, `ALLOW_REGISTRATION`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `APP_URL`
 - Data is stored as JSON files under `v3/server/data/` (gitignored); each user's collection lives at `data/users/<user>/data.json`, photos are shared under `v3/server/data/photos/`.
 - Report schedule config is stored in `v3/server/data/schedule.json` (auto-created on first save).
+- AI config (provider, API keys, web-search backend) lives in `v3/server/data/ai_config.json` (mode 0600); background jobs in `data/ai_jobs.json`. Web research runs through the server's own `web_search` tool (`src/websearch.ts` + `src/tooling.ts`), offered to the model via tool calling — the providers' billed web search is never used.

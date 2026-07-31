@@ -8,6 +8,7 @@ import type { useAppData } from '../useAppData';
 import { uploadPhoto } from '../utils/photos';
 import { generateReport } from '../utils/report';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
+import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
 import styles from './SettingsPage.module.css';
 
@@ -322,6 +323,10 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [aiGeminiKey, setAiGeminiKey] = useState('');
   const [aiGeminiModel, setAiGeminiModel] = useState('gemini-2.5-flash');
   const [aiGeminiHasKey, setAiGeminiHasKey] = useState(false);
+  const [aiSearchBackend, setAiSearchBackend] = useState<SearchBackend>('duckduckgo');
+  const [aiSearxngUrl, setAiSearxngUrl] = useState('');
+  const [aiBraveKey, setAiBraveKey] = useState('');
+  const [aiHasBraveKey, setAiHasBraveKey] = useState(false);
   const [aiSaveStatus, setAiSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [aiSaveError, setAiSaveError] = useState('');
 
@@ -381,6 +386,9 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         setAiOpenrouterHasKey(s.openrouter.hasApiKey);
         setAiGeminiModel(s.gemini.model);
         setAiGeminiHasKey(s.gemini.hasApiKey);
+        setAiSearchBackend(s.webSearch.backend);
+        setAiSearxngUrl(s.webSearch.searxngUrl);
+        setAiHasBraveKey(s.webSearch.hasBraveApiKey);
       })
       .catch(() => { /* ignore — offline or not yet configured */ });
     return () => { cancelled = true; };
@@ -394,11 +402,18 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         provider: aiProvider,
         openrouter: { apiKey: aiOpenrouterKey || undefined, model: aiOpenrouterModel || 'openrouter/auto', freeOnly: aiOpenrouterFreeOnly },
         gemini: { apiKey: aiGeminiKey || undefined, model: aiGeminiModel || 'gemini-2.5-flash' },
+        webSearch: {
+          backend: aiSearchBackend,
+          searxngUrl: aiSearxngUrl.trim(),
+          braveApiKey: aiBraveKey || undefined,
+        },
       });
       if (aiOpenrouterKey) setAiOpenrouterHasKey(true);
       if (aiGeminiKey) setAiGeminiHasKey(true);
+      if (aiBraveKey) setAiHasBraveKey(true);
       setAiOpenrouterKey('');
       setAiGeminiKey('');
+      setAiBraveKey('');
       setAiSaveStatus('saved');
       setTimeout(() => setAiSaveStatus('idle'), 2000);
     } catch (e) {
@@ -927,6 +942,65 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                   />
                 </label>
               </>
+            )}
+
+            <label className={styles.field}>
+              <span>Web-Recherche</span>
+              <div className={styles.segmented}>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiSearchBackend === 'duckduckgo' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiSearchBackend('duckduckgo')}
+                >DuckDuckGo</button>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiSearchBackend === 'searxng' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiSearchBackend('searxng')}
+                >SearXNG</button>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiSearchBackend === 'brave' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiSearchBackend('brave')}
+                >Brave</button>
+                <button
+                  type="button"
+                  className={`${styles.segBtn} ${aiSearchBackend === 'off' ? styles.segBtnActive : ''}`}
+                  onClick={() => setAiSearchBackend('off')}
+                >Aus</button>
+              </div>
+              <p className={styles.fieldHelpText}>
+                Dein Server stellt die Suchanfrage selbst und reicht die Treffer an die KI weiter —
+                die kostenpflichtige Websuche der Anbieter wird nicht verwendet. Die Suchbegriffe
+                (Marke, Name, Nummer) gehen dabei an den gewählten Suchdienst; SearXNG auf eigener
+                Instanz hält sie im Haus. Ohne Recherche antwortet die KI aus ihrem eigenen Wissen und
+                kann nicht prüfen, ob ein Produkt wirklich existiert.
+              </p>
+            </label>
+
+            {aiSearchBackend === 'searxng' && (
+              <label className={styles.field}>
+                <span>SearXNG-Adresse</span>
+                <input
+                  value={aiSearxngUrl}
+                  onChange={(e) => setAiSearxngUrl(e.target.value)}
+                  placeholder="https://searx.example.org"
+                />
+                <p className={styles.fieldHelpText}>
+                  Eigene SearXNG-Instanz mit aktivierter JSON-API (<code>format=json</code>).
+                </p>
+              </label>
+            )}
+
+            {aiSearchBackend === 'brave' && (
+              <label className={styles.field}>
+                <span>Brave Search API-Schlüssel {aiHasBraveKey && <span className={styles.fieldHint}>(bereits gesetzt)</span>}</span>
+                <input
+                  type="password"
+                  value={aiBraveKey}
+                  onChange={(e) => setAiBraveKey(e.target.value)}
+                  placeholder={aiHasBraveKey ? '••••••••••••' : 'BSA…'}
+                />
+              </label>
             )}
 
             {aiSaveStatus === 'error' && (

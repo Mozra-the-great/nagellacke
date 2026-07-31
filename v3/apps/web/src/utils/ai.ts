@@ -2,16 +2,20 @@ import { loadSyncConfig } from '../useAppData';
 
 export type AiProvider = 'openrouter' | 'gemini';
 
+export type SearchBackend = 'duckduckgo' | 'searxng' | 'brave' | 'off';
+
 export interface AiSettings {
   provider: AiProvider;
   openrouter: { model: string; freeOnly: boolean; hasApiKey: boolean };
   gemini: { model: string; hasApiKey: boolean };
+  webSearch: { backend: SearchBackend; searxngUrl: string; hasBraveApiKey: boolean };
 }
 
 export interface AiSettingsInput {
   provider: AiProvider;
   openrouter: { apiKey?: string; model: string; freeOnly: boolean };
   gemini: { apiKey?: string; model: string };
+  webSearch: { backend: SearchBackend; searxngUrl: string; braveApiKey?: string };
 }
 
 export interface AiJob {
