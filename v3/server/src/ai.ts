@@ -8,7 +8,7 @@ import type { AiConfig, AiJob } from './db';
 import type { WebSearchConfig } from './websearch';
 import { isWebSearchConfigured } from './websearch';
 import {
-  MAX_TOOL_ROUNDS, geminiText, geminiToolSpec, openAiToolSpec,
+  FINAL_ROUND_NOTICE, MAX_TOOL_ROUNDS, geminiText, geminiToolSpec, openAiToolSpec,
   parseGeminiToolCalls, parseOpenAiToolCalls, runWebSearchTool,
 } from './tooling';
 
@@ -17,6 +17,21 @@ const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 function isConfigured(config: AiConfig): boolean {
   return config.provider === 'gemini' ? !!config.gemini.apiKey : !!config.openrouter.apiKey;
+}
+
+/**
+ * The tool budget ran out without the model ever producing a final answer.
+ *
+ * Distinct from a transport, auth or quota failure: the requests all succeeded,
+ * the model simply kept asking for more searches. That is a recoverable state —
+ * the same question asked without tools still has an answer — so it is typed
+ * separately and degraded in `callLlm` rather than failing the user's job.
+ */
+class ToolLoopExhaustedError extends Error {
+  constructor(provider: string) {
+    super(`${provider} hat nach ${MAX_TOOL_ROUNDS} Werkzeug-Runden keine Antwort geliefert`);
+    this.name = 'ToolLoopExhaustedError';
+  }
 }
 
 // ── Provider clients ───────────────────────────────────────────────────────────
@@ -64,8 +79,11 @@ export async function callOpenRouter(
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // On the last round the tools are withdrawn, and any tool call that comes
     // back anyway is ignored rather than looped on — otherwise a model that
-    // keeps requesting tools it was not offered would spin forever.
-    const offerTools = webSearch && round < MAX_TOOL_ROUNDS;
+    // keeps requesting tools it was not offered would spin forever. Withdrawing
+    // them silently is not enough, so the budget is also stated in-band.
+    const lastRound = round === MAX_TOOL_ROUNDS;
+    const offerTools = webSearch && !lastRound;
+    if (lastRound && webSearch) messages.push({ role: 'user', content: FINAL_ROUND_NOTICE });
     const body: Record<string, unknown> = { model, messages };
     if (offerTools) body.tools = openAiToolSpec();
 
@@ -87,7 +105,13 @@ export async function callOpenRouter(
 
     if (calls.length === 0) {
       const content = message?.content;
-      if (typeof content !== 'string' || !content) throw new Error('OpenRouter hat keine Antwort geliefert');
+      // No tool calls and no text: the model has nothing more to say. If search
+      // was in play this is the exhausted-loop case, which degrades rather than
+      // failing the job.
+      if (typeof content !== 'string' || !content) {
+        if (webSearch) throw new ToolLoopExhaustedError('OpenRouter');
+        throw new Error('OpenRouter hat keine Antwort geliefert');
+      }
       return content;
     }
 
@@ -115,7 +139,10 @@ export async function callGemini(
   search: WebSearchConfig,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('Gemini-API-Schlüssel fehlt');
-  const model = config.model || 'gemini-2.5-flash';
+  // "gemini-2.5-flash" is closed to new API keys — it answers 404 "no longer
+  // available to new users", which made Gemini unusable out of the box on a
+  // fresh install. The floating alias keeps working as Google retires versions.
+  const model = config.model || 'gemini-flash-latest';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
 
   // Our own tool rather than Gemini's googleSearch grounding, which is not in
@@ -124,7 +151,9 @@ export async function callGemini(
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // See callOpenRouter: withdrawing the tools is not enough on its own.
-    const offerTools = webSearch && round < MAX_TOOL_ROUNDS;
+    const lastRound = round === MAX_TOOL_ROUNDS;
+    const offerTools = webSearch && !lastRound;
+    if (lastRound && webSearch) contents.push({ role: 'user', parts: [{ text: FINAL_ROUND_NOTICE }] });
     const body: Record<string, unknown> = {
       contents,
       systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -146,7 +175,12 @@ export async function callGemini(
 
     if (calls.length === 0) {
       const content = geminiText(parts);
-      if (!content) throw new Error('Gemini hat keine Antwort geliefert');
+      // A Gemini turn carrying only a (now unoffered) functionCall has no text
+      // parts at all, so this is the shape the exhausted loop actually takes.
+      if (!content) {
+        if (webSearch) throw new ToolLoopExhaustedError('Gemini');
+        throw new Error('Gemini hat keine Antwort geliefert');
+      }
       return content;
     }
 
@@ -219,10 +253,14 @@ async function callLlm(
   try {
     return { text: await call(true), webSearchUsed: true };
   } catch (e) {
-    if (!isSearchQuotaError(e)) throw e;
-    // A model that can't do tool calls at all, or a provider-side limit, should
-    // not sink the job — retry plainly and mark the answer as unresearched.
-    console.warn('[ai] Werkzeug-Aufrufe nicht verfügbar — Anfrage ohne Websuche wiederholt.');
+    const exhausted = e instanceof ToolLoopExhaustedError;
+    if (!exhausted && !isSearchQuotaError(e)) throw e;
+    // A model that can't do tool calls at all, a provider-side limit, or one
+    // that spent the whole tool budget without ever answering, should not sink
+    // the job — retry plainly and mark the answer as unresearched.
+    console.warn(exhausted
+      ? '[ai] Werkzeug-Budget ohne Antwort aufgebraucht — Anfrage ohne Websuche wiederholt.'
+      : '[ai] Werkzeug-Aufrufe nicht verfügbar — Anfrage ohne Websuche wiederholt.');
     return { text: await call(false), webSearchUsed: false };
   }
 }

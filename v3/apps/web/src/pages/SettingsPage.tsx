@@ -321,7 +321,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [aiOpenrouterFreeOnly, setAiOpenrouterFreeOnly] = useState(false);
   const [aiOpenrouterHasKey, setAiOpenrouterHasKey] = useState(false);
   const [aiGeminiKey, setAiGeminiKey] = useState('');
-  const [aiGeminiModel, setAiGeminiModel] = useState('gemini-2.5-flash');
+  const [aiGeminiModel, setAiGeminiModel] = useState('gemini-flash-latest');
   const [aiGeminiHasKey, setAiGeminiHasKey] = useState(false);
   const [aiSearchBackend, setAiSearchBackend] = useState<SearchBackend>('duckduckgo');
   const [aiSearxngUrl, setAiSearxngUrl] = useState('');
@@ -401,7 +401,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       await saveAiSettings({
         provider: aiProvider,
         openrouter: { apiKey: aiOpenrouterKey || undefined, model: aiOpenrouterModel || 'openrouter/auto', freeOnly: aiOpenrouterFreeOnly },
-        gemini: { apiKey: aiGeminiKey || undefined, model: aiGeminiModel || 'gemini-2.5-flash' },
+        gemini: { apiKey: aiGeminiKey || undefined, model: aiGeminiModel || 'gemini-flash-latest' },
         webSearch: {
           backend: aiSearchBackend,
           searxngUrl: aiSearxngUrl.trim(),
@@ -938,7 +938,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                   <input
                     value={aiGeminiModel}
                     onChange={(e) => setAiGeminiModel(e.target.value)}
-                    placeholder="z.B. gemini-2.5-flash"
+                    placeholder="z.B. gemini-flash-latest"
                   />
                 </label>
               </>

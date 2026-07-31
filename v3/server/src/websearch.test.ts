@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   parseDuckDuckGoHtml,
+  isDuckDuckGoChallenge,
   parseSearxngJson,
   parseBraveJson,
   unwrapDuckDuckGoUrl,
@@ -30,6 +31,26 @@ const DDG_HTML = `
     <a class="result__snippet" href="/y">Snippet two</a>
   </div>
 </div>`;
+
+/**
+ * Verbatim excerpt of what html.duckduckgo.com actually returns when it decides
+ * a request is automated: HTTP 202 — a *success* status — with this page in
+ * place of results.
+ */
+const DDG_CHALLENGE = `
+<!DOCTYPE html>
+<html lang="en">
+<head><title>DuckDuckGo</title></head>
+<body>
+  <form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=html&cc=botnet&st=1785479667" method="POST">
+    <div class="anomaly-modal__mask">
+      <div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div>
+      <div class="anomaly-modal__description">Please complete the following challenge to confirm this search was made by a human.</div>
+      <div class="anomaly-modal__instructions">Select all squares containing a duck:</div>
+    </div>
+  </form>
+</body>
+</html>`;
 
 function fakeFetch(body: string | object, ok = true, status = 200): FetchLike {
   return async () => ({
@@ -95,6 +116,23 @@ describe('parseDuckDuckGoHtml', () => {
   });
 });
 
+describe('isDuckDuckGoChallenge', () => {
+  it('recognises the real bot-check page', () => {
+    expect(isDuckDuckGoChallenge(DDG_CHALLENGE)).toBe(true);
+  });
+
+  it('does not fire on an ordinary result page or an empty one', () => {
+    expect(isDuckDuckGoChallenge(DDG_HTML)).toBe(false);
+    expect(isDuckDuckGoChallenge('')).toBe(false);
+  });
+
+  it('the challenge would otherwise pass as a result-less search', () => {
+    // This is why the check exists at all: the page parses cleanly to zero
+    // results, so nothing downstream could tell it apart from "no hits".
+    expect(parseDuckDuckGoHtml(DDG_CHALLENGE)).toEqual([]);
+  });
+});
+
 describe('parseSearxngJson / parseBraveJson', () => {
   it('maps SearXNG fields', () => {
     const r = parseSearxngJson({ results: [{ title: 'T', url: 'https://e.com', content: 'C' }] });
@@ -135,6 +173,15 @@ describe('searchWeb', () => {
   it('returns parsed results for a successful search', async () => {
     const r = await searchWeb('essie 162', ddg, fakeFetch(DDG_HTML));
     expect(r).toHaveLength(2);
+  });
+
+  it('returns nothing for a bot check served with a 2xx status', async () => {
+    // 202, not an error status — `res.ok` is true, so only the body gives it
+    // away.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await searchWeb('essie 162', ddg, fakeFetch(DDG_CHALLENGE, true, 202))).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Bot-Pruefung'));
+    warn.mockRestore();
   });
 
   it('degrades to empty rather than throwing when the backend errors', async () => {
