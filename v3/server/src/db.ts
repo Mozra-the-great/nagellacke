@@ -232,7 +232,7 @@ const AI_CONFIG_FILE = path.join(DATA_DIR, 'ai_config.json');
 const DEFAULT_AI_CONFIG: AiConfig = {
   provider: 'openrouter',
   openrouter: { apiKey: '', model: 'openrouter/auto', freeOnly: false },
-  gemini: { apiKey: '', model: 'gemini-2.5-flash' },
+  gemini: { apiKey: '', model: 'gemini-flash-latest' },
   webSearch: DEFAULT_WEB_SEARCH,
 };
 

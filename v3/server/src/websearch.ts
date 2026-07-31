@@ -93,6 +93,19 @@ export function unwrapDuckDuckGoUrl(href: string): string {
   }
 }
 
+/**
+ * True when DuckDuckGo served a bot check instead of results.
+ *
+ * It answers a request it considers automated with **HTTP 202** — a success
+ * status — and a "select all squares containing a duck" page. Without this
+ * check the challenge simply parses to zero results, which is indistinguishable
+ * from a query that genuinely found nothing, so a silently un-researched answer
+ * looks exactly like a well-researched one. Exported for testing.
+ */
+export function isDuckDuckGoChallenge(html: string): boolean {
+  return /anomaly-modal|challenge-form|anomaly\.js/.test(html);
+}
+
 /** Parses DuckDuckGo's HTML-only endpoint. Exported for testing. */
 export function parseDuckDuckGoHtml(html: string): SearchResult[] {
   const out: SearchResult[] = [];
@@ -172,7 +185,19 @@ export async function searchWeb(
           },
         );
         if (!res.ok) return [];
-        return parseDuckDuckGoHtml(await res.text());
+        const html = await res.text();
+        if (isDuckDuckGoChallenge(html)) {
+          // Loud, because the alternative is research that quietly never
+          // happens. Datacenter and shared egress addresses — i.e. exactly the
+          // self-hosted server this runs on — draw the check most often.
+          console.warn(
+            '[websearch] DuckDuckGo hat eine Bot-Pruefung statt Ergebnissen geliefert; '
+            + 'diese Suche bleibt ohne Treffer. Ein eigener SearXNG-Server oder ein '
+            + 'Brave-API-Schluessel ist als Backend zuverlaessiger.',
+          );
+          return [];
+        }
+        return parseDuckDuckGoHtml(html);
       }
       case 'searxng': {
         const base = config.searxngUrl.replace(/\/$/, '');

@@ -88,9 +88,24 @@ describe('OpenRouter tool loop', () => {
   it('stops offering tools on the last round so a loop-happy model must answer', async () => {
     // Always asks for a tool; the loop has to terminate anyway.
     const cap = stubProvider([orToolCall('again')]);
-    await expect(callOpenRouter(OR_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow(/keine Antwort/);
+    await expect(callOpenRouter(OR_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow(/Werkzeug-Runden/);
     expect(cap).toHaveLength(MAX_TOOL_ROUNDS + 1);
     expect(cap[MAX_TOOL_ROUNDS].body.tools).toBeUndefined();
+  });
+
+  it('also says the budget is spent, since withdrawing the tools is ignorable', async () => {
+    const cap = stubProvider([orToolCall('again')]);
+    await expect(callOpenRouter(OR_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow();
+    const msgs = cap[MAX_TOOL_ROUNDS].body.messages as { role: string; content?: string }[];
+    expect(msgs[msgs.length - 1]).toMatchObject({ role: 'user' });
+    expect(String(msgs[msgs.length - 1].content)).toContain('keine weiteren Suchen');
+  });
+
+  it('does not announce a budget that was never offered', async () => {
+    const cap = stubProvider([orAnswer('ok')]);
+    await callOpenRouter(OR_CFG, 'sys', 'user', false, SEARCH);
+    const msgs = cap[0].body.messages as { content?: string }[];
+    expect(msgs.map((m) => String(m.content)).join(' ')).not.toContain('keine weiteren Suchen');
   });
 
   it('applies the free-model mapping to the router', async () => {
@@ -131,8 +146,54 @@ describe('Gemini tool loop', () => {
 
   it('bounds the loop the same way', async () => {
     const cap = stubProvider([gemToolCall('again')]);
-    await expect(callGemini(GEM_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow(/keine Antwort/);
+    await expect(callGemini(GEM_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow(/Werkzeug-Runden/);
     expect(cap).toHaveLength(MAX_TOOL_ROUNDS + 1);
     expect(cap[MAX_TOOL_ROUNDS].body.tools).toBeUndefined();
+  });
+
+  it('announces the spent budget in-band on the final round', async () => {
+    // Observed against the live API: a Gemini turn that is only a functionCall
+    // has no text parts, so an ignored late call leaves the round empty.
+    const cap = stubProvider([gemToolCall('again')]);
+    await expect(callGemini(GEM_CFG, 'sys', 'user', true, SEARCH)).rejects.toThrow();
+    const contents = cap[MAX_TOOL_ROUNDS].body.contents as { role: string; parts: { text?: string }[] }[];
+    const last = contents[contents.length - 1];
+    expect(last.role).toBe('user');
+    expect(String(last.parts[0].text)).toContain('keine weiteren Suchen');
+  });
+});
+
+describe('exhausted tool budget degrades instead of failing the job', () => {
+  // The real failure this reproduces: gemini-flash-latest spent all three
+  // rounds on web_search calls and never emitted text, so the autofill job
+  // ended as status:"error" with "Gemini hat keine Antwort geliefert".
+  it('Gemini falls back to an unresearched answer', async () => {
+    let i = 0;
+    vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
+      if (!url.includes('generativelanguage')) {
+        return { ok: true, status: 200, text: async () => DDG_HTML, json: async () => ({}) };
+      }
+      // Tools offered -> keep calling; tools withdrawn -> a bare functionCall.
+      const hasTools = !!JSON.parse(init?.body ?? '{}').tools;
+      i += 1;
+      const reply = hasTools ? gemToolCall('again') : gemAnswer('{"color":"#f5e6e8"}');
+      return { ok: true, status: 200, text: async () => JSON.stringify(reply), json: async () => reply };
+    });
+    // Sanity: without the fallback this whole call is what used to throw.
+    const out = await callGemini(GEM_CFG, 'sys', 'user', false, SEARCH);
+    expect(out).toBe('{"color":"#f5e6e8"}');
+    expect(i).toBe(1);
+  });
+
+  it('reports the exhausted budget distinctly from a plain empty answer', async () => {
+    stubProvider([gemToolCall('again')]);
+    await expect(callGemini(GEM_CFG, 'sys', 'user', true, SEARCH))
+      .rejects.toThrow(/nach 3 Werkzeug-Runden/);
+
+    vi.unstubAllGlobals();
+    // Search off: nothing to degrade to, so the plain message stands.
+    stubProvider([{ candidates: [{ content: { parts: [] } }] }]);
+    await expect(callGemini(GEM_CFG, 'sys', 'user', false, SEARCH))
+      .rejects.toThrow(/Gemini hat keine Antwort geliefert/);
   });
 });

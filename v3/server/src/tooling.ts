@@ -108,3 +108,17 @@ export async function runWebSearchTool(
  * model — cost.
  */
 export const MAX_TOOL_ROUNDS = 3;
+
+/**
+ * Said out loud on the final round, in addition to withdrawing the tools.
+ *
+ * Withdrawing them is not enough on its own: a model whose turns have so far
+ * been nothing but tool calls will happily emit one more even when no tool was
+ * offered, and that call is ignored — leaving the round with no text at all.
+ * Gemini does exactly this (see the loop's handling of an exhausted round), so
+ * the end of the budget is stated in-band where the model will act on it.
+ */
+export const FINAL_ROUND_NOTICE =
+  'Es sind keine weiteren Suchen moeglich. Beantworte die Aufgabe jetzt '
+  + 'endgueltig auf Basis der bisherigen Suchergebnisse und deines Wissens, '
+  + 'ausschliesslich im geforderten Antwortformat.';
