@@ -174,43 +174,151 @@
     <div class="studio-hand-wrap">
       <svg id="studioHand" viewBox="0 0 320 360" role="img" data-finish="classic" style="--polish:#b3122e;overflow:visible">
         <title>Hand mit lackierten Nägeln</title>
+
         <g filter="url(#roughSoft)">
-          <!-- Handfläche + Handgelenk: eine durchgehende Kontur, nach unten schmaler werdend,
-               oben eine leicht gebogene Linie statt einer geraden Kante -->
-          <path pathLength="100" d="M116 359 C104 332 90 306 86 280 C82 258 78 236 86 218 C92 206 102 199 111 196 C118 194 124 194 129 195 C141 189 152 187 163 187 C176 187 189 190 199 196 C212 202 224 208 235 213 C244 217 250 224 253 234 C257 258 255 296 247 328 C242 346 229 356 212 359 C190 361 138 361 116 359 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
-          <!-- Schattierung am Handballen (Daumenballen) -->
-          <path d="M100 230 L120 222" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
-          <path d="M95 244 L117 236" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
-          <path d="M92 258 L115 250" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
-          <path d="M91 272 L114 265" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".5" fill="none" stroke-linecap="round"/>
-          <path d="M92 286 L113 280" style="stroke:var(--pencil)" stroke-width="1.1" opacity=".45" fill="none" stroke-linecap="round"/>
-          <!-- Handgelenk-Falte -->
-          <path d="M124 336 C150 344 178 344 204 336" style="stroke:var(--pencil)" stroke-width="1.3" opacity=".5" fill="none" stroke-linecap="round"/>
+          <!-- Eine einzige durchgehende Kontur: Daumen, Handballen, Handgelenk und alle
+               vier Finger. Keine aufgesetzten Formen, deshalb auch keine Nahtstellen. -->
+          <path pathLength="100" d="M164.9 327.4 C162.4 324.3 157.1 321.8 153.7 319.4 C150.4 317 145.2 314.4 142.3 311.6 C139.4 308.8 136.3 304.6 134.2 300.8
+               C132.1 297 130 290.8 128.4 286.4 C126.8 282.1 125.3 276 123.6 272 C121.9 268 119.3 263.1 117.1 259.9 C114.9 256.6 111.2 253 108.7 250.2
+               C106.3 247.4 103.2 243.5 100.6 240.9 C98.1 238.4 94.4 235.3 91.6 233.2 C88.8 231.1 84.9 228.6 82 226.7 C79 224.8 75.2 222 72 220.3
+               C68.8 218.6 63 216.6 60.6 215.5 C58.2 214.4 57.1 214 55.8 213 C54.5 212.1 53 210.5 52.1 209.2 C51.2 208 50.3 206 50 204.6
+               C49.6 203.1 49.4 201 49.6 199.6 C49.8 198.1 50.4 196.2 51.1 194.9 C51.8 193.6 53.2 192 54.3 191.1 C55.5 190.1 57.4 189.1 58.8 188.6
+               C60.3 188.1 62.5 187.7 64 187.7 C65.6 187.7 67.9 188.1 69.4 188.5 C70.9 188.9 72.7 189.6 74.1 190.1 C75.5 190.5 77.3 191.2 78.7 191.7
+               C80.1 192.3 81.8 193 83.2 193.6 C84.5 194.1 86.2 194.9 87.5 195.5 C88.8 196 90.6 196.8 91.8 197.4 C93.1 198 94.8 198.8 96.1 199.4
+               C97.3 200 99 200.8 100.2 201.5 C101.4 202.2 102.9 203.2 104 204 C105.2 204.8 106.6 205.9 107.7 206.7 C108.7 207.6 109.4 209.2 111.2 209.6
+               C112.9 210 117.7 210.6 119.3 209.6 C121 208.7 122 206.6 122 203 C122 199.4 120 190.9 119.1 185.5 C118.3 180.1 117.2 172.2 116.6 166.8
+               C115.9 161.3 115.5 154.2 115 149.1 C114.5 143.9 113.7 137.2 113.4 132.2 C113.1 127.3 113.6 120.7 113.3 115.9 C112.9 111.1 111.8 104.9 111.2 100.1
+               C110.6 95.3 110.2 89 109.3 84.1 C108.4 79.3 105.9 71 105.1 68 C104.4 64.9 104.4 65.2 104.4 64 C104.4 62.8 104.7 61.2 105.1 60
+               C105.6 58.9 106.4 57.5 107.2 56.6 C107.9 55.7 109.2 54.6 110.2 54 C111.3 53.4 112.8 52.8 114 52.6 C115.2 52.4 116.8 52.4 118 52.6
+               C119.2 52.8 120.7 53.4 121.8 54 C122.8 54.6 124.1 55.7 124.8 56.6 C125.6 57.5 125.8 57.5 126.9 60 C127.9 62.6 130.5 69.8 131.8 73.9
+               C133.2 78 135.1 83.3 136.2 87.3 C137.2 91.3 138.3 96.7 138.9 100.6 C139.6 104.6 140.1 109.9 140.8 113.7 C141.4 117.6 142.6 122.7 143.2 126.5
+               C143.8 130.3 144.1 135.3 144.5 139.1 C144.9 142.8 145.3 147.8 145.8 151.6 C146.3 155.3 147 161.3 147.9 164 C148.8 166.7 150.6 169.6 151.6 169.3
+               C152.6 169 154 165.6 154.5 162.1 C155 158.7 154.9 151.1 155 146.5 C155.2 141.8 155.4 135.8 155.4 131.2 C155.5 126.7 155.2 120.7 155.4 116.3
+               C155.6 111.8 156.5 105.9 156.8 101.4 C157.2 96.9 157.4 90.9 157.7 86.4 C157.9 81.9 158 75.8 158.5 71.1 C158.9 66.5 159.9 60.3 160.5 55.5
+               C161 50.7 161.7 42.2 162.1 39.2 C162.5 36.1 162.6 36.3 163.1 35.2 C163.6 34 164.6 32.6 165.4 31.7 C166.3 30.9 167.7 29.8 168.8 29.3
+               C169.9 28.8 171.5 28.3 172.8 28.2 C174 28 175.7 28.2 176.9 28.5 C178.1 28.7 179.6 29.5 180.7 30.1 C181.7 30.8 182.9 32 183.6 33
+               C184.3 34 185.1 35.5 185.4 36.7 C185.8 37.9 185.9 37.9 185.9 40.8 C185.9 43.7 185.5 51.5 185.5 56 C185.5 60.4 185.9 66.3 185.9 70.6
+               C185.9 74.9 185.8 80.5 185.8 84.7 C185.8 88.9 185.5 94.4 185.6 98.6 C185.8 102.8 186.5 108.3 186.6 112.4 C186.8 116.6 186.7 122.1 186.7 126.3
+               C186.7 130.5 186.6 136.1 186.7 140.4 C186.8 144.7 186.7 151.7 187.2 154.9 C187.7 158.1 189 161.7 190 161.8 C190.9 162 192.7 158.7 193.6 155.9
+               C194.5 153.1 195.3 147 195.9 143.2 C196.5 139.4 197 134.4 197.5 130.6 C198.1 126.8 198.9 121.7 199.7 118 C200.5 114.2 201.9 109.2 202.7 105.3
+               C203.5 101.5 204.1 96.3 205 92.4 C205.8 88.5 207.1 83.2 208.3 79.3 C209.4 75.4 211.3 70.1 212.7 66.1 C214.1 62 216.5 55 217.5 52.4
+               C218.5 49.8 218.7 49.9 219.4 49 C220.1 48.2 221.3 47.1 222.3 46.5 C223.3 45.9 224.8 45.4 225.9 45.1 C227 44.9 228.6 44.9 229.7 45.1
+               C230.9 45.3 232.4 45.8 233.4 46.3 C234.4 46.9 235.6 47.9 236.3 48.7 C237.1 49.6 237.9 51 238.3 52 C238.7 53.1 239 54.7 239.1 55.8
+               C239.1 56.9 239.1 56.8 238.5 59.6 C237.8 62.4 235.5 70 234.5 74.4 C233.6 78.8 233 84.7 232.2 89 C231.5 93.3 230.1 98.8 229.5 103.1
+               C228.9 107.4 228.4 113.1 228 117.4 C227.6 121.7 227.4 127.5 226.9 131.9 C226.4 136.3 225.3 142.2 224.7 146.7 C224.1 151.3 223.5 157.4 222.9 162.2
+               C222.3 166.9 220.9 174.8 220.6 178.3 C220.4 181.8 220.7 185.1 221.4 185.6 C222.1 186.1 224.2 183.6 225.3 181.4 C226.5 179.2 228 174.1 229.1 170.9
+               C230.1 167.7 231.3 163.5 232.3 160.3 C233.2 157.1 234.3 152.7 235.4 149.6 C236.5 146.4 238.3 142.2 239.5 139 C240.7 135.8 242 131.4 243.2 128.1
+               C244.5 124.8 246.1 120.4 247.7 117.2 C249.2 113.9 251.6 109.6 253.4 106.3 C255.2 103 258.5 97.3 259.8 95.2 C261 93.2 261.1 93.3 261.9 92.7
+               C262.6 92.1 263.8 91.4 264.7 91.1 C265.7 90.7 267 90.5 268 90.5 C269 90.5 270.3 90.7 271.3 91.1 C272.2 91.4 273.4 92.1 274.1 92.7
+               C274.9 93.3 275.7 94.4 276.2 95.2 C276.7 96.1 277.2 97.4 277.4 98.3 C277.5 99.3 277.5 100.7 277.4 101.7 C277.2 102.6 277.4 102.2 276.2 104.8
+               C275.1 107.3 271.4 114.6 269.8 118.8 C268.1 123 266.5 128.6 265.2 132.8 C263.8 137 261.9 142.5 260.7 146.8 C259.6 151.1 258.7 157 257.5 161.4
+               C256.4 165.8 254.4 171.7 253.1 176.3 C251.8 180.9 250.1 187.3 248.6 192.1 C247.1 196.9 244.7 203.6 243.2 208.2 C241.6 212.9 238.8 220.2 238.3 223.2
+               C237.8 226.1 238.8 224.6 240 228 C241.2 231.4 245 240.5 246 246 C247.1 251.6 247.6 258.9 247 265 C246.4 271.2 244 280.9 242 287
+               C240.1 293.2 236.1 300.8 234 306 C231.9 311.3 229.2 316.9 228 322 C226.8 327.1 226.5 335.1 226 340 C225.6 345 227.7 352.3 225 355
+               C222.3 357.7 213.6 357.6 208 358 C202.5 358.5 193.1 358.8 188 358 C182.9 357.3 176.7 355.7 174 353 C171.3 350.3 171.4 343.8 170 340
+               C168.6 336.2 167.3 330.5 164.9 327.4 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
         </g>
 
-        <!-- Daumen: eigene Form (kein Finger-Template), entspringt unten am Handballen mit
-             erkennbarem Daumenballen, liegt schräg nach außen -->
-        <g transform="translate(99,264) rotate(-52)">
-          <g filter="url(#roughSoft)">
-            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0 L19 24 L-19 24 Z" style="fill:var(--skin)"/>
-            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M-13 -14 C-6 -10 6 -10 13 -14" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-            <path d="M13 -24 C13.5 -38 12 -50 8 -60" style="stroke:var(--pencil)" stroke-width="1" opacity=".4" fill="none" stroke-linecap="round"/>
-            <path class="nail-fill" d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:var(--polish,#b3122e)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
-            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
-            <path d="M-4 -60 C-4.5 -56 -3.5 -52 -2.5 -49" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
+        <g filter="url(#roughSoft)" fill="none" stroke-linecap="round">
+          <!-- Fingerzwischenräume: kurze Striche, die vor den Knöcheln aufhören -->
+          <path d="M151.5 167.8 C151.5 168.5 151.7 170.7 151.9 172.3 C152.1 173.9 152.4 177.4 152.5 178.3" style="stroke:var(--ink)" stroke-width="1.7" opacity=".5"/>
+          <path d="M190.1 160.3 C190.1 161 189.8 163.2 189.7 164.8 C189.5 166.4 189.2 169.9 189.1 170.8" style="stroke:var(--ink)" stroke-width="1.7" opacity=".5"/>
+          <path d="M221.9 184.1 C221.7 184.8 221.1 186.9 220.6 188.5 C220.2 190 219.2 193.4 219 194.2" style="stroke:var(--ink)" stroke-width="1.7" opacity=".5"/>
+          <!-- Knöchelbogen und Fingergelenke -->
+          <path d="M137.6 192.8 C142.7 191.3 161 183.6 171 183 C181 182.4 193.6 185.2 202.5 188.8 C211.5 192.4 225.3 203.8 229.4 206.5" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".3"/>
+          <path d="M128.3 198 C128.4 197.6 128.4 196.1 129.1 195.3 C129.7 194.5 131.1 193.4 132.3 192.7 C133.5 192 135.6 191.2 137.1 190.9 C138.7 190.5 140.8 190.3 142.3 190.4 C143.7 190.4 145.4 190.8 146.3 191.3 C147.2 191.8 147.9 193.1 148.2 193.4" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".62"/>
+          <path d="M160.5 186 C160.7 185.6 161.1 184.2 161.9 183.5 C162.7 182.8 164.3 182.1 165.7 181.7 C167.1 181.3 169.4 181 171 181 C172.6 181 174.9 181.3 176.3 181.7 C177.7 182.1 179.3 182.8 180.1 183.5 C180.9 184.2 181.3 185.6 181.5 186" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".62"/>
+          <path d="M192.3 189.7 C192.6 189.4 193.3 188.1 194.1 187.6 C195 187.1 196.7 186.6 198 186.5 C199.4 186.4 201.5 186.6 203 186.9 C204.4 187.2 206.4 187.9 207.6 188.6 C208.8 189.2 210.1 190.3 210.7 191.1 C211.3 191.9 211.4 193.4 211.5 193.8" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".62"/>
+          <path d="M220.7 206.2 C221 205.9 221.8 204.7 222.6 204.3 C223.4 203.9 224.9 203.7 226.1 203.7 C227.2 203.8 229 204.2 230.1 204.6 C231.3 205.1 232.8 206 233.7 206.8 C234.5 207.6 235.4 208.8 235.8 209.6 C236.1 210.5 235.8 211.9 235.8 212.3" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".62"/>
+          <path d="M116.4 137.5 C118.4 137.8 125.4 139.9 129.3 139.6 C133.2 139.2 139.8 135.9 141.7 135.3" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M114 101.2 C115.7 101.4 122.1 103.1 125.5 102.6 C128.8 102 134.3 98.4 135.9 97.7" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M157.9 120.9 C159.9 121.4 167 124.2 171 124.2 C175.1 124.3 182.2 121.6 184.2 121.1" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M160.4 79.9 C162.1 80.5 168.2 83.4 171.8 83.5 C175.3 83.7 181.6 81.2 183.4 80.7" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M200.3 129.1 C202.1 129.8 208.2 133.4 211.8 133.9 C215.5 134.4 222.3 132.6 224.2 132.3" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M207.9 90.7 C209.4 91.5 214.5 95.2 217.6 95.8 C220.8 96.5 226.9 94.9 228.6 94.7" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M236 156.3 C237.3 157.2 241.6 161.3 244.5 162.1 C247.4 162.9 253.2 161.7 254.7 161.7" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M246.8 125.6 C247.9 126.5 251.3 130.6 253.8 131.5 C256.2 132.4 261.5 131.5 262.9 131.5" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M118.3 255.6 C120.1 254.6 127.3 251.7 130.4 248.9 C133.4 246.1 136.9 239.2 138.1 237.4" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <path d="M89.7 228.8 C91.2 227.5 97.5 223.3 99.8 220.1 C102.1 216.8 103.9 209.6 104.6 207.7" style="stroke:var(--pencil)" stroke-width="1.25" opacity=".7"/>
+          <!-- Sehnen, Daumenballen, Handgelenksfalte, weiche Formlinien -->
+          <path d="M167 234 C167.5 230.8 169.9 219.4 170.5 213 C171.1 206.6 170.9 195.2 171 192" style="stroke:var(--pencil)" stroke-width="1" opacity=".3"/>
+          <path d="M198.7 239.7 C199.1 236.4 200.9 225.1 201.2 218.7 C201.5 212.2 200.8 200.9 200.7 197.7" style="stroke:var(--pencil)" stroke-width="1" opacity=".3"/>
+          <path d="M226 256.8 C226.2 253.6 227.5 242.3 227.5 235.8 C227.5 229.4 226.2 218.1 226 214.8" style="stroke:var(--pencil)" stroke-width="1" opacity=".3"/>
+          <path d="M161 250 C159.9 254 154.8 268 154 276 C153.2 284 153.9 294.9 156 302 C158.1 309.1 166.2 318.9 168 322" style="stroke:var(--pencil)" stroke-width="1.3" opacity=".5"/>
+          <path d="M165 322 C169.1 323.2 183.3 330.3 192 330 C200.7 329.7 217.4 321.5 222 320" style="stroke:var(--pencil)" stroke-width="1.3" opacity=".5"/>
+          <path d="M142.1 149.6 C142 148.5 141.5 144.4 141.3 142.1 C141.1 139.8 141 136.8 140.8 134.5 C140.6 132.2 140.2 129.3 139.8 127 C139.5 124.6 138.8 121.7 138.4 119.4 C137.9 117.1 137.4 114.1 137 111.8 C136.6 109.4 136.1 105.2 135.9 104" style="stroke:var(--pencil)" stroke-width="1" opacity=".26"/>
+          <path d="M183.2 137 C183.2 135.7 183.2 131.1 183.2 128.6 C183.3 126 183.4 122.8 183.4 120.3 C183.4 117.7 183.4 114.6 183.2 112 C183.1 109.5 182.7 106.3 182.6 103.8 C182.4 101.3 182.2 98.1 182.1 95.6 C182.1 93 182.2 88.6 182.3 87.3" style="stroke:var(--pencil)" stroke-width="1" opacity=".26"/>
+          <path d="M221.3 147.2 C221.4 146 222 141.6 222.3 139.2 C222.7 136.8 223.2 133.8 223.5 131.4 C223.8 129 224.1 126 224.3 123.6 C224.5 121.2 224.5 118.2 224.7 115.9 C224.8 113.5 225 110.5 225.3 108.2 C225.6 105.8 226.3 101.7 226.5 100.6" style="stroke:var(--pencil)" stroke-width="1" opacity=".26"/>
+          <path d="M250.3 173.5 C250.6 172.5 251.6 169.1 252.2 167.1 C252.8 165.2 253.6 162.7 254.1 160.8 C254.7 158.9 255.3 156.4 255.7 154.5 C256.2 152.6 256.6 150.1 257 148.2 C257.4 146.3 257.9 143.8 258.4 142 C258.9 140.1 260.1 136.8 260.4 135.9" style="stroke:var(--pencil)" stroke-width="1" opacity=".26"/>
+          <!-- Bleistift-Schraffur an der Schattenseite -->
+          <path d="M241.4 248 C239.9 249.1 232.9 253.9 231.4 255" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M243.2 262 C241.6 263.1 234.3 267.9 232.7 269" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M245 276 C243.3 277.1 235.7 281.9 234 283" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M243.2 290 C241.4 291.1 233.5 295.9 231.7 297" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M241.4 304 C239.6 305.1 231.2 309.9 229.4 311" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M165 286 C166.4 286.6 172.6 289.4 174 290" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+          <path d="M166.2 301 C167.6 301.6 174 304.4 175.4 305" style="stroke:var(--pencil)" stroke-width="1.15" opacity=".38"/>
+        </g>
+
+        <!-- Nägel: gleiche Grundform, pro Finger nur verschoben, gedreht, skaliert.
+             Reihenfolge je Nagel: Grundfarbe, Finish-Ebenen, Kontur, Glanzlicht. -->
+        <g filter="url(#roughSoft)">
+          <g transform="translate(121.4,81.8) rotate(-13.9) scale(1.1)"><!-- Zeigefinger -->
+            <path d="M-9.4 -4.6 C-5.4 -0.6 5.4 -0.6 9.4 -4.6" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".45" fill="none"/>
+            <path class="nail-fill" d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.7"/>
+            <path d="M-5.4 -18.4 C-6.4 -14 -5.6 -9.6 -4.4 -6.6" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </g>
+          <g transform="translate(172.8,59.1) rotate(3) scale(1.2)"><!-- Mittelfinger -->
+            <path d="M-9.4 -4.6 C-5.4 -0.6 5.4 -0.6 9.4 -4.6" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".45" fill="none"/>
+            <path class="nail-fill" d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.7"/>
+            <path d="M-5.4 -18.4 C-6.4 -14 -5.6 -9.6 -4.4 -6.6" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </g>
+          <g transform="translate(222.7,73.2) rotate(15) scale(1.1)"><!-- Ringfinger -->
+            <path d="M-9.4 -4.6 C-5.4 -0.6 5.4 -0.6 9.4 -4.6" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".45" fill="none"/>
+            <path class="nail-fill" d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.7"/>
+            <path d="M-5.4 -18.4 C-6.4 -14 -5.6 -9.6 -4.4 -6.6" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </g>
+          <g transform="translate(260.2,115.2) rotate(24.2) scale(1)"><!-- kleiner Finger -->
+            <path d="M-9.4 -4.6 C-5.4 -0.6 5.4 -0.6 9.4 -4.6" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".45" fill="none"/>
+            <path class="nail-fill" d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.7"/>
+            <path d="M-5.4 -18.4 C-6.4 -14 -5.6 -9.6 -4.4 -6.6" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </g>
+          <g transform="translate(82.5,209.3) rotate(-62.7) scale(1.3,1)"><!-- Daumen -->
+            <path d="M-9.4 -4.6 C-5.4 -0.6 5.4 -0.6 9.4 -4.6" style="stroke:var(--pencil)" stroke-width="1.4" opacity=".45" fill="none"/>
+            <path class="nail-fill" d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-10 -4.2 C-10.6 -13 -8.4 -19.4 -4.6 -21.8 C-1.6 -23.6 1.6 -23.6 4.6 -21.8 C8.4 -19.4 10.6 -13 10 -4.2 C6.4 0.6 -6.4 0.6 -10 -4.2 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.7"/>
+            <path d="M-5.4 -18.4 C-6.4 -14 -5.6 -9.6 -4.4 -6.6" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
           </g>
         </g>
-
-        <use href="#fingerTpl" transform="translate(228,214) rotate(18) scale(0.74)"/>
-        <use href="#fingerTpl" transform="translate(198,200) rotate(7) scale(0.95)"/>
-        <use href="#fingerTpl" transform="translate(163,196) rotate(-3) scale(1.05)"/>
-        <use href="#fingerTpl" transform="translate(130,204) rotate(-12) scale(0.92)"/>
       </svg>
       <p class="hand-tip">Tipp: Zwei Schichten. Immer.</p>
     </div>
