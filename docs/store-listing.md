@@ -77,7 +77,7 @@ gespeichert und niemals ohne Nutzerzustimmung übertragen.
 
 ## Datenschutz-URL
 
-Eintragen sobald GitHub Pages aktiv ist:
+Live — kann so in die Play Console eingetragen werden:
 ```
 https://mozra-the-great.github.io/nagellacke/privacy-policy.html
 ```

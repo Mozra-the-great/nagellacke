@@ -202,7 +202,7 @@ The app's architecture and code quality are **production-ready**:
 - [x] Add release signing configuration to `build.gradle.kts` (env-var-gated; unsigned without `KEYSTORE_FILE`)
 - [ ] Create and safeguard a release keystore (`keytool -genkey …`) and set `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` / `KEY_PASSWORD`
 - [ ] Produce a signed AAB and smoke-test it on a real device (`./gradlew bundleRelease`)
-- [x] Write a privacy policy — drafted at `docs/privacy-policy.html`, GitHub Pages workflow added (`pages.yml` enables Pages itself on the next run; set Source to "GitHub Actions" manually if it cannot)
+- [x] Write a privacy policy — `docs/privacy-policy.html`, deployed by `pages.yml` and live at `https://mozra-the-great.github.io/nagellacke/privacy-policy.html`
 - [x] Draft store listing texts (title, short description, full description, camera declaration) — see `docs/store-listing.md`
 - [ ] Create store listing assets (screenshots, feature graphic, high-res icon)
 - [ ] Decide on Google Drive OAuth strategy (include or defer)
@@ -216,7 +216,7 @@ The app's architecture and code quality are **production-ready**:
 - [x] **Configure signing** in `build.gradle.kts` (env-var-gated — no-op without `KEYSTORE_FILE`)
 - [ ] **Build signed AAB**: set env vars, then `./gradlew bundleRelease`
 - [ ] **Test the release build** on a physical device or emulator
-- [x] **Write a privacy policy** — `docs/privacy-policy.html`; GitHub Pages workflow ready (`.github/workflows/pages.yml`), one switch in repo Settings to go live
+- [x] **Write a privacy policy** — `docs/privacy-policy.html`, live at `https://mozra-the-great.github.io/nagellacke/privacy-policy.html` via `.github/workflows/pages.yml`
 - [x] **Draft store listing texts** — `docs/store-listing.md` (title, short/full description, camera declaration, category)
 - [ ] **Take screenshots** of the main app screens on a phone
 - [ ] **Create/export the store icon** at 512×512 from the existing adaptive icon
@@ -232,7 +232,7 @@ The app's architecture and code quality are **production-ready**:
 | Question | Answer |
 |---|---|
 | **Is it possible?** | Yes — the app is technically ready |
-| **Main blockers?** | Signing setup, privacy policy, store assets |
+| **Main blockers?** | Signing setup, store assets (privacy policy is live) |
 | **Effort?** | ~1–2 days of active work + 1–3 days review wait |
 | **Biggest risk?** | Google Drive OAuth verification (2–6 weeks) — can be deferred |
 | **Recommended first step?** | Create developer account + set up signing |
@@ -253,7 +253,7 @@ Work through them top-to-bottom; each step depends on the previous one being com
    - Use a dedicated Google account (e.g. `nagellacke.dev@gmail.com`) rather than your personal one — you cannot transfer an app to a different developer account later.
 3. Pay the one-time **$25 USD** registration fee with a credit or debit card.
 4. Fill in the developer profile:
-   - **Developer name**: This appears publicly on the Play Store page, e.g. `Moritz Schran` or a studio name.
+   - **Developer name**: This appears publicly on the Play Store page — use a handle or studio name rather than your legal name if you would rather not have it indexed.
    - **Contact email**: Must be a valid address Google can reach you at (not necessarily the account email).
 5. Accept the Developer Distribution Agreement.
 6. Wait for account approval — usually a few hours, up to 1 business day.
@@ -340,28 +340,43 @@ After adding all four, the CI workflow will automatically sign the AAB on the ne
 
 ---
 
-### Step D — Enable GitHub Pages (Privacy Policy Hosting)
+### Step D — Enable GitHub Pages (Privacy Policy Hosting) — done
 
-The privacy policy must be reachable at a stable public URL before you submit to Play Store.
+The privacy policy must be reachable at a stable public URL before you submit to
+Play Store. It is:
 
-`pages.yml` runs `actions/configure-pages` with `enablement: true`, so the first
-run turns Pages on by itself and sets the build type to GitHub Actions — no
-manual setup needed in the normal case.
+```
+https://mozra-the-great.github.io/nagellacke/privacy-policy.html
+```
 
-1. Trigger the workflow: either push a change under `docs/` (release notes
-   excluded) to `main`, or run **Deploy GitHub Pages** manually from the
-   **Actions** tab via *Run workflow*.
-2. After the workflow succeeds, the site is live at:
-   ```
-   https://mozra-the-great.github.io/nagellacke/
-   ```
-3. Verify that `https://mozra-the-great.github.io/nagellacke/privacy-policy.html` loads correctly.
-4. Update `docs/store-listing.md` → replace the placeholder URL with the live URL.
+Pages is enabled, and the first successful deploy ran on `fa6274d`.
 
-> If the run still fails on **Configure Pages** — auto-enablement does not work
-> for every repository/account configuration — enable it by hand: go to
-> `https://github.com/Mozra-the-great/nagellacke/settings/pages`, set **Source**
-> to **GitHub Actions** (not "Deploy from branch"), save, and re-run the workflow.
+**Enabling Pages needed a manual switch — `enablement: true` could not do it.**
+`pages.yml` passes `enablement: true` to `actions/configure-pages`, which is
+supposed to turn Pages on by itself. For this repository it failed:
+
+```
+##[warning]Get Pages site failed. Error: Not Found
+##[error]Create Pages site failed. Error: Resource not accessible by integration
+```
+
+Creating a Pages site requires repo-admin rights, and `GITHUB_TOKEN` is an app
+installation token that never has them — `pages: write` is not enough. No
+permission tweak in the workflow fixes this; only a PAT with admin scope or the
+manual switch does. `enablement: true` stays in the workflow because it is
+harmless once Pages exists and would cover a repo where it does work.
+
+If Pages ever has to be re-enabled (new fork, transferred repo):
+
+1. Go to `https://github.com/Mozra-the-great/nagellacke/settings/pages`.
+2. Under **Source**, select **GitHub Actions** (not "Deploy from branch"), save.
+3. Trigger the workflow: push a change under `docs/` (release notes excluded) to
+   `main`, or run **Deploy GitHub Pages** from the **Actions** tab via
+   *Run workflow*.
+
+> Use a desktop browser for step 1. Firefox on Android redirects the Pages
+> settings page to a GitHub 404 without saving the change; Chrome with
+> "Desktop site" works.
 
 > Note: It may take a few minutes for the DNS to propagate after the first deployment.
 
