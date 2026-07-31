@@ -195,6 +195,7 @@
   // =======================================================================
   function initStudio() {
     var hand = qs('#studioHand');
+    var studioRoot = qs('#studio');
     var palette = qs('.palette');
     var finishesGroup = qs('.finishes');
     var ownColor = qs('#ownColor');
@@ -226,6 +227,10 @@
       if (!isValidHex(hex)) return;
       current.color = hex;
       current.name = name || 'Eigenmischung';
+      // Set on a shared ancestor of the hand and the finish-tile previews
+      // (they live in sibling branches of the DOM), plus directly on the
+      // hand so it keeps working even if the markup around it changes.
+      setProp(studioRoot, '--polish', hex);
       setProp(hand, '--polish', hex);
 
       swatches.forEach(function (btn) {
