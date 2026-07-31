@@ -9,6 +9,13 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [3.2.0-rc.2] – 2026-07-31
+
+### Fixed
+- **KI: Fallback ohne Websuche, wenn das Suchkontingent fehlt**: alle KI-Funktionen fordern eine Web-Recherche an, aber weder OpenRouter noch Gemini enthalten die Websuche im kostenlosen Kontingent — derselbe Request lief ohne Suche mit 200 durch und mit Suche in einen 429. Auto-Fill und Smart-Cart schlugen damit genau mit den Schlüsseln fehl, mit denen die meisten anfangen, und die Fehlermeldung („Kontingent überschritten") zeigte auf den API-Key statt auf das Such-Add-on. Ein geerdeter Aufruf, der mit 429/402 scheitert, wird jetzt einmal ohne Such-Tool wiederholt und aus dem Modellwissen beantwortet; alle anderen Fehler bleiben unverändert. (#86)
+
+---
+
 ## [3.2.0-rc.1] – 2026-07-30
 
 ### Sicherheit
