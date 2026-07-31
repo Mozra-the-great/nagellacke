@@ -61,20 +61,25 @@
     <circle cx="2.8" cy="6.6" r=".4" fill="#ffffff"/>
   </pattern>
 
-  <!-- Finger-Template: Basis (0,0), Fingerspitze bei y≈-100 -->
+  <!-- Finger-Template: Basis (0,0), Fingerspitze bei y≈-101. Die Füllung reicht bis y=9
+       unter die Basis, die Konturlinie endet dagegen bei y=0 und lässt die Basis offen —
+       so verschmilzt der Finger nahtlos mit der Handfläche, ohne sichtbare Kante. (y=9 bleibt
+       innerhalb des Tagebuch-Freiraums unter der Basis, damit Datum/Name dort nicht verdeckt werden.) -->
   <g id="fingerTpl">
     <g filter="url(#roughSoft)">
-      <path pathLength="100" d="M-13 0 C-14 -58 -12 -84 -6 -96 C-2 -101 2 -101 6 -96 C12 -84 14 -58 13 0 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M-13 0 C-14 -58 -12 -84 -6 -96 C-2 -101 2 -101 6 -96 C12 -84 14 -58 13 0 L13 9 L-13 9 Z" style="fill:var(--skin)"/>
+      <path pathLength="100" d="M-13 0 C-14 -58 -12 -84 -6 -96 C-2 -101 2 -101 6 -96 C12 -84 14 -58 13 0" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 -14 C9.5 -40 9 -64 6.5 -84" style="stroke:var(--pencil)" stroke-width="1" opacity=".4" fill="none" stroke-linecap="round"/>
       <path d="M-11 -34 C-4 -30 5 -30 11 -34" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
       <path d="M-10 -62 C-4 -58 4 -58 10 -62" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
-      <path class="nail-fill" d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:var(--polish,#b3122e)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
-      <path d="M-8 -74 C-8 -88 -5 -95 0 -95 C5 -95 8 -88 8 -74 C4 -70 -4 -70 -8 -74 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
-      <path d="M-4 -88 C-4.5 -83 -3.5 -78 -2.5 -75" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
+      <path class="nail-fill" d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:var(--polish,#b3122e)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+      <path d="M-9.5 -72 C-9.5 -88 -6 -97 0 -97 C6 -97 9.5 -88 9.5 -72 C5 -67 -5 -67 -9.5 -72 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
+      <path d="M-4.5 -90 C-5 -85 -4 -80 -3 -76" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
     </g>
   </g>
 
@@ -170,20 +175,42 @@
       <svg id="studioHand" viewBox="0 0 320 360" role="img" data-finish="classic" style="--polish:#b3122e;overflow:visible">
         <title>Hand mit lackierten Nägeln</title>
         <g filter="url(#roughSoft)">
-          <path pathLength="100" d="M98 200 C90 230 88 270 96 300 C102 315 120 322 150 322 C180 322 214 318 228 300 C240 282 240 240 226 208 C214 190 195 182 170 184 C150 185 132 186 118 190 C108 193 101 195 98 200 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M112 285 L130 278" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".6"/>
-          <path d="M115 295 L133 288" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".6"/>
-          <path d="M118 305 L136 298" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".6"/>
-          <path d="M121 313 L139 307" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".6"/>
-          <path d="M130 320 C128 335 126 350 124 359" style="stroke:var(--ink)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M190 320 C192 335 194 350 196 359" style="stroke:var(--ink)" stroke-width="2" fill="none" stroke-linecap="round"/>
-          <path d="M115 330 C140 322 180 322 205 330" style="stroke:var(--ink)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <!-- Handfläche + Handgelenk: eine durchgehende Kontur, nach unten schmaler werdend,
+               oben eine leicht gebogene Linie statt einer geraden Kante -->
+          <path pathLength="100" d="M116 359 C104 332 90 306 86 280 C82 258 78 236 86 218 C92 206 102 199 111 196 C118 194 124 194 129 195 C141 189 152 187 163 187 C176 187 189 190 199 196 C212 202 224 208 235 213 C244 217 250 224 253 234 C257 258 255 296 247 328 C242 346 229 356 212 359 C190 361 138 361 116 359 Z" style="fill:var(--skin);stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <!-- Schattierung am Handballen (Daumenballen) -->
+          <path d="M100 230 L120 222" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M95 244 L117 236" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M92 258 L115 250" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".55" fill="none" stroke-linecap="round"/>
+          <path d="M91 272 L114 265" style="stroke:var(--pencil)" stroke-width="1.2" opacity=".5" fill="none" stroke-linecap="round"/>
+          <path d="M92 286 L113 280" style="stroke:var(--pencil)" stroke-width="1.1" opacity=".45" fill="none" stroke-linecap="round"/>
+          <!-- Handgelenk-Falte -->
+          <path d="M124 336 C150 344 178 344 204 336" style="stroke:var(--pencil)" stroke-width="1.3" opacity=".5" fill="none" stroke-linecap="round"/>
         </g>
-        <use href="#fingerTpl" transform="translate(112,268) rotate(-58) scale(0.86)"/>
-        <use href="#fingerTpl" transform="translate(232,206) rotate(16) scale(0.82)"/>
-        <use href="#fingerTpl" transform="translate(200,196) rotate(6) scale(1.02)"/>
-        <use href="#fingerTpl" transform="translate(163,192) rotate(-2) scale(1.1)"/>
-        <use href="#fingerTpl" transform="translate(126,196) rotate(-9) scale(1.0)"/>
+
+        <!-- Daumen: eigene Form (kein Finger-Template), entspringt unten am Handballen mit
+             erkennbarem Daumenballen, liegt schräg nach außen -->
+        <g transform="translate(99,264) rotate(-52)">
+          <g filter="url(#roughSoft)">
+            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0 L19 24 L-19 24 Z" style="fill:var(--skin)"/>
+            <path d="M-19 0 C-21 -22 -17 -46 -8 -64 C-3 -71 3 -71 8 -64 C17 -46 21 -22 19 0" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M-13 -14 C-6 -10 6 -10 13 -14" style="stroke:var(--pencil)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            <path d="M13 -24 C13.5 -38 12 -50 8 -60" style="stroke:var(--pencil)" stroke-width="1" opacity=".4" fill="none" stroke-linecap="round"/>
+            <path class="nail-fill" d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:var(--polish,#b3122e)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gShimmer);opacity:var(--fx-shimmer,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gChrome);opacity:var(--fx-chrome,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gHolo);opacity:var(--fx-holo,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#pGlitter);opacity:var(--fx-glitter,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:url(#gMatte);opacity:var(--fx-matte,0)"/>
+            <path d="M-9 -46 C-9 -58 -5.5 -66 0 -66 C5.5 -66 9 -58 9 -46 C4.5 -42 -4.5 -42 -9 -46 Z" style="fill:none;stroke:var(--ink)" stroke-width="1.6"/>
+            <path d="M-4 -60 C-4.5 -56 -3.5 -52 -2.5 -49" style="stroke:#ffffff;opacity:var(--fx-gloss,.75)" stroke-width="1" fill="none" stroke-linecap="round"/>
+          </g>
+        </g>
+
+        <use href="#fingerTpl" transform="translate(228,214) rotate(18) scale(0.74)"/>
+        <use href="#fingerTpl" transform="translate(198,200) rotate(7) scale(0.95)"/>
+        <use href="#fingerTpl" transform="translate(163,196) rotate(-3) scale(1.05)"/>
+        <use href="#fingerTpl" transform="translate(130,204) rotate(-12) scale(0.92)"/>
       </svg>
       <p class="hand-tip">Tipp: Zwei Schichten. Immer.</p>
     </div>
@@ -247,27 +274,27 @@
 
       <div class="finishes" role="group" aria-label="Finish wählen">
         <button class="finish" type="button" data-finish="classic" aria-pressed="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="var(--ink)"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/></svg>
           <span>Classic</span>
         </button>
         <button class="finish" type="button" data-finish="shimmer" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="url(#gShimmer)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gShimmer)"/></svg>
           <span>Shimmer</span>
         </button>
         <button class="finish" type="button" data-finish="glitter" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="url(#pGlitter)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#pGlitter)"/></svg>
           <span>Glitter</span>
         </button>
         <button class="finish" type="button" data-finish="matte" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="var(--pencil-soft)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gMatte)"/></svg>
           <span>Matt</span>
         </button>
         <button class="finish" type="button" data-finish="chrome" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="url(#gChrome)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gChrome)"/></svg>
           <span>Chrome</span>
         </button>
         <button class="finish" type="button" data-finish="holo" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="url(#gHolo)" stroke="var(--ink)" stroke-width="1"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" style="fill:var(--polish,#b3122e)" stroke="var(--ink)" stroke-width="1"/><circle cx="12" cy="12" r="8" fill="url(#gHolo)"/></svg>
           <span>Holo</span>
         </button>
       </div>
