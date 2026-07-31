@@ -49,6 +49,21 @@ input { font: inherit; color: inherit; }
 
 
 /* =========================================================================
+   1.5 HANDWRITING FONT — self-hosted, same-origin, no external request
+   ========================================================================= */
+
+/* Caveat covers Latin text at 400–700 in a single variable-ish woff2 file;
+   docs/assets/fonts/OFL.txt must stay alongside it (SIL Open Font Licence). */
+@font-face {
+  font-family: 'Caveat';
+  src: url('fonts/caveat-latin.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+/* =========================================================================
    2. DESIGN TOKENS
    ========================================================================= */
 
@@ -67,8 +82,11 @@ input { font: inherit; color: inherit; }
   --skin:         #f0d7c6;
   --tape:         rgba(226, 205, 124, .45);
 
-  /* --- type --- */
-  --font-hand: 'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Comic Sans MS', ui-rounded, cursive;
+  /* --- type ---
+     Caveat runs small and tight compared to a system sans, so every
+     handwritten element bumps its font-size ~25% (see individual rules)
+     and picks up a touch of letter-spacing to keep it legible. */
+  --font-hand: 'Caveat', 'Segoe Print', 'Bradley Hand', 'Comic Sans MS', cursive;
   --font-body: ui-sans-serif, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
   /* --- layout --- */
@@ -82,6 +100,8 @@ input { font: inherit; color: inherit; }
   --wobble-3: 200px 20px 200px 25px / 25px 200px 25px 200px;
   --wobble-4: 25px 180px 30px 210px / 210px 25px 190px 25px;
   --wobble-5: 8px 90px 12px 100px / 90px 12px 90px 10px;
+  --wobble-6: 30px 200px 25px 210px / 210px 20px 200px 25px;
+  --wobble-7: 210px 25px 190px 30px / 20px 200px 15px 205px;
   --wobble-pill: 999px 12px 999px 18px / 18px 999px 14px 999px;
 
   /* --- motion --- */
@@ -148,15 +168,18 @@ input { font: inherit; color: inherit; }
    the same technique. All generated once, offline, no build step. */
 :root {
   --tex-grain: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQwIj48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44NSIgbnVtT2N0YXZlcz0iMiIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPjxmZUNvbG9yTWF0cml4IHR5cGU9Im1hdHJpeCIgdmFsdWVzPSIwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwLjA1IDAiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWx0ZXI9InVybCgjbikiLz48L3N2Zz4K");
-  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzIxODViIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+  /* two overlapping, unevenly-spaced strokes — a ballpoint line that's
+     been gone over twice and doesn't quite land in the same place twice,
+     rather than one smooth drafting-compass arc */
+  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIEM5IDcgMTQgMTUgMjIgMTAgQzI5IDYgMzQgMTQgNDIgOSBDNTAgNSA1NiAxNSA2NCAxMCBDNzIgNiA3OCAxMyA4NiA5IEM5NCA2IDEwMSAxNCAxMDkgOSBDMTE3IDUgMTI0IDEzIDEzMiA5IEMxNDAgNiAxNDYgMTUgMTU0IDEwIEMxNjIgNiAxNjggMTMgMTc2IDkgQzE4MyA2IDE5MCAxMiAxOTggMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2MyMTg1YiIgc3Ryb2tlLXdpZHRoPSIyLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxwYXRoIGQ9Ik0zIDEwIEMxMSAxNCAxNiA2IDI0IDEyIEMzMSAxNiAzNyA4IDQ1IDEzIEM1MyAxNyA1OSA5IDY3IDEzIEM3NSAxNyA4MSAxMCA4OSAxMyBDOTcgMTYgMTA0IDkgMTEyIDEzIEMxMjAgMTcgMTI3IDEwIDEzNSAxMyBDMTQzIDE2IDE0OSA5IDE1NyAxMyBDMTY1IDE3IDE3MSAxMCAxNzkgMTMgQzE4NiAxNiAxOTIgMTEgMTk3IDEyIiBmaWxsPSJub25lIiBzdHJva2U9IiNjMjE4NWIiIHN0cm9rZS13aWR0aD0iMS4zIiBzdHJva2UtbGluZWNhcD0icm91bmQiIG9wYWNpdHk9Ii41NSIvPjwvc3ZnPgo=");
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY4ZmIxIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+    --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIEM5IDcgMTQgMTUgMjIgMTAgQzI5IDYgMzQgMTQgNDIgOSBDNTAgNSA1NiAxNSA2NCAxMCBDNzIgNiA3OCAxMyA4NiA5IEM5NCA2IDEwMSAxNCAxMDkgOSBDMTE3IDUgMTI0IDEzIDEzMiA5IEMxNDAgNiAxNDYgMTUgMTU0IDEwIEMxNjIgNiAxNjggMTMgMTc2IDkgQzE4MyA2IDE5MCAxMiAxOTggMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmOGZiMSIgc3Ryb2tlLXdpZHRoPSIyLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxwYXRoIGQ9Ik0zIDEwIEMxMSAxNCAxNiA2IDI0IDEyIEMzMSAxNiAzNyA4IDQ1IDEzIEM1MyAxNyA1OSA5IDY3IDEzIEM3NSAxNyA4MSAxMCA4OSAxMyBDOTcgMTYgMTA0IDkgMTEyIDEzIEMxMjAgMTcgMTI3IDEwIDEzNSAxMyBDMTQzIDE2IDE0OSA5IDE1NyAxMyBDMTY1IDE3IDE3MSAxMCAxNzkgMTMgQzE4NiAxNiAxOTIgMTEgMTk3IDEyIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjhmYjEiIHN0cm9rZS13aWR0aD0iMS4zIiBzdHJva2UtbGluZWNhcD0icm91bmQiIG9wYWNpdHk9Ii41NSIvPjwvc3ZnPgo=");
   }
 }
 :root[data-theme="dark"] {
-  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIFEyMCAzIDQwIDEyIFQ4MCAxMiBUMTIwIDEyIFQxNjAgMTIgVDE5OCAxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY4ZmIxIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPgo=");
+  --tex-squiggle: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMjAiPjxwYXRoIGQ9Ik0yIDEyIEM5IDcgMTQgMTUgMjIgMTAgQzI5IDYgMzQgMTQgNDIgOSBDNTAgNSA1NiAxNSA2NCAxMCBDNzIgNiA3OCAxMyA4NiA5IEM5NCA2IDEwMSAxNCAxMDkgOSBDMTE3IDUgMTI0IDEzIDEzMiA5IEMxNDAgNiAxNDYgMTUgMTU0IDEwIEMxNjIgNiAxNjggMTMgMTc2IDkgQzE4MyA2IDE5MCAxMiAxOTggMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmOGZiMSIgc3Ryb2tlLXdpZHRoPSIyLjYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxwYXRoIGQ9Ik0zIDEwIEMxMSAxNCAxNiA2IDI0IDEyIEMzMSAxNiAzNyA4IDQ1IDEzIEM1MyAxNyA1OSA5IDY3IDEzIEM3NSAxNyA4MSAxMCA4OSAxMyBDOTcgMTYgMTA0IDkgMTEyIDEzIEMxMjAgMTcgMTI3IDEwIDEzNSAxMyBDMTQzIDE2IDE0OSA5IDE1NyAxMyBDMTY1IDE3IDE3MSAxMCAxNzkgMTMgQzE4NiAxNiAxOTIgMTEgMTk3IDEyIiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjhmYjEiIHN0cm9rZS13aWR0aD0iMS4zIiBzdHJva2UtbGluZWNhcD0icm91bmQiIG9wYWNpdHk9Ii41NSIvPjwvc3ZnPgo=");
 }
 
 body {
@@ -169,19 +192,26 @@ body {
   isolation: isolate;
 }
 
-/* fixed full-page overlay: grain + vignette, never intercepts clicks,
-   sits above the paper colour but below all real content */
+/* Full-page paper overlay: grain + a soft vignette at the very top/bottom
+   of the document. Deliberately `position: absolute` (spans the full body
+   height once, scrolls with the page) rather than `fixed` — a fixed,
+   viewport-sized overlay only ever paints the first screenful during a
+   one-shot full-page capture (and looks like a hard grey box wherever the
+   capture's initial viewport ended); absolute keeps the paper texture
+   continuous top to bottom instead. */
 body::before {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background-image:
-    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .10) 100%),
+    radial-gradient(ellipse 140% 420px at center top, rgba(0, 0, 0, .08), transparent 70%),
+    radial-gradient(ellipse 140% 420px at center bottom, rgba(0, 0, 0, .08), transparent 70%),
     var(--tex-grain);
-  background-repeat: no-repeat, repeat;
-  background-size: cover, 240px 240px;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: top, bottom, top left;
+  background-size: 100% 100%, 100% 100%, 240px 240px;
   mix-blend-mode: multiply;
   opacity: .8;
 }
@@ -197,38 +227,41 @@ body::before {
 
 h1, h2, h3, h4 {
   font-family: var(--font-hand);
-  font-weight: 400; /* handwriting fonts fake their own weight */
+  font-weight: 600; /* Caveat reads better a touch heavier than 400 */
   color: var(--ink);
-  line-height: 1.2;
+  line-height: 1.15;
+  letter-spacing: .01em;
   margin: 0 0 .5em;
 }
 
 h1 {
-  font-size: clamp(2.6rem, 2rem + 3vw, 4.5rem);
+  font-size: clamp(3.25rem, 2.5rem + 3.75vw, 5.6rem);
   transform: rotate(-.6deg);
 }
 
 .section h2 {
-  font-size: clamp(1.8rem, 1.5rem + 1.6vw, 2.6rem);
+  font-size: clamp(2.25rem, 1.9rem + 2vw, 3.25rem);
   display: inline-block;
   position: relative;
   transform: rotate(-.6deg);
 }
 
-h3 { font-size: clamp(1.2rem, 1.05rem + .6vw, 1.5rem); }
+h3 { font-size: clamp(1.5rem, 1.3rem + .75vw, 1.9rem); }
 
-/* hand-drawn squiggle underneath h1 and every section heading */
-h1::after,
+/* hand-drawn squiggle underneath every section heading (the "kritzel" of
+   two overlapping, slightly mismatched ballpoint passes lives in
+   --tex-squiggle, see §3). h1 draws its own animated squiggle via the
+   inline .squiggle SVG instead, see §9. */
 .section h2::after {
   content: "";
   display: block;
   width: 8.5em;
   max-width: 100%;
-  height: .4em;
-  margin-top: .05em;
+  height: .35em;
+  margin-top: .1em;
   background-image: var(--tex-squiggle);
   background-repeat: repeat-x;
-  background-size: 3.4em 100%;
+  background-size: 2.6em 100%;
   opacity: .9;
 }
 
@@ -243,9 +276,10 @@ small, .fine-print {
 /* pencil-style small caption text (kicker, hints) — never for body copy */
 .kicker {
   font-family: var(--font-hand);
+  font-weight: 600;
   color: var(--pencil);
-  font-size: clamp(1rem, .95rem + .3vw, 1.2rem);
-  letter-spacing: .02em;
+  font-size: clamp(1.25rem, 1.2rem + .35vw, 1.5rem);
+  letter-spacing: .03em;
 }
 
 a:not(.btn) {
@@ -273,14 +307,24 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
 }
 
-.two-col {
+.two-col,
+.hero-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--gap);
   align-items: center;
 }
 @media (max-width: 860px) {
-  .two-col { grid-template-columns: 1fr; }
+  .two-col,
+  .hero-grid { grid-template-columns: 1fr; }
+}
+
+/* intro paragraph under every section heading (kept apart from #hero .lead,
+   which has its own narrower measure and slightly larger type) */
+.section-lead {
+  font-size: clamp(1rem, .95rem + .2vw, 1.1rem);
+  max-width: 62ch;
+  color: var(--ink);
 }
 
 /* sprite host: hidden per spec 3.1, never rendered directly */
@@ -315,6 +359,14 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   background: var(--paper-2);
   border: 2px solid var(--ink);
   border-radius: var(--wobble-1);
+  /* pencil hatching in one corner, very faint — shading, not pattern */
+  background-image: repeating-linear-gradient(
+    115deg, transparent 0 6px, rgba(0, 0, 0, .045) 6px 7px
+  );
+  background-position: top right;
+  background-repeat: no-repeat;
+  background-size: 55% 45%;
+  box-shadow: 5px 8px 0 -4px rgba(0, 0, 0, .1), 4px 10px 16px -10px rgba(0, 0, 0, .3);
 }
 
 .hand-frame::after,
@@ -343,6 +395,28 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .chart::after { border-radius: var(--wobble-3); }
 #shelfDetail { border-radius: var(--wobble-2); }
 #shelfDetail::after { border-radius: var(--wobble-1); }
+.diary-face { border-radius: var(--wobble-6); }
+.diary-face::after { border-radius: var(--wobble-3); }
+.legal { border-radius: var(--wobble-7); }
+.legal::after { border-radius: var(--wobble-2); }
+
+/* single, sparing dog-ear — the finishes panel's bottom corner */
+.finishes {
+  position: relative;
+}
+.finishes::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(135deg, transparent 50%, var(--paper-2) 50%);
+  border-top: 1.5px solid var(--pencil-soft);
+  border-left: 1.5px solid var(--pencil-soft);
+  box-shadow: -1px -1px 2px rgba(0, 0, 0, .08);
+  pointer-events: none;
+}
 
 /* card variant: generous padding, soft lift */
 .hand-frame--card,
@@ -417,28 +491,44 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   background: var(--paper);
   border-bottom: 2px solid var(--ink);
   box-shadow: 0 3px 0 -1px var(--paper-3);
+  max-width: 100vw;
 }
 
-/* wordmark logo: first link/text inside the topbar, no dedicated class in
-   the spec, so target it structurally */
+/* wordmark logo: .logo in the real markup; .topbar > a:first-child /
+   .wordmark stay as structural fallbacks for the same slot */
+.logo,
 .topbar > a:first-child,
 .topbar .wordmark {
   font-family: var(--font-hand);
-  font-size: clamp(1.3rem, 1.15rem + .6vw, 1.7rem);
+  font-weight: 600;
+  font-size: clamp(1.6rem, 1.4rem + .75vw, 2.1rem);
   color: var(--ink);
   text-decoration: none;
   position: relative;
   flex: none;
+  overflow: visible;
 }
-.topbar > a:first-child::after,
+.logo-underline {
+  display: block;
+  overflow: visible;
+  width: 6.5em;
+  height: .5em;
+  margin-top: -.15em;
+}
+.logo-underline path {
+  stroke-width: 1.8;
+  filter: url(#roughSoft) drop-shadow(1.1px 1.3px 0 var(--accent));
+}
+/* structural fallback only for a wordmark link with no .logo-underline SVG
+   of its own (.logo already draws its underline via that inline SVG) */
 .topbar .wordmark::after {
   content: "";
   display: block;
-  height: .35em;
+  height: .3em;
   margin-top: -.1em;
   background-image: var(--tex-squiggle);
   background-repeat: repeat-x;
-  background-size: 2.6em 100%;
+  background-size: 2.2em 100%;
 }
 
 .topbar nav {
@@ -448,14 +538,19 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   overflow-x: auto;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+  min-width: 0; /* let flex shrink below content size instead of pushing
+                   the topbar (and the page) wider than the viewport */
   max-width: 100%;
   padding-block: .2rem; /* room for focus ring */
+  justify-content: flex-end;
 }
 
 .topbar nav a {
   white-space: nowrap;
   font-family: var(--font-hand);
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: 1.3rem;
   padding: .25em .1em;
   border-bottom: 2px solid transparent;
 }
@@ -464,6 +559,7 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .topbar nav a.nav-privacy {
   color: var(--ink-soft);
   font-family: var(--font-body);
+  font-weight: 400;
   font-size: .85rem;
   border-left: 1px dashed var(--pencil-soft);
   padding-left: clamp(.75rem, 2vw, 1.5rem);
@@ -479,14 +575,28 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   max-width: 46ch;
 }
 
+/* h1's own animated squiggle (see markup §3.1/9): thinner than the old
+   single arc, roughened, and drawn with a slightly offset accent
+   drop-shadow so it reads as two ballpoint passes rather than one bar */
+.squiggle {
+  overflow: visible;
+  max-width: 100%;
+  margin-top: -.1em;
+}
+.squiggle path {
+  stroke-width: 2;
+  filter: url(#roughSoft) drop-shadow(1.6px 1.9px 0 var(--accent));
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .4em;
   font-family: var(--font-hand);
-  font-size: 1.1rem;
-  padding: .55em 1.4em;
+  font-weight: 600;
+  font-size: 1.35rem;
+  padding: .5em 1.3em;
   position: relative;
   background: var(--paper-2);
   border: 2px solid var(--ink);
@@ -526,37 +636,38 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   margin-block: 1.5rem;
 }
 
-/* ASSUMPTION: the three "kein Tracking / …" scribbles — no class given.
-   .hero-facts / .hero-fact is a best guess; a plain <ul> inside #hero
-   also picks up sane styling via the fallback rule below. */
-.hero-facts,
-#hero .facts {
+/* the three "kein Tracking / …" scribbles — real markup: <ul class="fact-row"><li>… */
+.fact-row {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem 1.5rem;
   margin-top: 1.5rem;
   padding: 0;
 }
-.hero-facts li,
-.hero-facts .hero-fact,
-#hero .facts li {
+.fact-row li {
   font-family: var(--font-hand);
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: 1.3rem;
   color: var(--ink-soft);
   position: relative;
   padding-left: 1.3em;
 }
-.hero-facts li::before,
-.hero-facts .hero-fact::before,
-#hero .facts li::before {
+.fact-row li::before {
   content: "✓";
   position: absolute;
   left: 0;
   color: var(--accent);
 }
 
-.hero-illustration svg,
-#hero .illustration svg {
+/* .hero-illustration is the <svg> itself (not a wrapper), so it needs a
+   plain selector rather than a descendant combinator. Roughing the outer
+   group + the bottle clones covers the whole scene without ever touching
+   the "Lieblingslack ♥" text. */
+.hero-illustration {
+  overflow: visible;
+}
+.hero-illustration > g,
+.hero-illustration use {
   filter: url(#rough);
 }
 
@@ -568,9 +679,10 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 #studio .layout,
 #studio .studio-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* the hand is the centrepiece — give it noticeably more than half */
+  grid-template-columns: 1.3fr 1fr;
   gap: var(--gap);
-  align-items: start;
+  align-items: center;
 }
 @media (max-width: 860px) {
   #studio .layout,
@@ -579,6 +691,18 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   }
   /* hand first, controls after, per spec 3.4 */
   #studioHand, #studio svg[role="img"] { order: -1; }
+}
+
+.studio-hand-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  position: sticky;
+  top: 5rem;
+}
+@media (max-width: 860px) {
+  .studio-hand-wrap { position: static; }
 }
 
 .studio-controls {
@@ -608,21 +732,39 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .swatch svg {
   width: 48px;
   height: 48px;
+  overflow: visible;
   filter: url(#roughSoft);
   transition: transform var(--dur-fast) var(--ease-hand);
 }
 
-/* colour blob fill: markup/JS sets --swatch on the button (mirrors the
-   --polish convention used on bottles / the studio hand elsewhere in the
-   spec). Falls back to a neutral pencil tone if that never happens. */
+/* colour blob fill: the path already carries style="fill:var(--polish)" —
+   same convention as the bottles / the studio hand. This fallback only
+   matters if --polish is ever missing on the button. */
 .swatch [data-blob],
 .swatch svg :is(path, circle, use) {
-  fill: var(--swatch, var(--pencil-soft));
+  fill: var(--polish, var(--pencil-soft));
 }
+
+/* Defensive colour map: the 12 palette colours are fixed and known, so
+   set --polish straight from data-color even if the button's own inline
+   style is ever missing it — the swatch blobs must never render grey. */
+.swatch[data-color="#b3122e"] { --polish: #b3122e; }
+.swatch[data-color="#d98a9a"] { --polish: #d98a9a; }
+.swatch[data-color="#5a1f45"] { --polish: #5a1f45; }
+.swatch[data-color="#7a3b8f"] { --polish: #7a3b8f; }
+.swatch[data-color="#24418f"] { --polish: #24418f; }
+.swatch[data-color="#8fc7e8"] { --polish: #8fc7e8; }
+.swatch[data-color="#8aa87a"] { --polish: #8aa87a; }
+.swatch[data-color="#1f5f43"] { --polish: #1f5f43; }
+.swatch[data-color="#b9793f"] { --polish: #b9793f; }
+.swatch[data-color="#f2c14e"] { --polish: #f2c14e; }
+.swatch[data-color="#e9dfd2"] { --polish: #e9dfd2; }
+.swatch[data-color="#3a2a24"] { --polish: #3a2a24; }
 
 .swatch span {
   font-family: var(--font-hand);
-  font-size: .85rem;
+  font-weight: 600;
+  font-size: 1.05rem;
   text-align: center;
   color: var(--ink-soft);
 }
@@ -658,7 +800,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 }
 .own-color label {
   font-family: var(--font-hand);
-  font-size: 1.05rem;
+  font-weight: 600;
+  font-size: 1.3rem;
 }
 
 #ownColor {
@@ -698,10 +841,12 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   border: 1.5px solid var(--pencil-soft);
   border-radius: var(--wobble-5);
   font-family: var(--font-hand);
-  font-size: .95rem;
+  font-weight: 600;
+  font-size: 1.15rem;
   transition: transform var(--dur-fast) var(--ease-hand), border-color var(--dur-fast);
 }
 .finish:hover { transform: rotate(-1.5deg); }
+.finish svg { overflow: visible; filter: url(#roughSoft); }
 
 /* small drawn symbol per finish, built from gradients/shadows only —
    no extra markup required */
@@ -769,17 +914,21 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 #swName {
   font-family: var(--font-hand);
-  font-size: 1.4rem;
+  font-weight: 600;
+  font-size: 1.75rem;
   color: var(--ink);
 }
 #swHex {
   font-family: var(--font-hand);
+  font-weight: 600;
   color: var(--ink-soft);
-  font-size: 1rem;
-  letter-spacing: .04em;
+  font-size: 1.2rem;
+  letter-spacing: .05em;
 }
 #swFinish {
   font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.15rem;
   color: var(--accent);
 }
 #swMood {
@@ -809,7 +958,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    ========================================================================= */
 
 #studioHand {
-  width: min(100%, 340px);
+  width: min(100%, 560px);
+  overflow: visible;
   margin-inline: auto;
   filter: url(#rough);
 }
@@ -825,9 +975,12 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 #studioHand[data-finish="matte"]   { --fx-matte: 1; --fx-gloss: 0; }
 /* classic: all fx layers stay at their :root defaults (0), gloss at .75 */
 
-.studio-hint {
+.studio-hint,
+.hand-tip {
   text-align: center;
   font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.25rem;
   color: var(--pencil);
   margin-top: .75rem;
 }
@@ -849,7 +1002,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   border: 2px solid var(--ink);
   border-radius: var(--wobble-pill);
   font-family: var(--font-hand);
-  font-size: 1rem;
+  font-weight: 600;
+  font-size: 1.25rem;
   background: var(--paper-2);
   transition: transform var(--dur-fast) var(--ease-hand), background var(--dur-fast);
 }
@@ -897,6 +1051,7 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .bottle svg {
   width: 56px;
   height: 110px;
+  overflow: visible;
   filter: url(#roughSoft);
   position: relative;
   z-index: 1;
@@ -905,7 +1060,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 .bottle-label {
   font-family: var(--font-hand);
-  font-size: .85rem;
+  font-weight: 600;
+  font-size: 1.05rem;
   text-align: center;
   color: var(--ink-soft);
   position: relative;
@@ -913,6 +1069,14 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 }
 
 .bottle:hover svg { transform: rotate(-2deg) translateY(-2px); }
+
+/* #bottleTpl's label kritzel (the two wavy "handwriting" strokes, 9th/10th
+   path in the template) render almost invisibly thin at shelf scale —
+   thicken them everywhere the template is <use>d, without touching the
+   HTML template itself. */
+#bottleTpl path:nth-of-type(8) { opacity: .95; }
+#bottleTpl path:nth-of-type(9),
+#bottleTpl path:nth-of-type(10) { stroke-width: 2; }
 
 .bottle.is-selected {
   background: var(--paper-3);
@@ -944,7 +1108,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 .shelf-empty {
   grid-column: 1 / -1;
   font-family: var(--font-hand);
-  font-size: 1.2rem;
+  font-weight: 600;
+  font-size: 1.5rem;
   color: var(--pencil);
   text-align: center;
   padding: 2rem 0;
@@ -989,12 +1154,27 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   perspective: 1400px;
 }
 
+/* explicit 2×2 (the common case) / 4×1 only once there's genuinely room for
+   four — auto-fill with a fixed minmax() tends to strand the 4th card on
+   its own row (3+1) at in-between widths, which the spec rules out. */
 .diary-grid,
 #tagebuch .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(1.5rem, 4vw, 3rem);
   margin-top: 2rem;
+}
+@media (min-width: 980px) {
+  .diary-grid,
+  #tagebuch .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .diary-grid,
+  #tagebuch .grid {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 280px;
+    margin-inline: auto;
+  }
 }
 
 .diary-card {
@@ -1004,6 +1184,25 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   transition: transform var(--dur-slow) var(--ease-hand);
   border-radius: 6px;
 }
+
+/* washi tape across the top of every polaroid */
+.diary-card::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  translate: -50% 0;
+  width: 62px;
+  height: 24px;
+  background: var(--tape);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .08);
+  z-index: 3;
+  pointer-events: none;
+}
+.diary-card:nth-of-type(1)::before { transform: rotate(-4deg); }
+.diary-card:nth-of-type(2)::before { transform: rotate(3deg); }
+.diary-card:nth-of-type(3)::before { transform: rotate(-2deg); }
+.diary-card:nth-of-type(4)::before { transform: rotate(4deg); }
 
 /* varied resting rotation — set per-card via nth-child so no two match */
 .diary-card:nth-of-type(1) { transform: rotate(-2.5deg); }
@@ -1047,47 +1246,50 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   );
 }
 
-.diary-front .tape,
-.diary-card > .tape {
-  position: absolute;
-  top: -12px;
-  left: 50%;
-  translate: -50% 0;
-  width: 70px;
-  height: 26px;
-  background: var(--tape);
-  transform: rotate(-3deg);
-  z-index: 2;
+/* the little nail-illustration in each card front: big enough for #rough */
+.diary-front svg {
+  overflow: visible;
+  filter: url(#rough);
 }
 
 .diary-date,
-.diary-name {
+.diary-polish {
   font-family: var(--font-hand);
+  font-weight: 600;
   text-align: center;
 }
-.diary-date { font-size: .8rem; color: var(--pencil); }
-.diary-name { font-size: 1.05rem; color: var(--ink); }
+.diary-date { font-size: 1rem; color: var(--pencil); }
+.diary-polish { font-size: 1.3rem; color: var(--ink); margin-top: .1rem; }
 
 .diary-note {
   font-family: var(--font-hand);
-  font-size: 1rem;
+  font-weight: 600;
+  font-size: 1.25rem;
   color: var(--ink);
   flex: 1;
 }
 
-.stars {
+/* the 5-star rating (real markup: .diary-stars, 5 tiny 16×16 SVGs) — must
+   stay small and wrap-safe or it overruns the polaroid at narrow widths */
+.diary-stars {
   display: flex;
-  gap: .15rem;
-  font-size: 1.1rem;
-  color: var(--pencil-soft);
+  flex-wrap: wrap;
+  gap: .2rem;
 }
-.stars .is-filled,
-.stars [data-filled="true"] { color: var(--accent); }
+.diary-stars svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  overflow: visible;
+  filter: url(#roughSoft);
+}
 
-.diary-margin-note {
+.diary-tally {
   margin-top: 1.5rem;
   text-align: center;
   font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.2rem;
   color: var(--pencil);
 }
 
@@ -1096,6 +1298,9 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    14. APP — phone mock, tabs, screen notes
    ========================================================================= */
 
+/* real markup: .app-showcase wraps #phone + .screen-notes directly
+   (#app .layout / .app-grid were never matched) */
+.app-showcase,
 #app .layout,
 #app .app-grid {
   display: grid;
@@ -1104,6 +1309,7 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   align-items: start;
 }
 @media (max-width: 860px) {
+  .app-showcase,
   #app .layout,
   #app .app-grid { grid-template-columns: 1fr; }
 }
@@ -1122,7 +1328,8 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   border: 1.5px solid var(--pencil-soft);
   border-radius: var(--wobble-pill);
   font-family: var(--font-hand);
-  font-size: .95rem;
+  font-weight: 600;
+  font-size: 1.15rem;
   transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .tab[aria-selected="true"] {
@@ -1133,7 +1340,11 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 #phone {
   width: min(100%, 300px);
+  overflow: visible;
   filter: url(#rough);
+}
+#phone text {
+  font-size: 25px; /* was 20 in the markup's presentation attribute */
 }
 
 /* text lines inside the phone screens are scribbles, not real glyphs */
@@ -1148,22 +1359,36 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   font-family: var(--font-hand);
 }
 
+.screen-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .screen-note {
   max-width: 42ch;
   background: var(--paper-2);
   border-left: 3px solid var(--accent);
   padding: 1rem 1.25rem;
   border-radius: 0 var(--wobble-5);
-  font-size: .98rem;
+  font-size: 1.02rem;
 }
 
+/* real markup: <ul class="platform-row"><li>Android</li>… */
+.platform-row,
 .app-notes,
 #app .notes {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem 2rem;
   margin-top: 2rem;
+}
+.platform-row li,
+.app-notes li,
+#app .notes li {
   font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.25rem;
   color: var(--ink-soft);
 }
 
@@ -1171,6 +1396,23 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 /* =========================================================================
    15. ZAHLEN — bar charts & big numbers
    ========================================================================= */
+
+/* one sparing coffee-ring stain, tucked behind the heading */
+#zahlen {
+  position: relative;
+}
+#zahlen::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: clamp(1rem, 4vw, 2.5rem);
+  width: 68px;
+  height: 68px;
+  border-radius: 45% 55% 60% 40% / 50% 45% 55% 50%;
+  border: 1.5px solid rgba(140, 100, 60, .35);
+  background: radial-gradient(circle, transparent 55%, rgba(140, 100, 60, .15) 100%);
+  pointer-events: none;
+}
 
 #zahlen .charts,
 #zahlen .charts-grid {
@@ -1183,9 +1425,6 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   #zahlen .charts-grid { grid-template-columns: 1fr; }
 }
 
-/* ASSUMPTION: no class is given for the bar chart itself in the spec beyond
-   "<div>s mit --w"; .chart / .bar-row / .bar-track / .bar-fill follow the
-   naming style used elsewhere (.big-number, .bottle-label, …). */
 .chart {
   padding: 1.5rem;
   overflow-x: auto;
@@ -1199,7 +1438,11 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   gap: .6rem;
   margin-block: .6rem;
   font-family: var(--font-hand);
+  font-weight: 600;
+  font-size: 1.05rem;
 }
+
+.bar-label { color: var(--ink); }
 
 .bar-track {
   height: 1.1rem;
@@ -1209,26 +1452,26 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   overflow: hidden;
 }
 
-.bar-fill {
+/* real markup: <div class="bar" style="--w:…;--barcolor:…"> */
+.bar {
   height: 100%;
   width: var(--w, 0%);
   border-radius: inherit;
-  background-color: var(--bar-color, var(--pencil-soft));
+  background-color: var(--barcolor, var(--pencil-soft));
   background-image: repeating-linear-gradient(
     45deg, rgba(0, 0, 0, .12) 0 4px, transparent 4px 8px
   );
 }
-/* colour-family bars carry their own hue via --bar-color set inline */
 
 .bar-value { text-align: right; color: var(--ink-soft); }
 
 /* width animates from 0 → --w only once JS + scroll-reveal are active;
    without JS the bar sits at its target width immediately (a11y §7) */
-html.js .bar-fill {
+html.js .bar {
   width: 0;
   transition: width var(--dur-slow) var(--ease-hand);
 }
-html.js .is-visible .bar-fill {
+html.js .is-visible .bar {
   width: var(--w, 0%);
 }
 
@@ -1242,11 +1485,24 @@ html.js .is-visible .bar-fill {
 }
 
 .big-number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: .3em;
   font-family: var(--font-hand);
-  font-size: clamp(2rem, 1.6rem + 1.6vw, 3rem);
+  font-weight: 600;
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.75rem);
   color: var(--accent);
   transform: rotate(-1.2deg);
   position: relative;
+}
+/* the word after the number: smaller and clearly spaced apart, so "48
+   Lacke" doesn't read as one glued-together token */
+.big-number span {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: .4em;
+  color: var(--ink-soft);
+  letter-spacing: .02em;
 }
 
 
@@ -1254,28 +1510,36 @@ html.js .is-visible .bar-fill {
    16. FOOTER
    ========================================================================= */
 
+/* real markup has no .footer-inner wrapper — footer's own children
+   (.footer-note, .footer-links, .footer-fine) sit straight inside <footer>,
+   so the max-width/gap treatment has to live on footer itself to match
+   the width every .section above it uses. */
 footer {
+  max-width: var(--container-max);
+  margin-inline: auto;
   border-top: 2px solid var(--ink);
   padding: clamp(2rem, 5vw, 3rem) var(--pad-inline);
   margin-top: clamp(3rem, 8vw, 5rem);
-}
-
-footer .footer-inner {
-  max-width: var(--container-max);
-  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
+footer .footer-inner {
+  display: contents;
+}
+
+footer .footer-note,
 footer .signoff {
   font-family: var(--font-hand);
-  font-size: 1.2rem;
+  font-weight: 600;
+  font-size: 1.5rem;
   color: var(--ink);
 }
 
 footer nav,
-footer ul {
+footer ul,
+footer .footer-links {
   display: flex;
   flex-wrap: wrap;
   gap: .5rem 2rem;
@@ -1287,6 +1551,7 @@ footer a.footer-privacy {
   color: var(--accent);
 }
 
+footer .footer-fine,
 footer .fine-print {
   max-width: 60ch;
 }
@@ -1411,12 +1676,14 @@ html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms;
 }
 .legal-head .wordmark {
   font-family: var(--font-hand);
-  font-size: 1.4rem;
+  font-weight: 600;
+  font-size: 1.75rem;
 }
 
 .back-link {
   font-family: var(--font-hand);
-  font-size: 1rem;
+  font-weight: 600;
+  font-size: 1.25rem;
   color: var(--accent);
   text-decoration: none;
   white-space: nowrap;
@@ -1430,7 +1697,8 @@ html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms;
 }
 
 .legal h1 {
-  font-size: clamp(1.8rem, 1.5rem + 1.5vw, 2.4rem);
+  font-weight: 600;
+  font-size: clamp(2.25rem, 1.9rem + 1.9vw, 3rem);
   transform: none;
 }
 .legal h1::after { display: none; }
@@ -1504,7 +1772,7 @@ html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms;
   html.js .reveal path[pathLength="100"] {
     stroke-dashoffset: 0;
   }
-  html.js .bar-fill {
+  html.js .bar {
     width: var(--w, 0%);
   }
   .diary-card { transition: none; }
@@ -1524,15 +1792,19 @@ html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms;
   .deco-sparkle, .sprite {
     display: none !important;
   }
-  .hand-frame, .paper-card, .studio-readout, #shelfDetail, .chart, .legal {
+  .hand-frame, .paper-card, .studio-readout, #shelfDetail, .chart, .legal,
+  .diary-face {
     border-color: #000;
     background: #fff;
+    box-shadow: none;
+    background-image: none;
   }
   .hand-frame::after, .paper-card::after, .studio-readout::after,
-  #shelfDetail::after, .chart::after, .legal::after {
+  #shelfDetail::after, .chart::after, .legal::after, .diary-face::after,
+  .finishes::before, .diary-card::before, #zahlen::before {
     display: none;
   }
   a { color: #000; text-decoration: underline; }
   h1, h2, h3, h4 { color: #000; transform: none; }
-  h1::after, .section h2::after { display: none; }
+  .squiggle, .section h2::after { display: none; }
 }
