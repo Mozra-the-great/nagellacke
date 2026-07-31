@@ -250,7 +250,7 @@ Work through them top-to-bottom; each step depends on the previous one being com
 
 1. Open [play.google.com/apps/publish/signup](https://play.google.com/apps/publish/signup) in a browser.
 2. Sign in with the Google account you want to use as the developer account.
-   - Use a dedicated Google account (e.g. `nagellacke.dev@gmail.com`) rather than your personal one — you cannot transfer an app to a different developer account later.
+   - Use `nagellacke.dev@gmail.com` — the dedicated account already set up for this, also the contact address in the privacy policy. Do not use a personal account; an app cannot be transferred to a different developer account later.
 3. Pay the one-time **$25 USD** registration fee with a credit or debit card.
 4. Fill in the developer profile:
    - **Developer name**: This appears publicly on the Play Store page — use a handle or studio name rather than your legal name if you would rather not have it indexed.
