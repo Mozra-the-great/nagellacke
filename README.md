@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Sync-Server und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.2.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.2.0--rc.2-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -44,7 +44,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 
 ### v3 (Sync + Android)
 - **Cloud-Sync** — Synchronisation zwischen Geräten via eigenem Server, Google Drive, OneDrive, Nextcloud oder Dropbox
-- **JWT-Authentifizierung** — User-Accounts für Sync, 30-Tage-Token
+- **JWT-Authentifizierung** — User-Accounts für Sync, 7-Tage-Access-Token mit Refresh-Token (30 Tage); jedes Konto hat seine eigene, private Sammlung
 - **Native Android-App** — Kotlin/Jetpack Compose, Material Design 3, Hilt DI, Room DB
 - **Sync-Panel** — Cloud-Sync direkt in der Web-Oberfläche konfigurierbar (Username + Passwort)
 - **Darstellungs-Toggle (Android)** — Einstellungen: „Flasche" (SVG-Illustration in Lackfarbe mit Schimmer-Variante) oder „Farb-Swatch"; Photo-Anzeige automatisch in Sticker- und Maniküre-Listen; per-Karte 📷/◎-Button für Lacke
@@ -162,7 +162,7 @@ Daten bleiben dabei **immer erhalten**.
 
 **v3:**
 ```
-/opt/nagellacke/v3/server/data/data.json    ← Kollektion
+/opt/nagellacke/v3/server/data/users/<user>/data.json  ← Kollektion (pro Benutzer)
 /opt/nagellacke/v3/server/data/.api_key     ← API-Schlüssel (v2-kompatibel)
 /opt/nagellacke/v3/server/data/.jwt_secret  ← JWT-Signing-Schlüssel
 /opt/nagellacke/v3/server/data/users.json   ← Sync-User-Konten
