@@ -9,6 +9,17 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [3.2.0-rc.4] – 2026-07-31
+
+### Hinzugefügt
+- **Web-Recherche läuft jetzt auf dem eigenen Server**: statt der kostenpflichtigen Websuche der Anbieter (OpenRouter berechnet ~$0.005 pro Anfrage auch bei einem `:free`-Modell, Gemini-Grounding ist gar nicht im Free-Tier) stellt der Server die Suchanfrage selbst und bietet sie dem Modell als Werkzeug `web_search` an — für beide Wire-Formate (OpenAI-kompatibel und Gemini `functionDeclarations`). Backend wählbar: DuckDuckGo (ohne Einrichtung), eigene SearXNG-Instanz, Brave oder aus. Tool-Aufrufe sind normale Completions, „nur kostenlose Modelle" bleibt damit kostenlos **und** recherchiert. Schlägt die Suche fehl, antwortet die KI aus eigenem Wissen und der Vorschlag wird als ungeprüft gekennzeichnet. (#86)
+
+### Fixed
+- **KI: Websuche wurde trotz „nur kostenlose Modelle" abgerechnet**: `plugins:[{id:'web'}]` kostete pro Anfrage, auch auf einem `:free`-Modell, und der Fallback erkannte OpenRouters `403 Key limit exceeded` nicht — der Job starb hart, obwohl unbezahlte Aufrufe auf demselben Key weiterliefen. (#125)
+- **KI: Smart-Cart verlangte Belege, die es ohne Websuche nicht geben kann**: der Prompt forderte „nur durch Recherche bestätigte Produkte", während keine Recherche stattfand — das Modell erfand daraufhin plausible Artikelnummern, die als Kaufliste im Warenkorb landeten. Prompts beschreiben jetzt den tatsächlichen Modus, `num` bleibt im Zweifel leer, und ungeprüfte Vorschläge sind markiert. (#126)
+
+---
+
 ## [3.2.0-rc.3] – 2026-07-31
 
 ### Fixed
