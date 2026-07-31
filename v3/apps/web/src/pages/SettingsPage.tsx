@@ -897,6 +897,8 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                   </div>
                   <p className={styles.fieldHelpText}>
                     Hängt „:free" an den Modellnamen an, damit nur kostenlose OpenRouter-Modelle verwendet werden.
+                    Die Websuche wird dabei übersprungen — OpenRouter rechnet sie auch bei kostenlosen Modellen
+                    pro Anfrage ab. Die KI antwortet dann aus ihrem eigenen Wissen.
                   </p>
                 </label>
               </>

@@ -24,10 +24,11 @@ const OPENROUTER_FREE_ROUTER = 'openrouter/free';
  *
  * ":free" is a *variant* suffix on a provider-hosted model
  * ("deepseek/deepseek-r1:free"). OpenRouter's own routers — "openrouter/auto",
- * "openrouter/free" — are not provider models, so blindly appending the suffix
- * produced ids like "openrouter/auto:free" and "openrouter/free:free", which
- * are not valid variants and are rejected. Routers are mapped to the free
- * router instead, which is what the setting means anyway.
+ * "openrouter/free" — are not provider models, and appending the suffix to a
+ * router asks it to resolve to a free endpoint: "openrouter/auto:free" is
+ * rejected with 404 "No :free endpoints available for any resolved models",
+ * because auto resolves to paid frontier models. Routers are mapped to the
+ * free router instead, which is what the setting means anyway.
  */
 function toFreeModel(model: string): string {
   if (model.startsWith('openrouter/')) return OPENROUTER_FREE_ROUTER;
@@ -51,7 +52,13 @@ async function callOpenRouter(
       { role: 'user', content: userPrompt },
     ],
   };
-  if (webSearch) body.plugins = [{ id: 'web' }];
+  // The "web" plugin is billed per request (observed: $0.005) on top of
+  // inference, and that charge applies even when the model itself is a ":free"
+  // variant costing $0 — the request comes back 200 with usage.cost = 0.005.
+  // "Nur kostenlose Modelle" therefore cannot include web search: honour the
+  // setting by researching from the model's own knowledge instead of quietly
+  // spending the user's credits.
+  if (webSearch && !config.freeOnly) body.plugins = [{ id: 'web' }];
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -106,14 +113,21 @@ async function callGemini(
 /**
  * Both providers bill web search separately from plain generation, and neither
  * includes it in their free tier — a free API key answers an ordinary request
- * fine but returns 429/402 for the same request with search enabled. Since
- * every AI feature here asks for research, that made the whole feature fail on
- * exactly the keys most users start with, and the surfaced error ("quota
- * exceeded") pointed at the wrong thing.
+ * fine but fails the same request with search enabled. Since every AI feature
+ * here asks for research, that made the whole feature fail on exactly the keys
+ * most users start with, and the surfaced error pointed at the wrong thing.
+ *
+ * The providers disagree on how they say it. Gemini uses 429/402. OpenRouter
+ * lets the billed request through until the key's credit limit is spent and
+ * then answers 403 "Key limit exceeded (total limit)" — a status that reads
+ * like an auth failure but is purely about credit, and that a plain (unbilled)
+ * call on the same key still passes. Matching 403 alone would swallow real
+ * authorization failures, so it counts only alongside the limit wording.
  */
 function isSearchQuotaError(e: unknown): boolean {
   const message = e instanceof Error ? e.message : String(e);
-  return /\b(429|402)\b/.test(message);
+  if (/\b(429|402)\b/.test(message)) return true;
+  return /\b403\b/.test(message) && /limit exceeded/i.test(message);
 }
 
 async function callLlm(config: AiConfig, systemPrompt: string, userPrompt: string, webSearch = true): Promise<string> {
