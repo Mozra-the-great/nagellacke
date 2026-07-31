@@ -85,10 +85,34 @@ async function callGemini(
   return content;
 }
 
+/**
+ * Both providers bill web search separately from plain generation, and neither
+ * includes it in their free tier — a free API key answers an ordinary request
+ * fine but returns 429/402 for the same request with search enabled. Since
+ * every AI feature here asks for research, that made the whole feature fail on
+ * exactly the keys most users start with, and the surfaced error ("quota
+ * exceeded") pointed at the wrong thing.
+ */
+function isSearchQuotaError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /\b(429|402)\b/.test(message);
+}
+
 async function callLlm(config: AiConfig, systemPrompt: string, userPrompt: string, webSearch = true): Promise<string> {
-  return config.provider === 'gemini'
-    ? callGemini(config.gemini, systemPrompt, userPrompt, webSearch)
-    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, webSearch);
+  const call = (search: boolean) => config.provider === 'gemini'
+    ? callGemini(config.gemini, systemPrompt, userPrompt, search)
+    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, search);
+
+  if (!webSearch) return call(false);
+  try {
+    return await call(true);
+  } catch (e) {
+    if (!isSearchQuotaError(e)) throw e;
+    // Answer from the model's own knowledge rather than failing the job. Less
+    // reliable for obscure polishes, but far better than no result at all.
+    console.warn('[ai] Web-Recherche nicht verfügbar (Kontingent) — Anfrage ohne Websuche wiederholt.');
+    return call(false);
+  }
 }
 
 function extractJson(text: string): unknown {
