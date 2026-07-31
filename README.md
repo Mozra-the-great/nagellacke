@@ -4,6 +4,8 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 
 ![Version](https://img.shields.io/badge/version-3.2.0--rc.4-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
+**→ [Projektseite](https://mozra-the-great.github.io/nagellacke/)** — Überblick über die App, Farben direkt an der Hand ausprobieren, und die [Datenschutzerklärung](https://mozra-the-great.github.io/nagellacke/privacy-policy.html).
+
 ---
 
 ## Versionen
@@ -235,6 +237,7 @@ nagellacke/
 │       ├── constants.js   ← FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, …
 │       └── components/    ← PolishForm, StatsPage, DiaryPage, StickerPage, SyncPanel, …
 ├── android/               ← Native Android-App (Kotlin/Jetpack Compose)
+├── docs/                  ← Projektseite auf GitHub Pages (statisch, keine Abhängigkeiten)
 ├── install.sh             ← Installer (Debian/Ubuntu, systemd)
 └── v3/                    ← v3 Monorepo (npm workspaces)
     ├── packages/

@@ -7,6 +7,10 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Projektseite: die Hand im Lack-Studio war als Hand nicht zu erkennen**: die Handfläche war ein abgerundetes Rechteck, auf das vier identische Finger-Kopien (`#fingerTpl`) geklebt waren — weil jeder Finger seine eigene geschlossene Kontur zeichnete, ließen die Überlappungen dunkle Tintenschlitze zwischen den Fingern stehen, und der Daumen war ein flaches Paddel ohne Daumenballen. Neu gezeichnet als **eine** geschlossene Kontur über Daumen, Ballen, Handgelenk, Handfläche und alle vier Finger, erzeugt aus einem parametrischen Modell; die Zwickel sind Falten statt Schnitte, Knöchel, Gelenkfalten und Sehnen liegen als Strichzeichnung darüber. Farb- und Finish-Umschaltung des Studios unverändert. (#133)
+- **Projektseite: die Hero-Illustration zeigte nicht erkennbar, was sie zeigen soll**: der Pinsel bestand aus einem Stiel, einem grauen Kästchen und vier abstehenden Strichen, die Fläschchen schwebten auf unzusammenhängenden Höhen ohne Standfläche, die Kaffeetasse hing mit abgelöster Untertasse in der Ecke, und die Pfeilspitze der Notiz „Lieblingslack" lag hinter dem Fläschchen, auf das sie zeigen sollte. Die Szene steht jetzt vollständig auf einer gezeichneten Tischplatte mit Kontaktschatten; aus dem Eckplatz wurde ein geöffnetes Fläschchen mit gerade herausgezogenem Pinsel, und die Notiz landet wieder auf dem Fläschchen. (#135)
+
 ---
 
 ## [3.2.0-rc.4] – 2026-07-31
