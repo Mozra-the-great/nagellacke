@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Sync-Server und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.2.0--rc.2-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.2.0--rc.3-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -171,8 +171,8 @@ Daten bleiben dabei **immer erhalten**.
 
 Backup erstellen:
 ```bash
-# v3
-cp /opt/nagellacke/v3/server/data/data.json ~/backup-$(date +%F).json
+# v3 (pro Benutzer — oder gleich das ganze data/-Verzeichnis sichern)
+cp -r /opt/nagellacke/v3/server/data/users ~/backup-$(date +%F)/
 
 # v2
 cp /opt/nagellacke/backend/data/data.json ~/backup-$(date +%F).json

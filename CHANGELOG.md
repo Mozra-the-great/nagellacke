@@ -9,6 +9,13 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ---
 
+## [3.2.0-rc.3] – 2026-07-31
+
+### Fixed
+- **KI: „nur kostenlose Modelle" hängte `:free` an OpenRouters eigene Router**: `:free` ist ein Variant-Suffix auf einem Provider-Modell (`deepseek/deepseek-r1:free`). OpenRouters eigene Router sind keine Provider-Modelle, das Suffix erzeugte also ungültige IDs wie `openrouter/auto:free` und `openrouter/free:free`. Betroffen waren damit beide realistischen Konfigurationen — der App-Default `openrouter/auto` und `openrouter/free`, OpenRouters eigener Free-Models-Router. Router werden jetzt auf `openrouter/free` abgebildet statt suffigiert; Provider-Modelle behalten die `:free`-Variante, bereits suffigierte IDs bleiben unverändert. (#86)
+
+---
+
 ## [3.2.0-rc.2] – 2026-07-31
 
 ### Fixed
