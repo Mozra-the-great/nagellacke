@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      # Release notes live under docs/ but nothing on the site links to them,
+      # so a notes-only commit should not trigger a deploy. They still ship
+      # with the next deploy that a real docs change causes.
+      - '!docs/releases/**'
   workflow_dispatch:
 
 permissions:
@@ -28,6 +32,10 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+        with:
+          # Turn Pages on for the repo if it is not enabled yet, instead of
+          # failing with "Get Pages site failed ... Not Found".
+          enablement: true
 
       - name: Upload docs folder
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1

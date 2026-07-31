@@ -202,7 +202,7 @@ The app's architecture and code quality are **production-ready**:
 - [x] Add release signing configuration to `build.gradle.kts` (env-var-gated; unsigned without `KEYSTORE_FILE`)
 - [ ] Create and safeguard a release keystore (`keytool -genkey …`) and set `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` / `KEY_PASSWORD`
 - [ ] Produce a signed AAB and smoke-test it on a real device (`./gradlew bundleRelease`)
-- [x] Write a privacy policy — drafted at `docs/privacy-policy.html`, GitHub Pages workflow added (enable Pages in repo Settings to go live)
+- [x] Write a privacy policy — drafted at `docs/privacy-policy.html`, GitHub Pages workflow added (`pages.yml` enables Pages itself on the next run; set Source to "GitHub Actions" manually if it cannot)
 - [x] Draft store listing texts (title, short description, full description, camera declaration) — see `docs/store-listing.md`
 - [ ] Create store listing assets (screenshots, feature graphic, high-res icon)
 - [ ] Decide on Google Drive OAuth strategy (include or defer)
@@ -344,16 +344,24 @@ After adding all four, the CI workflow will automatically sign the AAB on the ne
 
 The privacy policy must be reachable at a stable public URL before you submit to Play Store.
 
-1. Go to `https://github.com/Mozra-the-great/nagellacke/settings/pages`.
-2. Under **Source**, select **GitHub Actions** (not "Deploy from branch").
-3. Click **Save**.
-4. Merge this PR into `main`. The `pages.yml` workflow will trigger automatically and deploy `docs/`.
-5. After the workflow succeeds (check the **Actions** tab), the site will be live at:
+`pages.yml` runs `actions/configure-pages` with `enablement: true`, so the first
+run turns Pages on by itself and sets the build type to GitHub Actions — no
+manual setup needed in the normal case.
+
+1. Trigger the workflow: either push a change under `docs/` (release notes
+   excluded) to `main`, or run **Deploy GitHub Pages** manually from the
+   **Actions** tab via *Run workflow*.
+2. After the workflow succeeds, the site is live at:
    ```
    https://mozra-the-great.github.io/nagellacke/
    ```
-6. Verify that `https://mozra-the-great.github.io/nagellacke/privacy-policy.html` loads correctly.
-7. Update `docs/store-listing.md` → replace the placeholder URL with the live URL.
+3. Verify that `https://mozra-the-great.github.io/nagellacke/privacy-policy.html` loads correctly.
+4. Update `docs/store-listing.md` → replace the placeholder URL with the live URL.
+
+> If the run still fails on **Configure Pages** — auto-enablement does not work
+> for every repository/account configuration — enable it by hand: go to
+> `https://github.com/Mozra-the-great/nagellacke/settings/pages`, set **Source**
+> to **GitHub Actions** (not "Deploy from branch"), save, and re-run the workflow.
 
 > Note: It may take a few minutes for the DNS to propagate after the first deployment.
 
