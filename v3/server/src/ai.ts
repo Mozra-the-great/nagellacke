@@ -130,20 +130,35 @@ function isSearchQuotaError(e: unknown): boolean {
   return /\b403\b/.test(message) && /limit exceeded/i.test(message);
 }
 
-async function callLlm(config: AiConfig, systemPrompt: string, userPrompt: string, webSearch = true): Promise<string> {
+interface LlmAnswer {
+  text: string;
+  /** False when the answer came from the model's own knowledge rather than
+   *  from web research — either because the setting suppressed search, or
+   *  because search was unavailable and we fell back. */
+  webSearchUsed: boolean;
+}
+
+/** Whether a web-researched answer is even attempted for this config. */
+function webSearchAvailable(config: AiConfig): boolean {
+  // "Nur kostenlose Modelle" suppresses OpenRouter's billed web plugin.
+  return config.provider === 'gemini' || !config.openrouter.freeOnly;
+}
+
+async function callLlm(config: AiConfig, systemPrompt: string, userPrompt: string, webSearch = true): Promise<LlmAnswer> {
   const call = (search: boolean) => config.provider === 'gemini'
     ? callGemini(config.gemini, systemPrompt, userPrompt, search)
     : callOpenRouter(config.openrouter, systemPrompt, userPrompt, search);
 
-  if (!webSearch) return call(false);
+  const attemptSearch = webSearch && webSearchAvailable(config);
+  if (!attemptSearch) return { text: await call(false), webSearchUsed: false };
   try {
-    return await call(true);
+    return { text: await call(true), webSearchUsed: true };
   } catch (e) {
     if (!isSearchQuotaError(e)) throw e;
     // Answer from the model's own knowledge rather than failing the job. Less
     // reliable for obscure polishes, but far better than no result at all.
     console.warn('[ai] Web-Recherche nicht verfügbar (Kontingent) — Anfrage ohne Websuche wiederholt.');
-    return call(false);
+    return { text: await call(false), webSearchUsed: false };
   }
 }
 
@@ -164,14 +179,15 @@ interface AutofillResult {
   finish: FinishType;
 }
 
-async function researchAutofill(config: AiConfig, polish: { name: string; brand: string; num: string }): Promise<AutofillResult> {
-  const system = `Du bist ein Assistent, der Fakten zu Nagellacken recherchiert. Antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne weiteren Text im Format {"color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}. "color" ist die tatsächliche Lackfarbe als Hex-Code, "finish" die Oberflächenart.`;
-  const user = `Nagellack: Name="${polish.name}", Nummer="${polish.num}", Hersteller="${polish.brand}". Recherchiere im Internet die tatsächliche Farbe und das Finish dieses konkreten Lacks.`;
-  const text = await callLlm(config, system, user, true);
+async function researchAutofill(config: AiConfig, polish: { name: string; brand: string; num: string }): Promise<AutofillResult & { webSearchUsed: boolean }> {
+  const canResearch = webSearchAvailable(config);
+  const system = `Du bist ein Assistent, der Fakten zu Nagellacken ${canResearch ? 'recherchiert' : 'aus deinem Modellwissen beantwortet'}. ${canResearch ? '' : 'Du hast KEINEN Internetzugriff — schätze anhand dessen, was du über die Produktlinie weisst. '}Antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne weiteren Text im Format {"color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}. "color" ist die tatsächliche Lackfarbe als Hex-Code, "finish" die Oberflächenart.`;
+  const user = `Nagellack: Name="${polish.name}", Nummer="${polish.num}", Hersteller="${polish.brand}". ${canResearch ? 'Recherchiere im Internet die tatsächliche' : 'Nenne die'} Farbe und das Finish dieses konkreten Lacks.`;
+  const { text, webSearchUsed } = await callLlm(config, system, user, true);
   const parsed = extractJson(text) as Partial<AutofillResult>;
   const color = typeof parsed.color === 'string' && HEX_RE.test(parsed.color) ? parsed.color : '#ff6699';
   const finish = FINISH_VALUES.includes(parsed.finish as FinishType) ? (parsed.finish as FinishType) : 'Classic';
-  return { color, finish };
+  return { color, finish, webSearchUsed };
 }
 
 // ── Smart-Cart (prompt-driven product research) ───────────────────────────────
@@ -189,18 +205,27 @@ async function researchSmartCart(
   prompt: string,
   collection: Polish[],
   cart: Polish[],
-): Promise<SmartCartSuggestion[]> {
+): Promise<{ suggestions: SmartCartSuggestion[]; webSearchUsed: boolean }> {
   const describe = (p: Polish) => `${p.brand} ${p.num} "${p.name}" (${p.color}, ${p.finish})`;
   const collectionSummary = collection.map(describe).join('; ') || 'leer';
   const cartSummary = cart.map(describe).join('; ') || 'leer';
 
-  const system = `Du bist ein Assistent für Nagellack-Kaufempfehlungen. Analysiere die bestehende Sammlung und den aktuellen Einkaufswagen des Nutzers, ermittle anhand des Nutzer-Prompts fehlende Eigenschaften (z.B. fehlende Farben), und recherchiere im Internet nach ECHTEN, real existierenden Nagellackprodukten, die dazu passen. Schlage NUR Produkte vor, deren Existenz du durch Recherche bestätigen konntest — erfinde keine Produkte. Antworte AUSSCHLIESSLICH mit einem JSON-Array ohne weiteren Text im Format [{"name": "...", "brand": "...", "num": "...", "color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}]. Maximal 10 Vorschläge. Falls du keine passenden realen Produkte findest, gib ein leeres Array zurück.`;
+  const canResearch = webSearchAvailable(config);
+  // Without web search the model cannot confirm a product exists. Demanding
+  // "only confirmed-real products" anyway just pushes it to invent article
+  // numbers that look verified — the worst outcome for a shopping list. Ask
+  // for what it can actually deliver, and tell it to leave "num" empty rather
+  // than guess one.
+  const sourcing = canResearch
+    ? 'und recherchiere im Internet nach ECHTEN, real existierenden Nagellackprodukten, die dazu passen. Schlage NUR Produkte vor, deren Existenz du durch Recherche bestätigen konntest — erfinde keine Produkte.'
+    : 'und schlage anhand deines Modellwissens passende Produkte vor. Du hast KEINEN Internetzugriff und kannst nichts verifizieren: nenne nur Produktlinien, die du tatsächlich kennst, und lass "num" LEER, wenn du die genaue Artikelnummer nicht sicher weisst — rate keine Nummern.';
+  const system = `Du bist ein Assistent für Nagellack-Kaufempfehlungen. Analysiere die bestehende Sammlung und den aktuellen Einkaufswagen des Nutzers, ermittle anhand des Nutzer-Prompts fehlende Eigenschaften (z.B. fehlende Farben), ${sourcing} Antworte AUSSCHLIESSLICH mit einem JSON-Array ohne weiteren Text im Format [{"name": "...", "brand": "...", "num": "...", "color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}]. Maximal 10 Vorschläge. Falls du keine passenden Produkte findest, gib ein leeres Array zurück.`;
   const user = `Bestehende Sammlung: ${collectionSummary}\nAktueller Einkaufswagen: ${cartSummary}\nAnfrage: ${prompt}`;
 
-  const text = await callLlm(config, system, user, true);
+  const { text, webSearchUsed } = await callLlm(config, system, user, true);
   const parsed = extractJson(text);
-  if (!Array.isArray(parsed)) return [];
-  return parsed
+  if (!Array.isArray(parsed)) return { suggestions: [], webSearchUsed };
+  const suggestions = parsed
     .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
     .map((item): SmartCartSuggestion => ({
       name: String(item.name ?? '').trim(),
@@ -211,6 +236,7 @@ async function researchSmartCart(
     }))
     .filter((s) => s.name.length > 0)
     .slice(0, 10);
+  return { suggestions, webSearchUsed };
 }
 
 // ── Job queue processing ──────────────────────────────────────────────────────
@@ -234,7 +260,7 @@ async function runJob(job: AiJob): Promise<void> {
     const data = getData(job.username);
     const collection = data.polishes.filter((p) => !p.deletedAt && p.status !== 'wish');
     const cart = data.polishes.filter((p) => !p.deletedAt && p.status === 'wish');
-    const suggestions = await researchSmartCart(config, job.input.prompt ?? '', collection, cart);
+    const { suggestions, webSearchUsed } = await researchSmartCart(config, job.input.prompt ?? '', collection, cart);
     const createdAt = Date.now();
     const newPolishes: Polish[] = suggestions.map((s) => ({
       id: uuidv4(),
@@ -242,7 +268,12 @@ async function runJob(job: AiJob): Promise<void> {
       status: 'wish',
       count: 1,
       categories: [],
-      notes: 'Von KI vorgeschlagen (Smart-Cart)',
+      // Say plainly when a suggestion was never checked against the real
+      // world, so an unverified article number isn't mistaken for a researched
+      // one once it is sitting in the shopping cart.
+      notes: webSearchUsed
+        ? 'Von KI vorgeschlagen (Smart-Cart)'
+        : 'Von KI vorgeschlagen (Smart-Cart) — ohne Web-Recherche, vor dem Kauf prüfen',
       rating: 0,
       createdAt,
       updatedAt: createdAt,
