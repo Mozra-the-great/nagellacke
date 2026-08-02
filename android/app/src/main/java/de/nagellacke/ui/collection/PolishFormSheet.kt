@@ -61,6 +61,8 @@ fun PolishFormSheet(
     onDismiss: () -> Unit,
     resolvePhotoUri: (String) -> Uri,
     importPhoto: suspend (Uri) -> String,
+    /** Status preselected for a brand-new polish (e.g. Wish when opened from the wishlist). Ignored when editing. */
+    initialStatus: PolishStatus = PolishStatus.Ok,
 ) {
     val now = System.currentTimeMillis()
     var name by remember(polish) { mutableStateOf(polish?.name ?: "") }
@@ -68,7 +70,7 @@ fun PolishFormSheet(
     var num by remember(polish) { mutableStateOf(polish?.num ?: "") }
     var color by remember(polish) { mutableStateOf(polish?.color ?: "#ff6699") }
     var finish by remember(polish) { mutableStateOf(polish?.finish ?: FinishType.Classic) }
-    var status by remember(polish) { mutableStateOf(polish?.status ?: PolishStatus.Ok) }
+    var status by remember(polish) { mutableStateOf(polish?.status ?: initialStatus) }
     var notes by remember(polish) { mutableStateOf(polish?.notes ?: "") }
     var rating by remember(polish) { mutableStateOf(polish?.rating ?: 0) }
     var selectedCats by remember(polish) { mutableStateOf(polish?.categories ?: emptyList()) }

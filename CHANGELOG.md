@@ -8,6 +8,7 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Android: Wunschliste als eigener Tab**: sechster Tab neben Lacke/Sticker/Tagebuch/Statistik/Mehr, analog `CartPage.tsx` im Web. Zeigt alle Lacke mit `status == Wish` als Grid (wiederverwendet die bestehende `PolishCard`), Detailansicht mit „Bearbeiten" und „Gekauft ✓" (setzt Status zurück auf `Ok`), FAB zum Hinzufügen (neuer Lack startet direkt mit Status Wunschliste). Der Status selbst existierte bereits (`PolishStatus.Wish`, im `PolishFormSheet` setzbar) — es fehlte nur die Gesamtansicht. (#144)
 - **Android: Sticker und einzelne Fotoslots im Tagebuch**: das Tagebuch-Formular hat jetzt einen Sticker-Picker (analog zum Lack-Picker) und vier einzelne Fotofelder (Finger rechts/links, Daumen rechts/links) statt der bisherigen flachen Foto-Liste — Aufbau und Beschriftung entsprechen `DiaryPage.tsx` im Web. Beim Speichern werden `polishRefs` und `stickerRefs` jetzt aus der aktuellen Auswahl neu gebaut (inklusive Name/Marke/Farbe bzw. Sticker-Farben), zusätzlich zu den bestehenden `polishIds`/`stickers`-Listen — damit landet nichts mehr nur einseitig in einem der beiden Felder. (#145)
 
 ### Fixed
