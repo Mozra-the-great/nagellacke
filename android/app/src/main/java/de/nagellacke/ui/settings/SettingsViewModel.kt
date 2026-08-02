@@ -1,11 +1,15 @@
 package de.nagellacke.ui.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.nagellacke.data.repo.DisplayPrefsStore
+import de.nagellacke.data.repo.ExportImportRepository
+import de.nagellacke.data.repo.ExportSummary
+import de.nagellacke.data.repo.ImportSummary
 import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
@@ -71,6 +75,7 @@ class SettingsViewModel @Inject constructor(
     private val configStore: SyncConfigStore,
     private val syncManager: SyncManager,
     private val displayPrefsStore: DisplayPrefsStore,
+    private val exportImportRepo: ExportImportRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     private val _syncState    = MutableStateFlow(Triple(false, null as String?, null as Long?))
@@ -237,5 +242,16 @@ class SettingsViewModel @Inject constructor(
         )
         if (result.isSuccess) loadAiSettings()
         return result
+    }
+
+    suspend fun exportZip(uri: Uri): Result<ExportSummary> = runCatching {
+        context.contentResolver.openOutputStream(uri)?.use { out -> exportImportRepo.exportZip(out) }
+            ?: error("Konnte Datei nicht zum Schreiben öffnen")
+    }
+
+    suspend fun importZip(uri: Uri): Result<ImportSummary> {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: return Result.failure(IllegalStateException("Konnte Datei nicht öffnen"))
+        return input.use { exportImportRepo.importZip(it) }
     }
 }
