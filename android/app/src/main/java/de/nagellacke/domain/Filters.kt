@@ -3,6 +3,7 @@ package de.nagellacke.domain
 import de.nagellacke.domain.model.FilterState
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
+import de.nagellacke.domain.model.PolishStatus
 import de.nagellacke.domain.model.SortOption
 import de.nagellacke.domain.model.Sticker
 
@@ -46,3 +47,7 @@ fun filterStickers(stickers: List<Sticker>, search: String): List<Sticker> {
 
 fun filterManicures(manicures: List<Manicure>): List<Manicure> =
     manicures.filter { it.deletedAt == null }
+
+fun wishlistPolishes(polishes: List<Polish>): List<Polish> =
+    polishes.filter { it.deletedAt == null && it.status == PolishStatus.Wish }
+        .sortedByDescending { it.createdAt }

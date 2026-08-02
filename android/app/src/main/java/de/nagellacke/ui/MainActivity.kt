@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -34,10 +35,12 @@ import de.nagellacke.ui.settings.SettingsScreen
 import de.nagellacke.ui.stats.StatsScreen
 import de.nagellacke.ui.stickers.StickersScreen
 import de.nagellacke.ui.theme.NagellackeTheme
+import de.nagellacke.ui.wishlist.WishlistScreen
 import javax.inject.Inject
 
 sealed class Screen(val route: String, val label: String) {
     object Collection : Screen("collection", "Lacke")
+    object Wishlist   : Screen("wishlist", "Wunschliste")
     object Stickers   : Screen("stickers", "Sticker")
     object Diary      : Screen("diary", "Tagebuch")
     object Stats      : Screen("stats", "Statistik")
@@ -60,8 +63,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NagellackeApp() {
     val nav = rememberNavController()
-    val tabs = listOf(Screen.Collection, Screen.Stickers, Screen.Diary, Screen.Stats, Screen.Settings)
-    val icons = listOf(Icons.Default.Collections, Icons.Default.Star, Icons.Default.AutoStories, Icons.Default.BarChart, Icons.Default.Settings)
+    val tabs = listOf(Screen.Collection, Screen.Wishlist, Screen.Stickers, Screen.Diary, Screen.Stats, Screen.Settings)
+    val icons = listOf(Icons.Default.Collections, Icons.Default.ShoppingCart, Icons.Default.Star, Icons.Default.AutoStories, Icons.Default.BarChart, Icons.Default.Settings)
 
     Scaffold(
         bottomBar = {
@@ -87,6 +90,7 @@ fun NagellackeApp() {
     ) { innerPadding ->
         NavHost(nav, startDestination = Screen.Collection.route, Modifier.padding(innerPadding)) {
             composable(Screen.Collection.route) { CollectionScreen() }
+            composable(Screen.Wishlist.route)   { WishlistScreen() }
             composable(Screen.Stickers.route)   { StickersScreen() }
             composable(Screen.Diary.route)      { DiaryScreen() }
             composable(Screen.Stats.route)      { StatsScreen() }
