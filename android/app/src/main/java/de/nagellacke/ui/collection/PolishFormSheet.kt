@@ -50,6 +50,7 @@ import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
+import de.nagellacke.ui.common.ColorFromPhotoDialog
 import de.nagellacke.ui.common.PhotoPickerField
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -80,6 +81,7 @@ fun PolishFormSheet(
     var photo by remember(polish) { mutableStateOf(polish?.photo) }
     var aiAutofill by remember(polish) { mutableStateOf(false) }
     val showAiAutofill = polish == null && aiAvailable
+    var showColorFromPhoto by remember { mutableStateOf(false) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -126,6 +128,9 @@ fun PolishFormSheet(
                 },
                 isError = color.isNotBlank() && !isValidHex(color),
             )
+            if (!aiAutofill) {
+                TextButton(onClick = { showColorFromPhoto = true }) { Text("📷 Farbe aus Foto") }
+            }
             Spacer(Modifier.height(12.dp))
 
             Text(if (aiAutofill) "Finish (wird von der KI ermittelt)" else "Finish", style = MaterialTheme.typography.labelLarge)
@@ -203,5 +208,12 @@ fun PolishFormSheet(
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showColorFromPhoto) {
+        ColorFromPhotoDialog(
+            onColorPicked = { hex -> color = hex },
+            onDismiss = { showColorFromPhoto = false },
+        )
     }
 }
