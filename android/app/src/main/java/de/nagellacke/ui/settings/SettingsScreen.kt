@@ -1,6 +1,9 @@
 package de.nagellacke.ui.settings
 
+import android.net.Uri
 import android.webkit.WebView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -104,6 +107,38 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     var aiSearxngUrl by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.webSearch?.searxngUrl ?: "") }
     var aiBraveKey by remember { mutableStateOf("") }
     var aiSaveStatus by remember { mutableStateOf<String?>(null) }
+
+    var exportStatus by remember { mutableStateOf<String?>(null) }
+    var importMessage by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            exportStatus = "exporting"
+            val result = vm.exportZip(uri)
+            exportStatus = null
+            result.onSuccess { s ->
+                importMessage = if (s.photosSkipped > 0) true to "Export abgeschlossen. ${s.photosSkipped} Foto(s) konnten nicht exportiert werden."
+                else true to "Export abgeschlossen: ${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosExported} Foto(s)."
+            }.onFailure { e -> importMessage = false to "Export fehlgeschlagen: ${e.message ?: "Unbekannter Fehler"}" }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            exportStatus = "importing"
+            val result = vm.importZip(uri)
+            exportStatus = null
+            result.onSuccess { s ->
+                importMessage = true to (
+                    if (s.photosFailed > 0)
+                        "Import abgeschlossen: ${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosImported} Foto(s). ${s.photosFailed} Foto(s) konnten nicht importiert werden (Sync konfiguriert?)."
+                    else
+                        "Import erfolgreich: ${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosImported} Foto(s)."
+                )
+            }.onFailure { e -> importMessage = false to "Import fehlgeschlagen: ${e.message ?: "Ungültige ZIP-Datei"}" }
+        }
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Einstellungen", fontWeight = FontWeight.Bold) }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -446,6 +481,40 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                     ) { Text(if (aiSaveStatus == "saving") "Speichere…" else if (aiSaveStatus == "saved") "✓ Gespeichert" else "Speichern") }
                 }
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+
+            // Export/Import
+            Text("Daten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+
+            importMessage?.let { (success, text) ->
+                Card(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(text, color = if (success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { importMessage = null }) { Icon(Icons.Default.Close, contentDescription = "Meldung schließen") }
+                    }
+                }
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { exportLauncher.launch("nagellacke-export-${LocalDate.now()}.zip") },
+                    enabled = exportStatus == null,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (exportStatus == "exporting") "Exportiere…" else "Export ZIP") }
+                Button(
+                    onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    enabled = exportStatus == null,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (exportStatus == "importing") "Importiere…" else "Import") }
+            }
+            Text(
+                "Import führt die ZIP-Daten mit deiner aktuellen Sammlung zusammen (neuere Einträge gewinnen) — nichts wird überschrieben oder gelöscht.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
     }
 
