@@ -58,18 +58,35 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import de.nagellacke.domain.generateId
 import de.nagellacke.domain.model.Manicure
+import de.nagellacke.domain.model.ManicurePhotos
 import de.nagellacke.domain.model.Polish
+import de.nagellacke.domain.model.PolishRef
+import de.nagellacke.domain.model.Sticker
+import de.nagellacke.domain.model.StickerRef
 import de.nagellacke.domain.model.toFlatList
-import de.nagellacke.domain.model.toManicurePhotos
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
-import de.nagellacke.ui.common.PhotoListPickerField
+import de.nagellacke.ui.common.PhotoPickerField
 import de.nagellacke.ui.common.UnsupportedPhotoIndicator
 import de.nagellacke.ui.common.rememberPhotoModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private data class PhotoSlot(
+    val label: String,
+    val get: (ManicurePhotos) -> String?,
+    val set: (ManicurePhotos, String?) -> ManicurePhotos,
+)
+
+/** Mirrors the web app's PHOTO_SLOTS (DiaryPage.tsx): finger before thumb, right before left. */
+private val PHOTO_SLOTS = listOf(
+    PhotoSlot("Finger rechts", { it.fingerRight }, { p, v -> p.copy(fingerRight = v) }),
+    PhotoSlot("Finger links", { it.fingerLeft }, { p, v -> p.copy(fingerLeft = v) }),
+    PhotoSlot("Daumen rechts", { it.thumbRight }, { p, v -> p.copy(thumbRight = v) }),
+    PhotoSlot("Daumen links", { it.thumbLeft }, { p, v -> p.copy(thumbLeft = v) }),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,9 +115,10 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                         val photoName = entry.photos.toFlatList().firstOrNull() ?: entry.photo
                         val photoModel = rememberPhotoModel(state.photoResolution, photoName)
                         val photoUnsupported = photoName != null && state.photoResolution is PhotoResolution.Unsupported
+                        val fallbackText = (polishes.map { it.name } + entry.stickerRefs.map { it.name }).joinToString(", ").take(60)
                         ListItem(
                             headlineContent   = { Text(formatDate(entry.date), color = MaterialTheme.colorScheme.primary) },
-                            supportingContent = { Text(entry.notes.ifBlank { polishes.joinToString(", ") { it.name }.take(60) }) },
+                            supportingContent = { Text(entry.notes.ifBlank { fallbackText }) },
                             leadingContent    = {
                                 when {
                                     photoModel != null -> AsyncImage(
@@ -134,6 +152,7 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
         DiaryFormSheet(
             entry = editing,
             availablePolishes = state.polishes,
+            availableStickers = state.stickers,
             onSave = { m -> if (editing != null) vm.updateManicure(m) else vm.addManicure(m); showForm = false },
             onDelete = editing?.let { { vm.deleteManicure(it.id); showForm = false } },
             onDismiss = { showForm = false },
@@ -143,11 +162,25 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
     }
 }
 
+/** Resolves an entry's sticker refs, falling back to matching legacy `stickers` (ids/names) against [available]. */
+internal fun resolveStickerRefs(entry: Manicure?, available: List<Sticker>): List<StickerRef> {
+    if (entry == null) return emptyList()
+    if (entry.stickerRefs.isNotEmpty()) return entry.stickerRefs
+    return entry.stickers.mapNotNull { idOrName -> available.find { it.id == idOrName || it.name == idOrName } }
+        .map { StickerRef(id = it.id, name = it.name, colors = it.colors) }
+}
+
+/** Builds fresh polish refs from the current selection, mirroring what the web app sends on save. */
+internal fun buildPolishRefs(selectedIds: List<String>, available: List<Polish>): List<PolishRef> =
+    selectedIds.mapNotNull { id -> available.find { it.id == id } }
+        .map { PolishRef(name = it.name, brand = it.brand, color = it.color) }
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DiaryFormSheet(
     entry: Manicure?,
     availablePolishes: List<Polish>,
+    availableStickers: List<Sticker>,
     onSave: (Manicure) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -157,8 +190,9 @@ fun DiaryFormSheet(
     val now = System.currentTimeMillis()
     var date by remember(entry) { mutableStateOf(entry?.date ?: todayIso()) }
     var selectedIds by remember(entry) { mutableStateOf(entry?.polishIds ?: emptyList()) }
+    var stickerRefs by remember(entry) { mutableStateOf(resolveStickerRefs(entry, availableStickers)) }
     var notes by remember(entry) { mutableStateOf(entry?.notes ?: "") }
-    var photos by remember(entry) { mutableStateOf(entry?.photos?.toFlatList() ?: emptyList()) }
+    var photos by remember(entry) { mutableStateOf(entry?.photos ?: ManicurePhotos()) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -175,6 +209,21 @@ fun DiaryFormSheet(
             )
             Spacer(Modifier.height(8.dp))
 
+            Text("Fotos", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PHOTO_SLOTS.forEach { slot ->
+                    PhotoPickerField(
+                        photo = slot.get(photos),
+                        resolvePhotoUri = resolvePhotoUri,
+                        importPhoto = importPhoto,
+                        onPhotoChange = { photos = slot.set(photos, it) },
+                        label = slot.label,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
             Text("Lacke", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 availablePolishes.forEach { p ->
@@ -186,23 +235,40 @@ fun DiaryFormSheet(
                 }
             }
             Spacer(Modifier.height(8.dp))
+
+            if (availableStickers.isNotEmpty()) {
+                Text("Sticker", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    availableStickers.forEach { s ->
+                        val selected = stickerRefs.any { it.id == s.id }
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                stickerRefs = if (selected) stickerRefs.filter { it.id != s.id }
+                                else stickerRefs + StickerRef(id = s.id, name = s.name, colors = s.colors)
+                            },
+                            label = { Text(s.name) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             OutlinedTextField(notes, { notes = it }, label = { Text("Notizen") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-            Spacer(Modifier.height(8.dp))
-            PhotoListPickerField(
-                photos = photos,
-                resolvePhotoUri = resolvePhotoUri,
-                importPhoto = importPhoto,
-                onPhotosChange = { photos = it },
-            )
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (onDelete != null) TextButton(onClick = onDelete) { Text("Löschen", color = MaterialTheme.colorScheme.error) }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(onClick = {
+                    val polishRefs = buildPolishRefs(selectedIds, availablePolishes)
                     val result = entry?.copy(
-                        date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos.toManicurePhotos(), updatedAt = now,
-                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos.toManicurePhotos(), createdAt = now, updatedAt = now)
+                        date = date, polishIds = selectedIds, polishRefs = polishRefs, notes = notes.trim(),
+                        stickers = stickerRefs.map { it.id }, stickerRefs = stickerRefs, photos = photos, updatedAt = now,
+                    ) ?: Manicure(
+                        id = generateId(), date = date, polishIds = selectedIds, polishRefs = polishRefs, notes = notes.trim(),
+                        stickers = stickerRefs.map { it.id }, stickerRefs = stickerRefs, photos = photos, createdAt = now, updatedAt = now,
+                    )
                     onSave(result)
                 }) { Text("Speichern") }
             }

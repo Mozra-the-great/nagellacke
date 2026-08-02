@@ -9,8 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -157,63 +155,6 @@ fun PhotoPickerField(
         } else {
             OutlinedButton(onClick = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
                 Text("Foto auswählen")
-            }
-        }
-    }
-}
-
-/**
- * Multi-photo picker used by the diary form — a manicure can have several photo slots
- * (the web app supports fingers/thumbs of both hands), stored as a flat filename list.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun PhotoListPickerField(
-    photos: List<String>,
-    resolvePhotoUri: (String) -> Uri,
-    importPhoto: suspend (Uri) -> String,
-    onPhotosChange: (List<String>) -> Unit,
-    modifier: Modifier = Modifier,
-    label: String = "Fotos",
-) {
-    val scope = rememberCoroutineScope()
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val filename = importPhoto(uri)
-                onPhotosChange(photos + filename)
-            }
-        }
-    }
-
-    Column(modifier) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(6.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            photos.forEach { filename ->
-                Box(Modifier.size(72.dp)) {
-                    AsyncImage(
-                        model = resolvePhotoUri(filename),
-                        contentDescription = label,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(2.dp)
-                            .size(20.dp)
-                            .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                            .clickable { onPhotosChange(photos - filename) }
-                            .semantics { contentDescription = "Foto entfernen" },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("✕", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-            }
-            OutlinedButton(onClick = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                Text("+ Foto")
             }
         }
     }
