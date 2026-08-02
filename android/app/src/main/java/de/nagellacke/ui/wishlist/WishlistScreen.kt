@@ -18,17 +18,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,9 +59,15 @@ import de.nagellacke.ui.common.rememberPhotoModel
 @Composable
 fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
     val state by vm.uiState.collectAsState()
+    val smartCartStatus by vm.smartCartStatus.collectAsState()
     var viewing by remember { mutableStateOf<Polish?>(null) }
     var showForm by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Polish?>(null) }
+    var smartCartPrompt by remember { mutableStateOf("") }
+
+    LaunchedEffect(smartCartStatus) {
+        if (smartCartStatus is SmartCartStatus.Done) smartCartPrompt = ""
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Wunschliste", fontWeight = FontWeight.Bold) }) },
@@ -72,6 +81,42 @@ fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            if (state.aiAvailable) {
+                Card(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("✨ Smart-Cart", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Beschreibe, was dir fehlt — z. B. „Catrice-Lacke ohne Shimmer, um den Regenbogen zu vervollständigen\".",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                        )
+                        OutlinedTextField(
+                            value = smartCartPrompt,
+                            onValueChange = { smartCartPrompt = it },
+                            placeholder = { Text("Was möchtest du hinzufügen?") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            enabled = smartCartStatus !is SmartCartStatus.Running,
+                        )
+                        when (val status = smartCartStatus) {
+                            is SmartCartStatus.Error -> Text(status.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                            is SmartCartStatus.Done -> Text(
+                                if (status.added > 0) "✨ ${status.added} zur Wunschliste hinzugefügt" else "Keine passenden, real existierenden Produkte gefunden",
+                                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp),
+                            )
+                            else -> {}
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { vm.runSmartCart(smartCartPrompt) },
+                            enabled = smartCartPrompt.isNotBlank() && smartCartStatus !is SmartCartStatus.Running,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (smartCartStatus is SmartCartStatus.Running) "KI recherchiert…" else "✨ Vorschläge finden") }
+                    }
+                }
+            }
+
             Text(
                 "${state.polishes.size} auf der Wunschliste",
                 style    = MaterialTheme.typography.bodySmall,
@@ -117,7 +162,8 @@ fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
             polish     = editing,
             categories = state.categories,
             initialStatus = PolishStatus.Wish,
-            onSave     = { p -> if (editing != null) vm.updatePolish(p) else vm.addPolish(p); showForm = false },
+            aiAvailable = state.aiAvailable,
+            onSave     = { p, autofill -> if (editing != null) vm.updatePolish(p) else vm.addPolish(p, autofill); showForm = false },
             onDelete   = editing?.let { { vm.deletePolish(it.id); showForm = false } },
             onDismiss  = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,

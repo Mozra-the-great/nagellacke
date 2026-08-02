@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -56,13 +57,15 @@ import de.nagellacke.ui.common.PhotoPickerField
 fun PolishFormSheet(
     polish: Polish?,
     categories: List<Category>,
-    onSave: (Polish) -> Unit,
+    onSave: (Polish, Boolean) -> Unit,
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     resolvePhotoUri: (String) -> Uri,
     importPhoto: suspend (Uri) -> String,
     /** Status preselected for a brand-new polish (e.g. Wish when opened from the wishlist). Ignored when editing. */
     initialStatus: PolishStatus = PolishStatus.Ok,
+    /** Whether to offer the "KI Auto-Fill" checkbox (server sync configured + AI enabled). Only shown for new polishes. */
+    aiAvailable: Boolean = false,
 ) {
     val now = System.currentTimeMillis()
     var name by remember(polish) { mutableStateOf(polish?.name ?: "") }
@@ -75,6 +78,8 @@ fun PolishFormSheet(
     var rating by remember(polish) { mutableStateOf(polish?.rating ?: 0) }
     var selectedCats by remember(polish) { mutableStateOf(polish?.categories ?: emptyList()) }
     var photo by remember(polish) { mutableStateOf(polish?.photo) }
+    var aiAutofill by remember(polish) { mutableStateOf(false) }
+    val showAiAutofill = polish == null && aiAvailable
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -101,11 +106,20 @@ fun PolishFormSheet(
             )
             Spacer(Modifier.height(12.dp))
 
+            if (showAiAutofill) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { aiAutofill = !aiAutofill }) {
+                    Checkbox(checked = aiAutofill, onCheckedChange = { aiAutofill = it })
+                    Text("✨ KI Auto-Fill (Farbe & Finish ermitteln)", style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             OutlinedTextField(
                 value = color,
                 onValueChange = { color = it },
-                label = { Text("Farbe (Hex)") },
+                label = { Text(if (aiAutofill) "Farbe (wird von der KI ermittelt)" else "Farbe (Hex)") },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !aiAutofill,
                 trailingIcon = {
                     val c = runCatching { Color(android.graphics.Color.parseColor(if (color.startsWith("#")) color else "#$color")) }.getOrElse { Color(0xFFff6699) }
                     Box(Modifier.size(28.dp).clip(CircleShape).background(c).semantics { contentDescription = "Farbvorschau" })
@@ -114,10 +128,10 @@ fun PolishFormSheet(
             )
             Spacer(Modifier.height(12.dp))
 
-            Text("Finish", style = MaterialTheme.typography.labelLarge)
+            Text(if (aiAutofill) "Finish (wird von der KI ermittelt)" else "Finish", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FINISH_OPTIONS.forEach { f ->
-                    FilterChip(selected = finish == f, onClick = { finish = f }, label = { Text("${f.icon} ${f.label}") })
+                    FilterChip(selected = finish == f, onClick = { finish = f }, enabled = !aiAutofill, label = { Text("${f.icon} ${f.label}") })
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -182,7 +196,7 @@ fun PolishFormSheet(
                             photo = photo,
                             createdAt = now, updatedAt = now,
                         )
-                        onSave(result)
+                        onSave(result, aiAutofill)
                     },
                     enabled = name.isNotBlank(),
                 ) { Text("Speichern") }
