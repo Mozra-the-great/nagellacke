@@ -10,6 +10,7 @@ import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterManicures
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
+import de.nagellacke.domain.model.Sticker
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.collection.photoResolution
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +22,7 @@ import javax.inject.Inject
 data class DiaryUiState(
     val entries: List<Manicure> = emptyList(),
     val polishes: List<Polish> = emptyList(),
+    val stickers: List<Sticker> = emptyList(),
     val loading: Boolean = true,
     /** How (or whether) photo filenames can be turned into loadable image URLs. */
     val photoResolution: PhotoResolution = PhotoResolution.None,
@@ -37,6 +39,7 @@ class DiaryViewModel @Inject constructor(
         DiaryUiState(
             entries      = filterManicures(data.manicures).sortedByDescending { it.date },
             polishes     = data.polishes.filter { it.deletedAt == null && it.status.name != "Wish" },
+            stickers     = data.stickers.filter { it.deletedAt == null },
             loading      = false,
             photoResolution = cfg.photoResolution(),
         )
