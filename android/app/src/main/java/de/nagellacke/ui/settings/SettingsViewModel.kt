@@ -9,8 +9,14 @@ import de.nagellacke.data.repo.DisplayPrefsStore
 import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.data.sync.AiClient
+import de.nagellacke.data.sync.AiSettingsDto
 import de.nagellacke.data.sync.AuthRepository
 import de.nagellacke.data.sync.ReportsClient
+import de.nagellacke.data.sync.SaveAiSettingsRequest
+import de.nagellacke.data.sync.SaveGeminiDto
+import de.nagellacke.data.sync.SaveOpenRouterDto
+import de.nagellacke.data.sync.SaveWebSearchDto
 import de.nagellacke.data.sync.SyncManager
 import de.nagellacke.data.sync.SyncProvider
 import de.nagellacke.domain.ReportPeriod
@@ -35,6 +41,12 @@ data class ReportScheduleState(
     val loaded: Boolean = false,
 )
 
+private data class SettingsExtras(
+    val reportSchedule: ReportScheduleState,
+    val aiEnabled: Boolean,
+    val aiSettings: AiSettingsDto?,
+)
+
 data class SettingsUiState(
     val polishCount: Int = 0,
     val stickerCount: Int = 0,
@@ -48,6 +60,9 @@ data class SettingsUiState(
     val bottleStyle: Boolean = true,
     val photoResolution: PhotoResolution = PhotoResolution.None,
     val reportSchedule: ReportScheduleState = ReportScheduleState(),
+    /** Local opt-in for the AI features UI (Autofill, Smart-Cart, this section) — independent of provider config. */
+    val aiEnabled: Boolean = false,
+    val aiSettings: AiSettingsDto? = null,
 )
 
 @HiltViewModel
@@ -61,14 +76,19 @@ class SettingsViewModel @Inject constructor(
     private val _syncState    = MutableStateFlow(Triple(false, null as String?, null as Long?))
     private val _configVersion = MutableStateFlow(0)
     private val _reportSchedule = MutableStateFlow(ReportScheduleState())
+    private val _aiSettings = MutableStateFlow<AiSettingsDto?>(null)
+
+    private val extras = combine(_reportSchedule, displayPrefsStore.aiEnabled, _aiSettings) { rs, aiEnabled, aiSettings ->
+        SettingsExtras(rs, aiEnabled, aiSettings)
+    }
 
     val uiState = combine(
         repo.observeData(),
         _syncState,
         _configVersion,
         displayPrefsStore.bottleStyle,
-        _reportSchedule,
-    ) { data, syncTriple, _, bottleStyle, reportSchedule ->
+        extras,
+    ) { data, syncTriple, _, bottleStyle, ex ->
         val cfg = configStore.getConfig()
         SettingsUiState(
             polishCount   = data.polishes.count  { it.deletedAt == null },
@@ -81,18 +101,23 @@ class SettingsViewModel @Inject constructor(
             httpWarning   = cfg?.serverUrl?.startsWith("http://") == true,
             bottleStyle   = bottleStyle,
             photoResolution = cfg.photoResolution(),
-            reportSchedule = reportSchedule,
+            reportSchedule = ex.reportSchedule,
+            aiEnabled     = ex.aiEnabled,
+            aiSettings    = ex.aiSettings,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
     init {
         loadReportSchedule()
+        loadAiSettings()
     }
 
     private fun notifyConfigChanged() {
         _configVersion.update { it + 1 }
         _reportSchedule.value = ReportScheduleState()
+        _aiSettings.value = null
         loadReportSchedule()
+        loadAiSettings()
     }
 
     fun saveServerConfig(url: String, token: String) {
@@ -177,6 +202,40 @@ class SettingsViewModel @Inject constructor(
         if (result.isSuccess) {
             _reportSchedule.update { it.copy(enabled = enabled, frequency = frequency, toEmail = toEmail) }
         }
+        return result
+    }
+
+    fun setAiEnabled(value: Boolean) = displayPrefsStore.setAiEnabled(value)
+
+    private fun aiClient(): AiClient? {
+        val cfg = configStore.getConfig() ?: return null
+        if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
+        return AiClient(cfg.serverUrl, cfg.serverToken)
+    }
+
+    fun loadAiSettings() {
+        val client = aiClient() ?: return
+        viewModelScope.launch {
+            client.getSettings().onSuccess { dto -> _aiSettings.value = dto }
+        }
+    }
+
+    suspend fun saveAiSettings(
+        provider: String,
+        openrouterKey: String, openrouterModel: String, openrouterFreeOnly: Boolean,
+        geminiKey: String, geminiModel: String,
+        searchBackend: String, searxngUrl: String, braveKey: String,
+    ): Result<Unit> {
+        val client = aiClient() ?: return Result.failure(IllegalStateException("Kein Server-Sync konfiguriert"))
+        val result = client.saveSettings(
+            SaveAiSettingsRequest(
+                provider = provider,
+                openrouter = SaveOpenRouterDto(apiKey = openrouterKey.ifBlank { null }, model = openrouterModel, freeOnly = openrouterFreeOnly),
+                gemini = SaveGeminiDto(apiKey = geminiKey.ifBlank { null }, model = geminiModel),
+                webSearch = SaveWebSearchDto(backend = searchBackend, searxngUrl = searxngUrl, braveApiKey = braveKey.ifBlank { null }),
+            ),
+        )
+        if (result.isSuccess) loadAiSettings()
         return result
     }
 }

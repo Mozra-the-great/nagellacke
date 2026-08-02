@@ -94,6 +94,17 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     var scheduleEmail by remember(state.reportSchedule.loaded) { mutableStateOf(state.reportSchedule.toEmail) }
     var scheduleSaveStatus by remember { mutableStateOf<String?>(null) }
 
+    var aiProvider by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.provider ?: "openrouter") }
+    var aiOpenrouterKey by remember { mutableStateOf("") }
+    var aiOpenrouterModel by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.openrouter?.model ?: "openrouter/auto") }
+    var aiOpenrouterFreeOnly by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.openrouter?.freeOnly ?: false) }
+    var aiGeminiKey by remember { mutableStateOf("") }
+    var aiGeminiModel by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.gemini?.model ?: "gemini-flash-latest") }
+    var aiSearchBackend by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.webSearch?.backend ?: "duckduckgo") }
+    var aiSearxngUrl by remember(state.aiSettings) { mutableStateOf(state.aiSettings?.webSearch?.searxngUrl ?: "") }
+    var aiBraveKey by remember { mutableStateOf("") }
+    var aiSaveStatus by remember { mutableStateOf<String?>(null) }
+
     Scaffold(topBar = { TopAppBar(title = { Text("Einstellungen", fontWeight = FontWeight.Bold) }) }) { padding ->
         Column(Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)) {
 
@@ -127,6 +138,19 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             }
             Text(
                 "Gilt für Lacke ohne Foto-Ansicht.",
+                style    = MaterialTheme.typography.bodySmall,
+                color    = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            Text("KI-Funktionen", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = state.aiEnabled, onClick = { vm.setAiEnabled(true) }, label = { Text("✨ An") })
+                FilterChip(selected = !state.aiEnabled, onClick = { vm.setAiEnabled(false) }, label = { Text("Aus") })
+            }
+            Text(
+                "Blendet Auto-Fill im Lack-Formular, Smart-Cart in der Wunschliste und die KI-Einstellungen vollständig aus.",
                 style    = MaterialTheme.typography.bodySmall,
                 color    = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(top = 2.dp),
@@ -318,6 +342,109 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                     enabled = scheduleSaveStatus != "saving" && state.reportSchedule.smtpConfigured,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (scheduleSaveStatus == "saving") "Speichere…" else if (scheduleSaveStatus == "saved") "✓ Gespeichert" else "Zeitplan speichern") }
+            }
+
+            if (state.aiEnabled) {
+                HorizontalDivider(Modifier.padding(vertical = 16.dp))
+
+                // AI Assistant
+                Text("KI-Assistenz", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+
+                if (state.syncConfig?.provider != SyncProvider.Server) {
+                    Text(
+                        "KI Auto-Fill und Smart-Cart benötigen den Eigenen-Server-Sync (siehe oben) — die KI läuft serverseitig.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                } else {
+                    Text("Anbieter", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = aiProvider == "openrouter", onClick = { aiProvider = "openrouter" }, label = { Text("OpenRouter") })
+                        FilterChip(selected = aiProvider == "gemini", onClick = { aiProvider = "gemini" }, label = { Text("Gemini") })
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    if (aiProvider == "openrouter") {
+                        OutlinedTextField(
+                            aiOpenrouterKey, { aiOpenrouterKey = it },
+                            label = { Text(if (state.aiSettings?.openrouter?.hasApiKey == true) "OpenRouter API-Schlüssel (bereits gesetzt)" else "OpenRouter API-Schlüssel") },
+                            placeholder = { Text("sk-or-…") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(aiOpenrouterModel, { aiOpenrouterModel = it }, label = { Text("Modell") }, placeholder = { Text("z.B. openrouter/auto") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                        Text("Nur kostenlose Modelle", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = aiOpenrouterFreeOnly, onClick = { aiOpenrouterFreeOnly = true }, label = { Text("An") })
+                            FilterChip(selected = !aiOpenrouterFreeOnly, onClick = { aiOpenrouterFreeOnly = false }, label = { Text("Aus") })
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    if (aiProvider == "gemini") {
+                        OutlinedTextField(
+                            aiGeminiKey, { aiGeminiKey = it },
+                            label = { Text(if (state.aiSettings?.gemini?.hasApiKey == true) "Gemini API-Schlüssel (bereits gesetzt)" else "Gemini API-Schlüssel") },
+                            placeholder = { Text("AIza…") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(aiGeminiModel, { aiGeminiModel = it }, label = { Text("Modell") }, placeholder = { Text("z.B. gemini-flash-latest") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    Text("Web-Recherche", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FilterChip(selected = aiSearchBackend == "duckduckgo", onClick = { aiSearchBackend = "duckduckgo" }, label = { Text("DuckDuckGo") })
+                        FilterChip(selected = aiSearchBackend == "searxng", onClick = { aiSearchBackend = "searxng" }, label = { Text("SearXNG") })
+                        FilterChip(selected = aiSearchBackend == "brave", onClick = { aiSearchBackend = "brave" }, label = { Text("Brave") })
+                        FilterChip(selected = aiSearchBackend == "off", onClick = { aiSearchBackend = "off" }, label = { Text("Aus") })
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    if (aiSearchBackend == "searxng") {
+                        OutlinedTextField(aiSearxngUrl, { aiSearxngUrl = it }, label = { Text("SearXNG-Adresse") }, placeholder = { Text("https://searx.example.org") }, modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (aiSearchBackend == "brave") {
+                        OutlinedTextField(
+                            aiBraveKey, { aiBraveKey = it },
+                            label = { Text(if (state.aiSettings?.webSearch?.hasBraveApiKey == true) "Brave Search API-Schlüssel (bereits gesetzt)" else "Brave Search API-Schlüssel") },
+                            placeholder = { Text("BSA…") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    if (aiSaveStatus == "error") {
+                        Text("Speichern fehlgeschlagen", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                aiSaveStatus = "saving"
+                                val result = vm.saveAiSettings(
+                                    provider = aiProvider,
+                                    openrouterKey = aiOpenrouterKey, openrouterModel = aiOpenrouterModel, openrouterFreeOnly = aiOpenrouterFreeOnly,
+                                    geminiKey = aiGeminiKey, geminiModel = aiGeminiModel,
+                                    searchBackend = aiSearchBackend, searxngUrl = aiSearxngUrl, braveKey = aiBraveKey,
+                                )
+                                if (result.isSuccess) { aiOpenrouterKey = ""; aiGeminiKey = ""; aiBraveKey = "" }
+                                aiSaveStatus = if (result.isSuccess) "saved" else "error"
+                            }
+                        },
+                        enabled = aiSaveStatus != "saving",
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (aiSaveStatus == "saving") "Speichere…" else if (aiSaveStatus == "saved") "✓ Gespeichert" else "Speichern") }
+                }
             }
         }
     }

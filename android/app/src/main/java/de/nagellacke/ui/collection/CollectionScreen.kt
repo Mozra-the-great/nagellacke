@@ -136,7 +136,8 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
         PolishFormSheet(
             polish     = editing,
             categories = state.categories,
-            onSave     = { p -> if (editing != null) vm.updatePolish(p) else vm.addPolish(p); showForm = false },
+            aiAvailable = state.aiAvailable,
+            onSave     = { p, autofill -> if (editing != null) vm.updatePolish(p) else vm.addPolish(p, autofill); showForm = false },
             onDelete   = editing?.let { { vm.deletePolish(it.id); showForm = false } },
             onDismiss  = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,

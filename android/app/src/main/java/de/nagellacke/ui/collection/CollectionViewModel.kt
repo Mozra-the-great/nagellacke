@@ -16,6 +16,7 @@ import de.nagellacke.data.sync.OneDriveAdapter
 import de.nagellacke.data.sync.ServerAdapter
 import de.nagellacke.data.sync.SyncAdapter
 import de.nagellacke.data.sync.SyncProvider
+import de.nagellacke.domain.AiAssistant
 import de.nagellacke.domain.filterPolishes
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.FilterState
@@ -43,6 +44,8 @@ data class CollectionUiState(
     /** How (or whether) photo filenames can be turned into loadable image URLs
      *  for the currently configured sync provider. */
     val photoResolution: PhotoResolution = PhotoResolution.None,
+    /** Whether the "KI Auto-Fill" checkbox should be offered on the new-polish form. */
+    val aiAvailable: Boolean = false,
 )
 
 @HiltViewModel
@@ -51,6 +54,7 @@ class CollectionViewModel @Inject constructor(
     private val displayPrefsStore: DisplayPrefsStore,
     private val configStore: SyncConfigStore,
     private val photoRepository: PhotoRepository,
+    private val aiAssistant: AiAssistant,
 ) : ViewModel() {
     private val _filter = MutableStateFlow(FilterState())
 
@@ -59,7 +63,8 @@ class CollectionViewModel @Inject constructor(
         _filter,
         displayPrefsStore.bottleStyle,
         configStore.configFlow,
-    ) { data, filter, bottleStyle, cfg ->
+        displayPrefsStore.aiEnabled,
+    ) { data, filter, bottleStyle, cfg, aiEnabled ->
         val visible = sortPolishes(filterPolishes(data.polishes, filter), filter.sort)
         CollectionUiState(
             polishes     = visible,
@@ -68,6 +73,7 @@ class CollectionViewModel @Inject constructor(
             loading      = false,
             bottleStyle  = bottleStyle,
             photoResolution = cfg.photoResolution(),
+            aiAvailable  = aiEnabled && cfg?.provider == SyncProvider.Server,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CollectionUiState())
 
@@ -77,7 +83,10 @@ class CollectionViewModel @Inject constructor(
     fun setCategory(c: String)       = _filter.update { it.copy(category = c) }
     fun setSort(s: SortOption)       = _filter.update { it.copy(sort = s) }
 
-    fun addPolish(p: Polish)         = viewModelScope.launch { repo.addPolish(p) }
+    fun addPolish(p: Polish, autofill: Boolean = false) = viewModelScope.launch {
+        repo.addPolish(p)
+        if (autofill) aiAssistant.runAutofill(p.id, p.name, p.brand, p.num)
+    }
     fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }
     fun addCategory(label: String)   = viewModelScope.launch { repo.addCategory(label) }
