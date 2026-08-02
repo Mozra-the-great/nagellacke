@@ -3,32 +3,71 @@ package de.nagellacke.domain.model
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 
-// The web app stores manicure photos as either an array of filenames or a
-// ManicurePhotos object {fingerRight?, fingerLeft?, thumbRight?, thumbLeft?}.
-// This serializer accepts both shapes and normalises to List<String>.
-private object FlexiblePhotosSerializer : KSerializer<List<String>> {
-    private val delegate = ListSerializer(String.serializer())
+@Serializable
+data class PolishRef(
+    val name: String = "",
+    val brand: String? = null,
+    val color: String? = null,
+)
+
+@Serializable
+data class StickerRef(
+    val id: String = "",
+    val name: String = "",
+    val colors: List<String>? = null,
+)
+
+@Serializable
+data class ManicurePhotos(
+    val fingerRight: String? = null,
+    val fingerLeft: String? = null,
+    val thumbRight: String? = null,
+    val thumbLeft: String? = null,
+)
+
+/** Maps a flat, order-based photo list onto named slots (finger before thumb, right before left). */
+fun List<String>.toManicurePhotos(): ManicurePhotos = ManicurePhotos(
+    fingerRight = getOrNull(0),
+    fingerLeft = getOrNull(1),
+    thumbRight = getOrNull(2),
+    thumbLeft = getOrNull(3),
+)
+
+/** Flattens named photo slots back into an order-based list, dropping empty slots. */
+fun ManicurePhotos.toFlatList(): List<String> = listOfNotNull(fingerRight, fingerLeft, thumbRight, thumbLeft)
+
+// Shared by FlexiblePhotosSerializer (network JSON) and ManicurePhotosConverter (Room
+// column) so both agree on how legacy shapes map onto named slots.
+internal fun manicurePhotosFromJsonElement(element: JsonElement): ManicurePhotos = when (element) {
+    is JsonObject -> runCatching { Json.decodeFromJsonElement(ManicurePhotos.serializer(), element) }.getOrDefault(ManicurePhotos())
+    is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }.toManicurePhotos()
+    else -> ManicurePhotos()
+}
+
+// The web app stores manicure photos as a named-slot object (current format) or, in
+// older data, as a flat array of filenames whose slot identity is already lost. This
+// serializer accepts both shapes but always re-emits the named-slot object, so slot
+// data survives future round-trips instead of collapsing back into an array.
+private object FlexiblePhotosSerializer : KSerializer<ManicurePhotos> {
+    private val delegate = ManicurePhotos.serializer()
     override val descriptor = delegate.descriptor
 
-    override fun deserialize(decoder: Decoder): List<String> {
+    override fun deserialize(decoder: Decoder): ManicurePhotos {
         val jsonDecoder = decoder as? JsonDecoder ?: return delegate.deserialize(decoder)
-        return when (val element = jsonDecoder.decodeJsonElement()) {
-            is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-            is JsonObject -> element.values.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-            else -> emptyList()
-        }
+        return manicurePhotosFromJsonElement(jsonDecoder.decodeJsonElement())
     }
 
-    override fun serialize(encoder: Encoder, value: List<String>) = delegate.serialize(encoder, value)
+    override fun serialize(encoder: Encoder, value: ManicurePhotos) = delegate.serialize(encoder, value)
 }
 
 @Serializable
@@ -119,8 +158,11 @@ data class Manicure(
     val id: String,
     val date: String = "",
     @SerialName("polishes") val polishIds: List<String> = emptyList(),
+    val polishRefs: List<PolishRef> = emptyList(),
     val notes: String = "",
-    @Serializable(with = FlexiblePhotosSerializer::class) val photos: List<String> = emptyList(),
+    val stickers: List<String> = emptyList(),
+    val stickerRefs: List<StickerRef> = emptyList(),
+    @Serializable(with = FlexiblePhotosSerializer::class) val photos: ManicurePhotos = ManicurePhotos(),
     val photo: String? = null,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,

@@ -59,6 +59,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import de.nagellacke.domain.generateId
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
+import de.nagellacke.domain.model.toFlatList
+import de.nagellacke.domain.model.toManicurePhotos
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
@@ -93,9 +95,7 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                 else -> LazyColumn(Modifier.weight(1f)) {
                     items(state.entries, key = { it.id }) { entry ->
                         val polishes = state.polishes.filter { entry.polishIds.contains(it.id) }
-                        // `photos`, not `photo`: ManicureEntity/Mappers only round-trip the list,
-                        // so `Manicure.photo` is always null once an entry has been through Room.
-                        val photoName = entry.photos.firstOrNull()
+                        val photoName = entry.photos.toFlatList().firstOrNull() ?: entry.photo
                         val photoModel = rememberPhotoModel(state.photoResolution, photoName)
                         val photoUnsupported = photoName != null && state.photoResolution is PhotoResolution.Unsupported
                         ListItem(
@@ -158,7 +158,7 @@ fun DiaryFormSheet(
     var date by remember(entry) { mutableStateOf(entry?.date ?: todayIso()) }
     var selectedIds by remember(entry) { mutableStateOf(entry?.polishIds ?: emptyList()) }
     var notes by remember(entry) { mutableStateOf(entry?.notes ?: "") }
-    var photos by remember(entry) { mutableStateOf(entry?.photos ?: emptyList()) }
+    var photos by remember(entry) { mutableStateOf(entry?.photos?.toFlatList() ?: emptyList()) }
     var showDatePicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -201,8 +201,8 @@ fun DiaryFormSheet(
                 TextButton(onClick = onDismiss) { Text("Abbrechen") }
                 Button(onClick = {
                     val result = entry?.copy(
-                        date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos, updatedAt = now,
-                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos, createdAt = now, updatedAt = now)
+                        date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos.toManicurePhotos(), updatedAt = now,
+                    ) ?: Manicure(id = generateId(), date = date, polishIds = selectedIds, notes = notes.trim(), photos = photos.toManicurePhotos(), createdAt = now, updatedAt = now)
                     onSave(result)
                 }) { Text("Speichern") }
             }

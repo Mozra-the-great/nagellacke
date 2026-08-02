@@ -41,12 +41,14 @@ fun Sticker.toEntity() = StickerEntity(
 )
 
 fun ManicureEntity.toDomain() = Manicure(
-    id = id, date = date, polishIds = polishIds, notes = notes, photos = photos,
+    id = id, date = date, polishIds = polishIds, polishRefs = polishRefs, notes = notes,
+    stickers = stickers, stickerRefs = stickerRefs, photos = photos, photo = photo,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
 )
 
 fun Manicure.toEntity() = ManicureEntity(
-    id = id, date = date, polishIds = polishIds, notes = notes, photos = photos,
+    id = id, date = date, polishIds = polishIds, polishRefs = polishRefs, notes = notes,
+    stickers = stickers, stickerRefs = stickerRefs, photos = photos, photo = photo,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
 )
 
