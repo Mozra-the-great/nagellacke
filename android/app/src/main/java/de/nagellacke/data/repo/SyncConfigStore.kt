@@ -59,7 +59,7 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
     fun saveConfig(config: SyncConfig?) {
         prefs.edit().apply {
             if (config == null) {
-                putString("provider", null)
+                clear()
             } else {
                 putString("provider",     config.provider.name)
                 putString("serverUrl",    config.serverUrl)
