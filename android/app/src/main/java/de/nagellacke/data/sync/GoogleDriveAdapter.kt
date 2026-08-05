@@ -160,7 +160,8 @@ class GoogleDriveAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult? {
+        if (!ensureFreshAccessToken()) return null
         val folderId = ensurePhotoFolder()
         val filename = "${UUID.randomUUID()}.jpg"
         val meta = """{"name":"$filename","parents":["$folderId"]}"""
@@ -172,8 +173,13 @@ class GoogleDriveAdapter(
         val res = client.newCall(
             Request.Builder().url("$uploadApi/files?uploadType=multipart").post(multipart).build()
         ).execute()
+        if (!res.isSuccessful) {
+            res.close()
+            return null
+        }
         val id = runCatching { json.decodeFromString<DriveFile>(res.body?.string() ?: "").id }.getOrElse { "" }
         res.close()
+        if (id.isBlank()) return null
         return PhotoUploadResult(filename, "$driveApi/files/$id?alt=media")
     }
 

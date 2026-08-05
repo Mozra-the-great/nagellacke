@@ -22,7 +22,10 @@ data class PhotoUploadResult(val filename: String, val url: String)
 interface SyncAdapter {
     val provider: SyncProvider
     suspend fun sync(local: AppData): SyncResult
-    suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult
+
+    /** Returns null (rather than a result pointing at nothing) if the upload didn't actually
+     *  land on the remote — callers must count that as a failure, not a success (#162). */
+    suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult?
     suspend fun deletePhoto(filename: String)
     fun photoUrl(filename: String): String
 }

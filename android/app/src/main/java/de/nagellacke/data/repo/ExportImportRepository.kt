@@ -108,7 +108,7 @@ class ExportImportRepository @Inject constructor(
         val filenameMap = mutableMapOf<String, String>()
         var photosFailed = 0
         for ((oldFilename, bytes) in photoBytesByName) {
-            val newFilename = adapter?.let { a -> runCatching { a.uploadPhoto(bytes, mimeTypeFromFilename(oldFilename)).filename }.getOrNull() }
+            val newFilename = adapter?.let { a -> runCatching { a.uploadPhoto(bytes, mimeTypeFromFilename(oldFilename))?.filename }.getOrNull() }
             if (newFilename != null) filenameMap[oldFilename] = newFilename else photosFailed++
         }
 

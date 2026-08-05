@@ -96,14 +96,17 @@ class OneDriveAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult? {
+        if (!ensureFreshAccessToken()) return null
         val filename = "${UUID.randomUUID()}.jpg"
         val path = "nagellacke/photos/$filename"
-        client.newCall(
+        val res = client.newCall(
             Request.Builder().url("$graph/root:/$path:/content")
                 .put(data.toRequestBody(mimeType.toMediaType())).build()
-        ).execute().close()
-        return PhotoUploadResult(filename, "$graph/root:/$path:/content")
+        ).execute()
+        val ok = res.isSuccessful
+        res.close()
+        return if (ok) PhotoUploadResult(filename, "$graph/root:/$path:/content") else null
     }
 
     override suspend fun deletePhoto(filename: String) {

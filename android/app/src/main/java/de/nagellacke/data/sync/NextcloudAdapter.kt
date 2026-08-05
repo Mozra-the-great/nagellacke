@@ -90,15 +90,17 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         SyncResult(success = false, merged = local, error = e.message)
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult? {
         ensureDir("nagellacke/photos")
         val filename = "${UUID.randomUUID()}.jpg"
         val url = "$davBase/nagellacke/photos/$filename"
-        client.newCall(
+        val res = client.newCall(
             Request.Builder().url(url).put(data.toRequestBody(mimeType.toMediaType()))
                 .header("Authorization", authHeader).build()
-        ).execute().close()
-        return PhotoUploadResult(filename, url)
+        ).execute()
+        val ok = res.isSuccessful
+        res.close()
+        return if (ok) PhotoUploadResult(filename, url) else null
     }
 
     override suspend fun deletePhoto(filename: String) {

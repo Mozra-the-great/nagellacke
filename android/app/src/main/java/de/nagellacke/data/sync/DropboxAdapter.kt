@@ -107,17 +107,20 @@ class DropboxAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult? {
+        if (!ensureFreshAccessToken()) return null
         val filename = "${UUID.randomUUID()}.jpg"
         val path = "/nagellacke/photos/$filename"
         val arg = """{"path":"$path","mode":"add"}"""
-        client.newCall(
+        val res = client.newCall(
             Request.Builder().url("$content/files/upload")
                 .post(data.toRequestBody("application/octet-stream".toMediaType()))
                 .header("Dropbox-API-Arg", arg)
                 .build()
-        ).execute().close()
-        return PhotoUploadResult(filename, path)
+        ).execute()
+        val ok = res.isSuccessful
+        res.close()
+        return if (ok) PhotoUploadResult(filename, path) else null
     }
 
     override suspend fun deletePhoto(filename: String) {
