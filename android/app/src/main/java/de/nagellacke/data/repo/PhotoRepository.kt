@@ -32,6 +32,9 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
 
     fun resolveUri(filename: String): Uri = Uri.fromFile(File(dir, filename))
 
+    /** Whether [filename] has actually been downloaded/imported onto this device. */
+    fun existsLocally(filename: String): Boolean = File(dir, filename).exists()
+
     fun delete(filename: String) { File(dir, filename).delete() }
 
     fun readBytes(filename: String): ByteArray = File(dir, filename).readBytes()

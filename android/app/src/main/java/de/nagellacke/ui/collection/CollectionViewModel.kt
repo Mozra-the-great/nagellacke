@@ -96,6 +96,9 @@ class CollectionViewModel @Inject constructor(
 
     /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
     fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
+
+    /** Whether [filename] has actually been downloaded/imported onto this device. */
+    fun hasLocalPhoto(filename: String): Boolean = photoRepository.existsLocally(filename)
 }
 
 /**

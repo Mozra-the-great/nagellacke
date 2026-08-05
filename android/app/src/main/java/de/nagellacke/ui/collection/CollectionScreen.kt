@@ -141,6 +141,8 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
             onDelete   = editing?.let { { vm.deletePolish(it.id); showForm = false } },
             onDismiss  = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,
+            hasLocalPhoto   = vm::hasLocalPhoto,
+            photoResolution = state.photoResolution,
             importPhoto     = vm::importPhoto,
         )
     }

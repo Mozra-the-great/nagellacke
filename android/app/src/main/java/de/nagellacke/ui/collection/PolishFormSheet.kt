@@ -62,6 +62,8 @@ fun PolishFormSheet(
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     resolvePhotoUri: (String) -> Uri,
+    hasLocalPhoto: (String) -> Boolean,
+    photoResolution: PhotoResolution,
     importPhoto: suspend (Uri) -> String,
     /** Status preselected for a brand-new polish (e.g. Wish when opened from the wishlist). Ignored when editing. */
     initialStatus: PolishStatus = PolishStatus.Ok,
@@ -103,6 +105,8 @@ fun PolishFormSheet(
             PhotoPickerField(
                 photo = photo,
                 resolvePhotoUri = resolvePhotoUri,
+                hasLocalPhoto = hasLocalPhoto,
+                photoResolution = photoResolution,
                 importPhoto = importPhoto,
                 onPhotoChange = { photo = it },
             )

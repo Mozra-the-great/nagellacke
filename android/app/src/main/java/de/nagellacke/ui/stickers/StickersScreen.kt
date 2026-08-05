@@ -140,6 +140,8 @@ fun StickersScreen(vm: StickersViewModel = hiltViewModel()) {
             onDelete = editing?.let { { vm.deleteSticker(it.id); showForm = false } },
             onDismiss = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,
+            hasLocalPhoto = vm::hasLocalPhoto,
+            photoResolution = state.photoResolution,
             importPhoto = vm::importPhoto,
         )
     }
@@ -153,6 +155,8 @@ fun StickerFormSheet(
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     resolvePhotoUri: (String) -> Uri,
+    hasLocalPhoto: (String) -> Boolean,
+    photoResolution: PhotoResolution,
     importPhoto: suspend (Uri) -> String,
 ) {
     val now = System.currentTimeMillis()
@@ -177,6 +181,8 @@ fun StickerFormSheet(
             PhotoPickerField(
                 photo = photo,
                 resolvePhotoUri = resolvePhotoUri,
+                hasLocalPhoto = hasLocalPhoto,
+                photoResolution = photoResolution,
                 importPhoto = importPhoto,
                 onPhotoChange = { photo = it },
             )

@@ -111,11 +111,18 @@ fun UnsupportedPhotoIndicator(modifier: Modifier = Modifier) {
  * image via [importPhoto] (which downsamples/compresses it and returns a local filename),
  * and previews it via [resolvePhotoUri] — the freshly imported photo is a local file that
  * has not been uploaded yet, so the preview must use the local URI, not a server URL.
+ *
+ * A [photo] filename synced in from another device was never downloaded to this one, so
+ * [hasLocalPhoto] gates [resolvePhotoUri] (which would otherwise build a `file://` URI to a
+ * nonexistent file) and falls back to the same remote [photoResolution] used by the
+ * read-only display path ([rememberPhotoModel]).
  */
 @Composable
 fun PhotoPickerField(
     photo: String?,
     resolvePhotoUri: (String) -> Uri,
+    hasLocalPhoto: (String) -> Boolean,
+    photoResolution: PhotoResolution,
     importPhoto: suspend (Uri) -> String,
     onPhotoChange: (String?) -> Unit,
     modifier: Modifier = Modifier,
@@ -127,6 +134,7 @@ fun PhotoPickerField(
             scope.launch { onPhotoChange(importPhoto(uri)) }
         }
     }
+    val remoteModel = rememberPhotoModel(photoResolution, photo)
 
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelLarge)
@@ -134,7 +142,7 @@ fun PhotoPickerField(
         if (photo != null) {
             Box(Modifier.size(96.dp)) {
                 AsyncImage(
-                    model = resolvePhotoUri(photo),
+                    model = if (hasLocalPhoto(photo)) resolvePhotoUri(photo) else (remoteModel ?: resolvePhotoUri(photo)),
                     contentDescription = label,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
