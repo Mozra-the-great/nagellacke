@@ -70,8 +70,10 @@ import de.nagellacke.ui.common.LoadingScreen
 import de.nagellacke.ui.common.PhotoPickerField
 import de.nagellacke.ui.common.UnsupportedPhotoIndicator
 import de.nagellacke.ui.common.rememberPhotoModel
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private data class PhotoSlot(
@@ -277,12 +279,12 @@ fun DiaryFormSheet(
     }
 
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState(initialSelectedDateMillis = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(date)?.time }.getOrNull())
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = runCatching { LocalDate.parse(date).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull())
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it)) }
+                    pickerState.selectedDateMillis?.let { date = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString() }
                     showDatePicker = false
                 }) { Text("OK") }
             },
@@ -290,8 +292,7 @@ fun DiaryFormSheet(
     }
 }
 
-private fun todayIso() = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+private fun todayIso() = LocalDate.now().toString()
 private fun formatDate(iso: String): String = runCatching {
-    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    SimpleDateFormat("d. MMMM yyyy", Locale.GERMAN).format(sdf.parse(iso)!!)
+    LocalDate.parse(iso).format(DateTimeFormatter.ofPattern("d. MMMM yyyy", Locale.GERMAN))
 }.getOrDefault(iso)
