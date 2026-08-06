@@ -62,7 +62,7 @@ class NagellackeRepository @Inject constructor(
     // Polish CRUD
     suspend fun addPolish(p: Polish) {
         val now = System.currentTimeMillis()
-        polishDao.upsert(p.copy(id = generateId(), createdAt = now, updatedAt = now).toEntity())
+        polishDao.upsert(p.copy(createdAt = now, updatedAt = now).toEntity())
     }
     suspend fun updatePolish(p: Polish) = polishDao.upsert(p.copy(updatedAt = System.currentTimeMillis()).toEntity())
     suspend fun deletePolish(id: String) {
