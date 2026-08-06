@@ -57,10 +57,12 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
     }
 
     fun saveConfig(config: SyncConfig?) {
-        prefs.edit().apply {
-            if (config == null) {
-                clear()
-            } else {
+        if (config == null) {
+            // Synchronous commit() (not apply()) so a disconnect wipes credentials from disk
+            // before this call returns, instead of racing a process kill against a pending write.
+            prefs.edit().clear().commit()
+        } else {
+            prefs.edit().apply {
                 putString("provider",     config.provider.name)
                 putString("serverUrl",    config.serverUrl)
                 putString("serverToken",  config.serverToken)
@@ -70,8 +72,8 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
                 putString("accessToken",  config.accessToken)
                 putString("refreshToken", config.refreshToken)
                 putLong("tokenExpiry",    config.tokenExpiry)
-            }
-        }.apply()
+            }.apply()
+        }
         _configFlow.value = config
     }
 
