@@ -167,6 +167,8 @@ fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
             onDelete   = editing?.let { { vm.deletePolish(it.id); showForm = false } },
             onDismiss  = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,
+            photoExistsLocally = vm::photoExistsLocally,
+            photoResolution = state.photoResolution,
             importPhoto     = vm::importPhoto,
         )
     }

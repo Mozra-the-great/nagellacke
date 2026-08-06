@@ -111,11 +111,17 @@ fun UnsupportedPhotoIndicator(modifier: Modifier = Modifier) {
  * image via [importPhoto] (which downsamples/compresses it and returns a local filename),
  * and previews it via [resolvePhotoUri] — the freshly imported photo is a local file that
  * has not been uploaded yet, so the preview must use the local URI, not a server URL.
+ *
+ * A [photo] filename that came from another device (synced, but never downloaded here) has
+ * no local file yet, so [photoExistsLocally] gates the local resolution and falls back to the
+ * same remote-resolution path the read-only grid uses ([rememberPhotoModel]/[photoResolution]).
  */
 @Composable
 fun PhotoPickerField(
     photo: String?,
     resolvePhotoUri: (String) -> Uri,
+    photoExistsLocally: (String) -> Boolean,
+    photoResolution: PhotoResolution,
     importPhoto: suspend (Uri) -> String,
     onPhotoChange: (String?) -> Unit,
     modifier: Modifier = Modifier,
@@ -128,13 +134,16 @@ fun PhotoPickerField(
         }
     }
 
+    val isLocal = photo != null && photoExistsLocally(photo)
+    val remoteModel = rememberPhotoModel(photoResolution, photo.takeUnless { isLocal })
+
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(6.dp))
         if (photo != null) {
             Box(Modifier.size(96.dp)) {
                 AsyncImage(
-                    model = resolvePhotoUri(photo),
+                    model = if (isLocal) resolvePhotoUri(photo) else remoteModel,
                     contentDescription = label,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),

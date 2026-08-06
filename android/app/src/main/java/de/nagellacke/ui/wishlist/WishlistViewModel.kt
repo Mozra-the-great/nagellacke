@@ -129,4 +129,5 @@ class WishlistViewModel @Inject constructor(
 
     /** Resolves a locally-stored photo filename to a URI usable for preview before upload. */
     fun resolvePhotoUri(filename: String): Uri = photoRepository.resolveUri(filename)
+    fun photoExistsLocally(filename: String): Boolean = photoRepository.exists(filename)
 }
