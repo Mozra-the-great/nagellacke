@@ -97,12 +97,17 @@ class OneDriveAdapter(
     }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+        if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val filename = "${UUID.randomUUID()}.jpg"
         val path = "nagellacke/photos/$filename"
-        client.newCall(
+        val res = client.newCall(
             Request.Builder().url("$graph/root:/$path:/content")
                 .put(data.toRequestBody(mimeType.toMediaType())).build()
-        ).execute().close()
+        ).execute()
+        val ok = res.isSuccessful
+        val code = res.code
+        res.close()
+        if (!ok) error("Foto-Upload fehlgeschlagen (HTTP $code)")
         return PhotoUploadResult(filename, "$graph/root:/$path:/content")
     }
 

@@ -94,10 +94,14 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         ensureDir("nagellacke/photos")
         val filename = "${UUID.randomUUID()}.jpg"
         val url = "$davBase/nagellacke/photos/$filename"
-        client.newCall(
+        val putRes = client.newCall(
             Request.Builder().url(url).put(data.toRequestBody(mimeType.toMediaType()))
                 .header("Authorization", authHeader).build()
-        ).execute().close()
+        ).execute()
+        val ok = putRes.isSuccessful
+        val code = putRes.code
+        putRes.close()
+        if (!ok) error("Foto-Upload fehlgeschlagen (HTTP $code)")
         return PhotoUploadResult(filename, url)
     }
 
