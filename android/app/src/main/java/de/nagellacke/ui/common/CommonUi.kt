@@ -134,8 +134,10 @@ fun PhotoPickerField(
         }
     }
 
-    val isLocal = photo != null && photoExistsLocally(photo)
-    val remoteModel = rememberPhotoModel(photoResolution, photo.takeUnless { isLocal })
+    // File.exists() is a syscall - only run it when the filename actually changes, not on
+    // every recomposition (a keystroke elsewhere in the form would otherwise re-check it).
+    val isLocal = remember(photo) { photo != null && photoExistsLocally(photo) }
+    val remoteModel = rememberPhotoModel(photoResolution, if (isLocal) null else photo)
 
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelLarge)
