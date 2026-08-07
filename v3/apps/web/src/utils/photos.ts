@@ -8,6 +8,17 @@ function authHeaders(): Record<string, string> {
   return {};
 }
 
+/**
+ * The photo endpoints require either an admin API key or a server-sync JWT
+ * (see requireApiKeyOrJwt on the server) - mirrors authHeaders() so the UI can
+ * gate the upload button instead of letting it fail with a raw 401.
+ */
+export function hasPhotoUploadAuth(): boolean {
+  if (localStorage.getItem('nagellacke_v3_apikey')) return true;
+  const cfg = loadSyncConfig();
+  return !!(cfg?.provider === 'server' && cfg.serverToken);
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
