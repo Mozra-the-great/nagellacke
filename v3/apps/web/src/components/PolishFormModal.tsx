@@ -126,7 +126,7 @@ export default function PolishFormModal({
               <div className={styles.field}>
                 <span>Farbe {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
                 <div className={styles.colorRow}>
-                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} disabled={aiAutofill} />
+                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} disabled={aiAutofill} aria-label="Farbe" />
                   <span className={styles.colorHex}>{form.color}</span>
                   <button
                     type="button"
