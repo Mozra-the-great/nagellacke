@@ -34,3 +34,5 @@
 .removeBtn:hover { background: rgba(255,60,60,0.2); }
 
 .error { font-size: 12px; color: var(--md-error); }
+
+.hint { font-size: 12px; color: rgba(255,255,255,0.55); }
