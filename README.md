@@ -1,19 +1,10 @@
 # Nail Lacquer Kollektion
 
-Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Sync-Server und nativer Android-App.
+Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Cloud-Sync und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.2.0--rc.5-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.2.0-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-**→ [Projektseite](https://mozra-the-great.github.io/nagellacke/)** — Überblick über die App, Farben direkt an der Hand ausprobieren, und die [Datenschutzerklärung](https://mozra-the-great.github.io/nagellacke/privacy-policy.html).
-
----
-
-## Versionen
-
-| Version | Status | Beschreibung |
-|---------|--------|-------------|
-| **v2** | 🔄 Legacy | Self-hosted Web-App, kein Sync, kein Active Development |
-| **v3** (aktuell) | ✅ Stabil | Fastify-Server, Cloud-Sync, native Android-App |
+**→ [Projektseite](https://mozra-the-great.github.io/nagellacke/)** — Überblick über die App, Farben direkt an der Hand ausprobieren, und die [Datenschutzerklärung](https://mozra-the-great.github.io/nagellacke/privacy-policy.html). Statisch aus [`docs/`](docs/) gebaut und über den [Pages-Workflow](.github/workflows/pages.yml) automatisch auf GitHub Pages deployt, sobald sich dort etwas ändert.
 
 ---
 
@@ -27,6 +18,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Flaschenfoto** — pro Lack ein Foto hochladen; zwischen SVG-Grafik und echtem Foto umschalten
 - **Foto-Farbpicker** — Foto öffnen, auf Farbe tippen → Lackfarbe wird direkt übernommen
 - **Duplikat-Warnung** — beim Anlegen prüft die App auf ähnlichen Farbton (±15°) + gleiches Finish
+- **Wunschliste** — eigener Bereich, „Gekauft ✓" setzt den Status zurück auf Vorhanden
 
 ### Suche & UI
 - **Suche & Filter** — nach Name, Marke, Nummer, Finish, Kategorie, Status, Notizen
@@ -37,33 +29,32 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Statistiken** — Übersicht nach Marken, Finish, Status, Kategorien, Farbpalette; Zähler für Sticker und Maniküren
 - **Maniküre-Tagebuch** — Einträge mit Datum, Lacken, Stickern, Notizen und 4 Foto-Slots (Finger/Daumen rechts/links)
 - **Nail-Sticker-Inventar** — Sticker mit Typ, Farben, Status, Bewertung, Foto und Notizen
+- **Berichte** — Wochen-/Monatsberichte als HTML, optional per E-Mail und automatischem Zeitplan (bei aktivem Server-Sync)
 
-### System
-- **Export / Import** — vollständiges Backup als JSON inkl. aller Fotos (base64-eingebettet)
-- **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
-- **System-Logs** — journalctl-Ausgabe live in der App abrufbar
-- **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
+### KI-Funktionen (optional, hinter eigenem Schalter)
+- **Auto-Fill** — Farbe & Finish für einen neuen Lack per KI ermitteln
+- **Smart-Cart** — Vorschläge für die Wunschliste, direkt in den Warenkorb übernehmbar
+- **Eigene Websuche** — läuft über den eigenen Server (DuckDuckGo, SearXNG oder Brave), nicht über die kostenpflichtige Suche der KI-Anbieter
 
-### v3 (Sync + Android)
+### Sync & Mobile
 - **Cloud-Sync** — Synchronisation zwischen Geräten via eigenem Server, Google Drive, OneDrive, Nextcloud oder Dropbox
 - **JWT-Authentifizierung** — User-Accounts für Sync, 7-Tage-Access-Token mit Refresh-Token (30 Tage); jedes Konto hat seine eigene, private Sammlung
 - **Native Android-App** — Kotlin/Jetpack Compose, Material Design 3, Hilt DI, Room DB
 - **Sync-Panel** — Cloud-Sync direkt in der Web-Oberfläche konfigurierbar (Username + Passwort)
 - **Darstellungs-Toggle (Android)** — Einstellungen: „Flasche" (SVG-Illustration in Lackfarbe mit Schimmer-Variante) oder „Farb-Swatch"; Photo-Anzeige automatisch in Sticker- und Maniküre-Listen; per-Karte 📷/◎-Button für Lacke
 
+### System
+- **Export / Import** — vollständiges Backup als JSON (Web) bzw. ZIP (Android) inkl. aller Fotos
+- **Automatische Updates** — GitHub-Check und Update per Knopfdruck direkt in der App
+- **System-Logs** — journalctl-Ausgabe live in der App abrufbar
+- **API-Schlüssel-Schutz** — alle Schreiboperationen erfordern einen Schlüssel
+
 ---
 
 ## Installation
 
-### v3 (empfohlen)
-
 ```bash
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
-```
-
-### v2 (Legacy)
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
 Benötigt **Debian/Ubuntu** mit Node.js 20+. Nach der Installation erreichbar unter **http://SERVER-IP:3000**
@@ -92,10 +83,6 @@ Diesen Schlüssel in der App unter dem **⚙-Button** (Footer) eintragen. Er wir
 
 Schlüssel später abrufen:
 ```bash
-# v2
-cat /opt/nagellacke/backend/data/.api_key
-
-# v3
 cat /opt/nagellacke/v3/server/data/.api_key
 ```
 
@@ -124,7 +111,7 @@ Ist der Schlüssel älter als 180 Tage, weist der Server beim Start darauf hin.
 
 ---
 
-## Sync-Account anlegen (v3, einmalig)
+## Sync-Account anlegen (einmalig)
 
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
@@ -142,10 +129,6 @@ Den zurückgegebenen Token in der Android-App oder im Web unter **Einstellungen 
 
 **Manuell:**
 ```bash
-# v2
-bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
-
-# v3
 sudo bash /opt/nagellacke/install.sh
 ```
 
@@ -155,29 +138,20 @@ Daten bleiben dabei **immer erhalten**.
 
 ## Datenspeicherung
 
-**v2:**
-```
-/opt/nagellacke/backend/data/data.json    ← Kollektion
-/opt/nagellacke/backend/data/.api_key     ← API-Schlüssel
-/opt/nagellacke/backend/data/photos/      ← Fotos
-```
-
-**v3:**
 ```
 /opt/nagellacke/v3/server/data/users/<user>/data.json  ← Kollektion (pro Benutzer)
-/opt/nagellacke/v3/server/data/.api_key     ← API-Schlüssel (v2-kompatibel)
-/opt/nagellacke/v3/server/data/.jwt_secret  ← JWT-Signing-Schlüssel
-/opt/nagellacke/v3/server/data/users.json   ← Sync-User-Konten
-/opt/nagellacke/v3/server/data/photos/      ← Fotos
+/opt/nagellacke/v3/server/data/.api_key       ← API-Schlüssel
+/opt/nagellacke/v3/server/data/.jwt_secret    ← JWT-Signing-Schlüssel
+/opt/nagellacke/v3/server/data/users.json     ← Sync-User-Konten
+/opt/nagellacke/v3/server/data/photos/        ← Fotos
+/opt/nagellacke/v3/server/data/ai_config.json ← KI-Provider/Schlüssel (mode 0600, optional)
+/opt/nagellacke/v3/server/data/schedule.json  ← Berichts-Zeitplan (optional)
 ```
 
 Backup erstellen:
 ```bash
-# v3 (pro Benutzer — oder gleich das ganze data/-Verzeichnis sichern)
+# pro Benutzer — oder gleich das ganze data/-Verzeichnis sichern
 cp -r /opt/nagellacke/v3/server/data/users ~/backup-$(date +%F)/
-
-# v2
-cp /opt/nagellacke/backend/data/data.json ~/backup-$(date +%F).json
 ```
 
 Oder direkt in der App: Footer → **↓ Export** (enthält alle Fotos eingebettet)
@@ -187,12 +161,6 @@ Oder direkt in der App: Footer → **↓ Export** (enthält alle Fotos eingebett
 ## Nützliche Befehle
 
 ```bash
-# v2
-systemctl status nagellacke
-systemctl restart nagellacke
-journalctl -u nagellacke -f
-
-# v3
 systemctl status nagellacke-v3
 systemctl restart nagellacke-v3
 journalctl -u nagellacke-v3 -f
@@ -203,19 +171,13 @@ journalctl -u nagellacke-v3 -f
 ## Lokale Entwicklung
 
 ```bash
-# v2 (Terminal 1 – Backend)
-cd backend && npm install && node server.js
-
-# v2 (Terminal 2 – Frontend)
-cd frontend && npm install && npm run dev
-
-# v3 (Terminal 1 – Server)
+# Terminal 1 – Server
 cd v3 && npm install && npm run build:core && npm run dev:server
 
-# v3 (Terminal 2 – Web-App)
+# Terminal 2 – Web-App
 cd v3 && npm run dev:web
 
-# v3 Android-App (Android Studio / Gradle)
+# Android-App (Android Studio / Gradle)
 cd android && ./gradlew assembleDebug
 ```
 
@@ -227,45 +189,45 @@ Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an
 
 ```
 nagellacke/
-├── backend/              ← v2 Node.js/Express Server
-│   ├── server.js         ← Alle API-Routen, Auth, Rate-Limiting, v3-Upgrade
-│   └── data/             ← Daten, Fotos, API-Key (automatisch angelegt)
-├── frontend/             ← v2 React/Vite Frontend
-│   └── src/
-│       ├── App.jsx        ← State, Handler, 4 Views (~1370 Zeilen)
-│       ├── themes.js      ← 6 Theme-Definitionen
-│       ├── constants.js   ← FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, …
-│       └── components/    ← PolishForm, StatsPage, DiaryPage, StickerPage, SyncPanel, …
-├── android/               ← Native Android-App (Kotlin/Jetpack Compose)
+├── android/               ← Native Android-App (Kotlin/Jetpack Compose, Hilt, Room)
 ├── docs/                  ← Projektseite auf GitHub Pages (statisch, keine Abhängigkeiten)
+│   ├── index.html          ← Landingpage
+│   ├── privacy-policy.html ← Datenschutzerklärung (auch für Play-Store-Listing verlinkt)
+│   ├── store-listing.md    ← Play-Store-Metadaten
+│   └── releases/           ← Release-Notes pro Version
 ├── install.sh             ← Installer (Debian/Ubuntu, systemd)
-└── v3/                    ← v3 Monorepo (npm workspaces)
+└── v3/                    ← Monorepo (npm workspaces)
     ├── packages/
     │   ├── core/          ← Typen, Business-Logik, Merge-Algorithmus (TypeScript)
     │   └── sync/          ← Sync-Adapter: Server, GDrive, OneDrive, Nextcloud, Dropbox
-    ├── server/            ← Fastify-Server (ersetzt v2 nach Upgrade)
+    ├── server/             ← Fastify-Server
     │   └── src/
-    │       ├── index.ts   ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
-    │       └── db.ts      ← Datei-Persistenz (data.json, users.json, Fotos)
+    │       ├── index.ts    ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
+    │       ├── db.ts       ← Datei-Persistenz (data.json, users.json, Fotos)
+    │       ├── ai.ts       ← KI-Provider-Anbindung (Auto-Fill, Smart-Cart)
+    │       ├── report.ts   ← Wochen-/Monatsberichte (HTML)
+    │       ├── email.ts    ← Berichtsversand per SMTP
+    │       └── websearch.ts ← eigener web_search-Tool-Server (DuckDuckGo/SearXNG/Brave)
     ├── apps/
-    │   └── web/           ← v3 Web-App (React 18 + TypeScript + Vite)
-    └── package.json       ← Monorepo-Root (npm workspaces, Node ≥20)
+    │   └── web/            ← Web-App (React 18 + TypeScript + Vite)
+    └── package.json        ← Monorepo-Root (npm workspaces, Node ≥20)
 ```
 
 ---
 
 ## Technik
 
-| Schicht | v2 | v3 |
-|--------|----|----|
-| Frontend | React 18 + Vite | React 18 + Vite + TypeScript |
-| Backend | Express 4 (JS) | Fastify 4 (TypeScript strict) |
-| Speicher | JSON-Datei | JSON-Datei |
-| Auth | API-Key | API-Key (v2-kompatibel) + JWT 30d (Sync) |
-| Passwort-Hash | — | scrypt + Salt + timingSafeEqual |
-| Sync | — | Server / GDrive / OneDrive / Nextcloud / Dropbox |
-| Mobile | PWA | Expo React Native (Play Store) |
-| Deployment | systemd | systemd + EnvironmentFile |
-| Monorepo | — | npm workspaces |
+| Schicht | Technologie |
+|--------|-------------|
+| Frontend | React 18 + Vite + TypeScript |
+| Backend | Fastify 4 (TypeScript strict) |
+| Speicher | JSON-Datei |
+| Auth | API-Key (Admin) + JWT 7d/30d (Sync) |
+| Passwort-Hash | scrypt + Salt + timingSafeEqual |
+| Sync | Server / GDrive / OneDrive / Nextcloud / Dropbox |
+| Mobile | Native Android (Kotlin, Jetpack Compose, Hilt, Room) — Play Store |
+| Deployment | systemd + EnvironmentFile |
+| Monorepo | npm workspaces |
+| Projektseite | Statisches HTML unter `docs/`, GitHub Pages via Actions-Workflow |
 
 Vollständige Architektur-Dokumentation: [ARCHITECTURE.md](ARCHITECTURE.md) · Änderungshistorie: [CHANGELOG.md](CHANGELOG.md)
