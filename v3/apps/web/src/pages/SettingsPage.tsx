@@ -80,6 +80,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [ncUser, setNcUser] = useState(config?.nextcloudUser ?? '');
   const [ncPass, setNcPass] = useState(config?.nextcloudPassword ?? '');
   const [saved, setSaved] = useState(false);
+  const [configError, setConfigError] = useState('');
   const [newCatLabel, setNewCatLabel] = useState('');
 
   const [loginUser, setLoginUser] = useState('');
@@ -166,14 +167,23 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   };
 
   const saveConfig = () => {
+    setConfigError('');
     if (provider === 'none') {
       saveSyncConfig(null);
       setConfig(null);
     } else if (provider === 'server') {
+      if (!serverToken) {
+        setConfigError('Bitte zuerst mit „Anmelden" einloggen, bevor du speicherst.');
+        return;
+      }
       const c: SyncConfig = { provider, serverUrl, serverToken };
       saveSyncConfig(c);
       setConfig(c);
     } else if (provider === 'nextcloud') {
+      if (!ncUrl.trim() || !ncUser.trim() || !ncPass.trim()) {
+        setConfigError('Bitte Nextcloud-URL, Benutzername und App-Passwort ausfüllen.');
+        return;
+      }
       const c: SyncConfig = { provider, nextcloudUrl: ncUrl, nextcloudUser: ncUser, nextcloudPassword: ncPass };
       saveSyncConfig(c);
       setConfig(c);
@@ -181,6 +191,12 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const canSaveConfig =
+    provider === 'none' ||
+    (provider === 'server' && !!serverToken) ||
+    (provider === 'nextcloud' && !!ncUrl.trim() && !!ncUser.trim() && !!ncPass.trim()) ||
+    provider === 'googledrive' || provider === 'onedrive' || provider === 'dropbox';
 
   const exportData = async () => {
     setExporting(true);
@@ -507,7 +523,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
         <label className={styles.field}>
           <span>Sync-Anbieter</span>
-          <select value={provider} onChange={(e) => setProvider(e.target.value as SyncProviderType | 'none')}>
+          <select value={provider} onChange={(e) => { setProvider(e.target.value as SyncProviderType | 'none'); setConfigError(''); }}>
             <option value="none">Kein Sync (nur lokal)</option>
             <option value="server">Eigener Server</option>
             <option value="nextcloud">Nextcloud</option>
@@ -596,8 +612,12 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           </div>
         )}
 
+        {configError && (
+          <div className={styles.errorBanner}>{configError}</div>
+        )}
+
         <div className={styles.btnRow}>
-          <button className={styles.saveBtn} onClick={saveConfig}>
+          <button className={styles.saveBtn} onClick={saveConfig} disabled={!canSaveConfig}>
             {saved ? '✓ Gespeichert' : 'Speichern'}
           </button>
           {config && (

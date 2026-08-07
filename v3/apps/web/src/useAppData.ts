@@ -72,6 +72,19 @@ export function saveSyncConfig(config: SyncConfig | null): void {
 }
 
 /**
+ * Guards against configs saved before validation was added to the settings
+ * form (#177) — e.g. `{provider:'server', serverUrl:'', serverToken:''}` from
+ * clicking "Speichern" instead of "Anmelden". Without this, `sync()` would
+ * throw on every app start and leave a permanent error banner with no
+ * indication of how to clear it.
+ */
+function isSyncConfigComplete(config: SyncConfig): boolean {
+  if (config.provider === 'server') return !!config.serverToken;
+  if (config.provider === 'nextcloud') return !!config.nextcloudUrl && !!config.nextcloudUser && !!config.nextcloudPassword;
+  return true;
+}
+
+/**
  * Writes a renewed access/refresh pair back into the stored sync config, so a
  * silent refresh survives a page reload (#109). Re-reads the config rather than
  * closing over one, since a refresh can land long after the adapter was built.
@@ -212,7 +225,7 @@ export function useAppData() {
   // Sync
   const sync = useCallback(async () => {
     const config = loadSyncConfig();
-    if (!config) return;
+    if (!config || !isSyncConfigComplete(config)) return;
     setSyncing(true);
     setSyncError(null);
     try {
