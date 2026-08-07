@@ -32,6 +32,8 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
 
     fun resolveUri(filename: String): Uri = Uri.fromFile(File(dir, filename))
 
+    fun exists(filename: String): Boolean = File(dir, filename).exists()
+
     fun delete(filename: String) { File(dir, filename).delete() }
 
     fun readBytes(filename: String): ByteArray = File(dir, filename).readBytes()

@@ -159,6 +159,8 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
             onDelete = editing?.let { { vm.deleteManicure(it.id); showForm = false } },
             onDismiss = { showForm = false },
             resolvePhotoUri = vm::resolvePhotoUri,
+            photoExistsLocally = vm::photoExistsLocally,
+            photoResolution = state.photoResolution,
             importPhoto = vm::importPhoto,
         )
     }
@@ -187,6 +189,8 @@ fun DiaryFormSheet(
     onDelete: (() -> Unit)?,
     onDismiss: () -> Unit,
     resolvePhotoUri: (String) -> Uri,
+    photoExistsLocally: (String) -> Boolean,
+    photoResolution: PhotoResolution,
     importPhoto: suspend (Uri) -> String,
 ) {
     val now = System.currentTimeMillis()
@@ -218,6 +222,8 @@ fun DiaryFormSheet(
                     PhotoPickerField(
                         photo = slot.get(photos),
                         resolvePhotoUri = resolvePhotoUri,
+                        photoExistsLocally = photoExistsLocally,
+                        photoResolution = photoResolution,
                         importPhoto = importPhoto,
                         onPhotoChange = { photos = slot.set(photos, it) },
                         label = slot.label,
