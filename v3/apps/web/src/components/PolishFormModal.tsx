@@ -151,7 +151,7 @@ export default function PolishFormModal({
 
             <label className={styles.field}>
               <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
-              <div className={styles.chips}>
+              <div className={styles.chips} role="group" aria-label="Finish">
                 {FINISH_OPTIONS.map((o) => (
                   <button
                     key={o.value}
@@ -201,11 +201,12 @@ export default function PolishFormModal({
             {categories.length > 0 && (
               <label className={styles.field}>
                 <span>Kategorien</span>
-                <div className={styles.chips}>
+                <div className={styles.chips} role="group" aria-label="Kategorien">
                   {categories.map((c) => (
                     <button
                       key={c.id}
                       type="button"
+                      aria-pressed={(form.categories ?? []).includes(c.id)}
                       className={(form.categories ?? []).includes(c.id) ? styles.chipOn : styles.chipOff}
                       onClick={() => {
                         const curr = form.categories ?? [];

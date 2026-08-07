@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { dismissFinishMigrationNotice } from '../useAppData';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import styles from './FinishMigrationNotice.module.css';
 
 interface FinishMigrationNoticeProps {
@@ -10,6 +11,8 @@ interface FinishMigrationNoticeProps {
 export default function FinishMigrationNotice({ onRollback, onClose }: FinishMigrationNoticeProps) {
   const [confirming, setConfirming] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, true);
 
   const handleUnderstood = () => {
     dismissFinishMigrationNotice();
@@ -28,10 +31,21 @@ export default function FinishMigrationNotice({ onRollback, onClose }: FinishMig
   };
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.modal}>
+    <div
+      className={styles.overlay}
+      onClick={handleUnderstood}
+      onKeyDown={(e) => e.key === 'Escape' && handleUnderstood()}
+    >
+      <div
+        ref={modalRef}
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="finish-migration-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.header}>
-          <h2>Nagellack-Finish aktualisiert</h2>
+          <h2 id="finish-migration-title">Nagellack-Finish aktualisiert</h2>
         </div>
         <div className={styles.body}>
           <p>
