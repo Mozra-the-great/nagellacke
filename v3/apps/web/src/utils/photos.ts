@@ -8,6 +8,11 @@ function authHeaders(): Record<string, string> {
   return {};
 }
 
+export function canUploadPhotos(): boolean {
+  if (localStorage.getItem('nagellacke_v3_apikey')) return true;
+  return !!loadSyncConfig()?.serverToken;
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -21,6 +26,9 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export async function uploadPhoto(file: File): Promise<string> {
+  if (!canUploadPhotos()) {
+    throw new Error('Fotos benötigen einen konfigurierten Sync-Anbieter (Einstellungen → Sync)');
+  }
   const data = await fileToBase64(file);
   const res = await fetch('/api/photos', {
     method: 'POST',

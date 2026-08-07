@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { uploadPhoto } from '../utils/photos';
+import { canUploadPhotos, uploadPhoto } from '../utils/photos';
 import styles from './PhotoField.module.css';
 
 export default function PhotoField({
@@ -14,6 +14,7 @@ export default function PhotoField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const syncAvailable = canUploadPhotos();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,7 +40,7 @@ export default function PhotoField({
       <div className={styles.row}>
         <button
           type="button"
-          disabled={uploading}
+          disabled={uploading || !syncAvailable}
           onClick={() => inputRef.current?.click()}
           className={styles.btn}
         >
@@ -51,6 +52,9 @@ export default function PhotoField({
           </button>
         )}
       </div>
+      {!syncAvailable && (
+        <p className={styles.hint}>Fotos benötigen einen konfigurierten Sync-Anbieter (Einstellungen → Sync).</p>
+      )}
       {error && <div className={styles.error}>{error}</div>}
       <input
         ref={inputRef}
