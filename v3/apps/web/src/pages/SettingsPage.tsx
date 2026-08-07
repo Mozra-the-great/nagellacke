@@ -80,6 +80,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [ncUser, setNcUser] = useState(config?.nextcloudUser ?? '');
   const [ncPass, setNcPass] = useState(config?.nextcloudPassword ?? '');
   const [saved, setSaved] = useState(false);
+  const [configSaveError, setConfigSaveError] = useState('');
   const [newCatLabel, setNewCatLabel] = useState('');
 
   const [loginUser, setLoginUser] = useState('');
@@ -166,17 +167,29 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   };
 
   const saveConfig = () => {
+    setConfigSaveError('');
     if (provider === 'none') {
       saveSyncConfig(null);
       setConfig(null);
     } else if (provider === 'server') {
+      if (!serverUrl.trim() || !serverToken.trim()) {
+        setConfigSaveError('Bitte zuerst über „Anmelden" einloggen — ohne gültigen Server-Token kann kein Sync gespeichert werden.');
+        return;
+      }
       const c: SyncConfig = { provider, serverUrl, serverToken };
       saveSyncConfig(c);
       setConfig(c);
     } else if (provider === 'nextcloud') {
+      if (!ncUrl.trim() || !ncUser.trim() || !ncPass.trim()) {
+        setConfigSaveError('Bitte Server-URL, Benutzername und Passwort ausfüllen.');
+        return;
+      }
       const c: SyncConfig = { provider, nextcloudUrl: ncUrl, nextcloudUser: ncUser, nextcloudPassword: ncPass };
       saveSyncConfig(c);
       setConfig(c);
+    } else {
+      setConfigSaveError('OAuth2-Login wird für diesen Anbieter nur in der Android-App unterstützt.');
+      return;
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -507,7 +520,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
 
         <label className={styles.field}>
           <span>Sync-Anbieter</span>
-          <select value={provider} onChange={(e) => setProvider(e.target.value as SyncProviderType | 'none')}>
+          <select value={provider} onChange={(e) => { setProvider(e.target.value as SyncProviderType | 'none'); setConfigSaveError(''); }}>
             <option value="none">Kein Sync (nur lokal)</option>
             <option value="server">Eigener Server</option>
             <option value="nextcloud">Nextcloud</option>
@@ -595,6 +608,8 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
             OAuth2-Login wird in der Android-App unterstützt. Für die Web-App wird der Eigene-Server-Adapter empfohlen.
           </div>
         )}
+
+        {configSaveError && <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{configSaveError}</div>}
 
         <div className={styles.btnRow}>
           <button className={styles.saveBtn} onClick={saveConfig}>
