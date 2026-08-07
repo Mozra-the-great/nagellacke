@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
-import { generateId, now, mergeData } from '@nagellacke/core';
+import { generateId, now, mergeData, normalizeFinish } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
@@ -16,16 +16,53 @@ async function deletePhotoFromServer(filename: string): Promise<void> {
 const STORAGE_KEY = 'nagellacke_v3_data';
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 
+const FINISH_MIGRATION_BACKUP_KEY = 'nagellacke_v3_backup_pre_finish_migration';
+const FINISH_MIGRATION_SEEN_KEY = 'nagellacke_v3_finish_migration_seen';
+
+function hasLegacyFinish(data: AppData): boolean {
+  return data.polishes.some((p) => !Array.isArray((p as { finish: unknown }).finish));
+}
+
+function migrateFinish(data: AppData): AppData {
+  return { ...data, polishes: data.polishes.map((p) => ({ ...p, finish: normalizeFinish(p.finish) })) };
+}
+
 function loadLocal(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppData;
+    if (raw) {
+      const parsed = JSON.parse(raw) as AppData;
+      if (hasLegacyFinish(parsed)) {
+        // Keep the very first pre-migration snapshot untouched, forever, until
+        // an explicit rollback consumes it — never overwritten by a later
+        // load, so nothing from before this change can ever be lost even if
+        // the migration itself turns out to be wrong.
+        if (!localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY)) {
+          localStorage.setItem(FINISH_MIGRATION_BACKUP_KEY, raw);
+          localStorage.removeItem(FINISH_MIGRATION_SEEN_KEY);
+        }
+        return migrateFinish(parsed);
+      }
+      return parsed;
+    }
   } catch { /* empty */ }
   return { polishes: [], customCats: [], manicures: [], stickers: [] };
 }
 
 function saveLocal(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export function hasFinishMigrationBackup(): boolean {
+  return localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY) !== null;
+}
+
+export function shouldShowFinishMigrationNotice(): boolean {
+  return hasFinishMigrationBackup() && localStorage.getItem(FINISH_MIGRATION_SEEN_KEY) !== 'true';
+}
+
+export function dismissFinishMigrationNotice(): void {
+  localStorage.setItem(FINISH_MIGRATION_SEEN_KEY, 'true');
 }
 
 const PHOTO_DEFAULT_KEY = 'nagellacke_v3_photo_default';
@@ -234,6 +271,41 @@ export function useAppData() {
     }
   }, [data, commit]);
 
+  // Restores the pre-migration snapshot and pushes it to the server directly,
+  // rather than going through `sync()` — that callback closes over `data` from
+  // this render, which is stale the instant `commit` below fires, and would
+  // silently re-upload the very state this is meant to undo.
+  const rollbackFinishMigration = useCallback(async () => {
+    const backup = localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY);
+    if (!backup) return;
+    let restored: AppData;
+    try {
+      restored = JSON.parse(backup) as AppData;
+    } catch {
+      return;
+    }
+    localStorage.removeItem(FINISH_MIGRATION_BACKUP_KEY);
+    commit(() => restored);
+    const config = loadSyncConfig();
+    if (!config) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const adapter = createAdapter(config, persistRefreshedTokens);
+      const result = await adapter.sync(restored);
+      if (result.success) {
+        commit((prev) => mergeData(prev, result.merged));
+        setLastSyncAt(result.lastSyncAt);
+      } else {
+        setSyncError(result.error ?? 'Sync fehlgeschlagen');
+      }
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
+    } finally {
+      setSyncing(false);
+    }
+  }, [commit]);
+
   // Auto-sync on load
   useEffect(() => { void sync(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -243,6 +315,7 @@ export function useAppData() {
     syncError,
     lastSyncAt,
     sync,
+    rollbackFinishMigration,
     importMerge,
     addPolish, updatePolish, deletePolish, restorePolish,
     addSticker, updateSticker, deleteSticker, restoreSticker,

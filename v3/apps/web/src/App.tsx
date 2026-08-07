@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useAppData } from './useAppData';
+import { useAppData, shouldShowFinishMigrationNotice } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
+import FinishMigrationNotice from './components/FinishMigrationNotice';
 import CollectionPage from './pages/CollectionPage';
 import CartPage from './pages/CartPage';
 import StickersPage from './pages/StickersPage';
@@ -23,6 +24,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
+  const [showFinishMigrationNotice, setShowFinishMigrationNotice] = useState(shouldShowFinishMigrationNotice);
   const appData = useAppData();
 
   const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
@@ -68,6 +70,13 @@ export default function App() {
         {tab === 'stats'      && <StatsPage appData={appData} />}
         {tab === 'settings'   && <SettingsPage appData={appData} />}
       </main>
+
+      {showFinishMigrationNotice && (
+        <FinishMigrationNotice
+          onRollback={appData.rollbackFinishMigration}
+          onClose={() => setShowFinishMigrationNotice(false)}
+        />
+      )}
     </div>
     </SnackbarProvider>
   );

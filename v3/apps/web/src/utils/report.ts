@@ -73,7 +73,9 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
 
   const finishCounts: Record<string, number> = {};
   for (const p of data.polishes.filter(p => !p.deletedAt)) {
-    finishCounts[p.finish] = (finishCounts[p.finish] ?? 0) + 1;
+    for (const f of p.finish) {
+      finishCounts[f] = (finishCounts[f] ?? 0) + 1;
+    }
   }
   const topFinishes = Object.entries(finishCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const maxFinish = topFinishes[0]?.[1] ?? 1;
@@ -214,7 +216,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
         <div class="polish-body">
           <div class="polish-name">${escHtml(p.name)}</div>
           <div class="polish-brand">${escHtml(p.brand)}${p.num ? ` · ${escHtml(p.num)}` : ''}</div>
-          <span class="polish-finish">${escHtml(p.finish)}</span>
+          ${p.finish.map(f => `<span class="polish-finish">${escHtml(f)}</span>`).join(' ')}
           ${p.rating ? `<div class="polish-stars">${stars(p.rating)}</div>` : ''}
           ${p.notes ? `<div class="polish-notes">${escHtml(p.notes)}</div>` : ''}
         </div>

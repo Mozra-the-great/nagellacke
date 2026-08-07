@@ -13,7 +13,13 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
   const activeStickers = useMemo(() => stickers.filter((s) => !s.deletedAt), [stickers]);
   const activeManicures = useMemo(() => manicures.filter((m) => !m.deletedAt), [manicures]);
 
-  const byFinish = useMemo(() => countBy(active, (p) => p.finish), [active]);
+  const byFinish = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of active) {
+      for (const f of p.finish) counts[f] = (counts[f] ?? 0) + 1;
+    }
+    return counts;
+  }, [active]);
   const byStatus = useMemo(() => countBy(active, (p) => p.status), [active]);
   const byBrand = useMemo(() => {
     const counts = countBy(active, (p) => p.brand || 'Unbekannt');
