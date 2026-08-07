@@ -23,6 +23,30 @@ function firstPhoto(m: Manicure): string | null {
   return null;
 }
 
+/** Builds fresh PolishRefs from the current selection - mirrors the Android DiaryScreen helper of the same name. */
+function buildPolishRefs(selectedIds: string[], available: Polish[]): PolishRef[] {
+  return selectedIds
+    .map((id) => available.find((p) => p.id === id))
+    .filter((p): p is Polish => !!p)
+    .map((p) => ({ name: p.name, brand: p.brand, color: p.color }));
+}
+
+/**
+ * Best-effort reverse lookup for editing an entry saved before ids were tracked (or with
+ * legacy `polishes` name list): PolishRef only stores name/brand/color, so two polishes
+ * sharing both are indistinguishable here. Consumes one matching, not-yet-used polish id per
+ * ref so duplicate-named refs resolve to distinct ids where possible instead of collapsing.
+ */
+function resolvePolishIds(refs: PolishRef[], available: Polish[]): string[] {
+  const used = new Set<string>();
+  return refs.flatMap((r) => {
+    const match = available.find((p) => p.name === r.name && p.brand === r.brand && !used.has(p.id));
+    if (!match) return [];
+    used.add(match.id);
+    return [match.id];
+  });
+}
+
 function resolveSwatches(m: Manicure, allPolishes: Polish[]): string[] {
   if (m.polishRefs?.length) return m.polishRefs.map((r) => r.color ?? '#888888');
   if (m.polishes?.length) {
@@ -45,13 +69,13 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
   useFocusTrap(diaryModalRef, showForm);
   const [form, setForm] = useState<{
     date: string;
-    polishRefs: PolishRef[];
+    selectedPolishIds: string[];
     stickerRefs: StickerRef[];
     notes: string;
     photos: ManicurePhotos;
   }>({
     date: new Date().toISOString().slice(0, 10),
-    polishRefs: [],
+    selectedPolishIds: [],
     stickerRefs: [],
     notes: '',
     photos: {},
@@ -68,18 +92,19 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ date: new Date().toISOString().slice(0, 10), polishRefs: [], stickerRefs: [], notes: '', photos: {} });
+    setForm({ date: new Date().toISOString().slice(0, 10), selectedPolishIds: [], stickerRefs: [], notes: '', photos: {} });
     setShowForm(true);
   };
 
   const openEdit = (m: Manicure) => {
     setEditing(m);
-    const resolvedRefs: PolishRef[] = m.polishRefs?.length
+    const existingRefs: PolishRef[] = m.polishRefs?.length
       ? m.polishRefs
       : (m.polishes ?? []).flatMap((name) => {
           const p = appData.data.polishes.find((ap) => ap.name === name && !ap.deletedAt);
           return p ? [{ name: p.name, brand: p.brand, color: p.color }] : [];
         });
+    const resolvedPolishIds = resolvePolishIds(existingRefs, availablePolishes);
     // Resolve legacy stickers (stored as names or ids) to StickerRef
     const resolvedStickerRefs: StickerRef[] = m.stickerRefs?.length
       ? m.stickerRefs
@@ -91,7 +116,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
         });
     setForm({
       date: m.date,
-      polishRefs: resolvedRefs,
+      selectedPolishIds: resolvedPolishIds,
       stickerRefs: resolvedStickerRefs,
       notes: m.notes ?? '',
       photos: { ...(m.photos ?? {}) },
@@ -100,12 +125,11 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
   };
 
   const togglePolish = (p: Polish) => {
-    const isSelected = (r: PolishRef) => r.name === p.name && r.brand === p.brand;
     setForm((f) => ({
       ...f,
-      polishRefs: f.polishRefs.some(isSelected)
-        ? f.polishRefs.filter((r) => !isSelected(r))
-        : [...f.polishRefs, { name: p.name, brand: p.brand, color: p.color }],
+      selectedPolishIds: f.selectedPolishIds.includes(p.id)
+        ? f.selectedPolishIds.filter((id) => id !== p.id)
+        : [...f.selectedPolishIds, p.id],
     }));
   };
 
@@ -119,10 +143,12 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
   };
 
   const save = () => {
+    const { selectedPolishIds, ...rest } = form;
+    const polishRefs = buildPolishRefs(selectedPolishIds, availablePolishes);
     if (editing) {
-      appData.updateManicure(editing.id, { ...form });
+      appData.updateManicure(editing.id, { ...rest, polishRefs });
     } else {
-      appData.addManicure({ ...form });
+      appData.addManicure({ ...rest, polishRefs });
     }
     setShowForm(false);
   };
@@ -327,7 +353,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                 <span>Verwendete Lacke</span>
                 <div className={styles.polishPicker}>
                   {availablePolishes.map((p) => {
-                    const on = form.polishRefs.some((r) => r.name === p.name && r.brand === p.brand);
+                    const on = form.selectedPolishIds.includes(p.id);
                     return (
                       <button
                         key={p.id}
