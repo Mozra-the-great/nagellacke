@@ -310,7 +310,7 @@ async function researchSmartCart(
   collection: Polish[],
   cart: Polish[],
 ): Promise<{ suggestions: SmartCartSuggestion[]; webSearchUsed: boolean }> {
-  const describe = (p: Polish) => `${p.brand} ${p.num} "${p.name}" (${p.color}, ${p.finish})`;
+  const describe = (p: Polish) => `${p.brand} ${p.num} "${p.name}" (${p.color}, ${p.finish.join('/')})`;
   const collectionSummary = collection.map(describe).join('; ') || 'leer';
   const cartSummary = cart.map(describe).join('; ') || 'leer';
 
@@ -370,6 +370,7 @@ async function runJob(job: AiJob): Promise<void> {
     const newPolishes: Polish[] = suggestions.map((s) => ({
       id: uuidv4(),
       ...s,
+      finish: [s.finish],
       status: 'wish',
       count: 1,
       categories: [],

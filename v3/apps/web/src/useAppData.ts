@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
-import { generateId, now, mergeData } from '@nagellacke/core';
+import { generateId, now, mergeData, normalizeAppData } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
@@ -19,7 +19,7 @@ const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 function loadLocal(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppData;
+    if (raw) return normalizeAppData(JSON.parse(raw) as AppData);
   } catch { /* empty */ }
   return { polishes: [], customCats: [], manicures: [], stickers: [] };
 }
@@ -206,7 +206,7 @@ export function useAppData() {
 
   // Direct import (merge imported JSON into local data)
   const importMerge = useCallback((merged: AppData) => {
-    commit((prev) => mergeData(prev, merged));
+    commit((prev) => mergeData(prev, normalizeAppData(merged)));
   }, [commit]);
 
   // Sync
@@ -222,7 +222,7 @@ export function useAppData() {
         // Merge against whatever's latest (not the `data` snapshot this
         // closure started with) so edits made while this sync was in flight
         // aren't discarded.
-        commit((prev) => mergeData(prev, result.merged));
+        commit((prev) => mergeData(prev, normalizeAppData(result.merged)));
         setLastSyncAt(result.lastSyncAt);
       } else {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');

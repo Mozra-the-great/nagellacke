@@ -55,7 +55,8 @@
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--md-primary);
 }
-.field input:disabled, .field select:disabled, .colorFromPhotoBtn:disabled {
+.field input:disabled, .field select:disabled, .colorFromPhotoBtn:disabled,
+.chipOn:disabled, .chipOff:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

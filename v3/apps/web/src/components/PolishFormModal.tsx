@@ -63,7 +63,7 @@ export default function PolishFormModal({
       if (p.deletedAt) return false;
       if (!isSaturated(p.color)) return false;
       const diff = Math.abs(hexToHue(p.color) - hue);
-      return Math.min(diff, 360 - diff) <= 15 && p.finish === form.finish;
+      return Math.min(diff, 360 - diff) <= 15 && p.finish.some((f) => form.finish.includes(f));
     });
   }, [form.color, form.finish, polish, allPolishes]);
 
@@ -122,34 +122,44 @@ export default function PolishFormModal({
               </label>
             )}
 
-            <div className={styles.row}>
-              <div className={styles.field}>
-                <span>Farbe {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
-                <div className={styles.colorRow}>
-                  <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} disabled={aiAutofill} aria-label="Farbe" />
-                  <span className={styles.colorHex}>{form.color}</span>
-                  <button
-                    type="button"
-                    className={styles.colorFromPhotoBtn}
-                    onClick={() => setShowColorPicker(true)}
-                    aria-label="Farbe aus Foto"
-                    title="Farbe aus Foto"
-                    disabled={aiAutofill}
-                  >📷</button>
-                </div>
-                {duplicates.length > 0 && (
-                  <div className={styles.duplicateWarning}>
-                    ⚠ Ähnlich wie: {duplicates.map((p) => `„${p.name}"`).join(', ')}
-                  </div>
-                )}
+            <div className={styles.field}>
+              <span>Farbe {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
+              <div className={styles.colorRow}>
+                <input type="color" value={form.color} onChange={(e) => set('color', e.target.value)} className={styles.colorPicker} disabled={aiAutofill} aria-label="Farbe" />
+                <span className={styles.colorHex}>{form.color}</span>
+                <button
+                  type="button"
+                  className={styles.colorFromPhotoBtn}
+                  onClick={() => setShowColorPicker(true)}
+                  aria-label="Farbe aus Foto"
+                  title="Farbe aus Foto"
+                  disabled={aiAutofill}
+                >📷</button>
               </div>
-              <label className={styles.field}>
-                <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
-                <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])} disabled={aiAutofill}>
-                  {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
-                </select>
-              </label>
+              {duplicates.length > 0 && (
+                <div className={styles.duplicateWarning}>
+                  ⚠ Ähnlich wie: {duplicates.map((p) => `„${p.name}"`).join(', ')}
+                </div>
+              )}
             </div>
+
+            <label className={styles.field}>
+              <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
+              <div className={styles.chips}>
+                {FINISH_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={form.finish.includes(o.value) ? styles.chipOn : styles.chipOff}
+                    disabled={aiAutofill}
+                    onClick={() => {
+                      const curr = form.finish;
+                      set('finish', curr.includes(o.value) ? curr.filter((x) => x !== o.value) : [...curr, o.value]);
+                    }}
+                  >{o.icon} {o.label}</button>
+                ))}
+              </div>
+            </label>
 
             <div className={styles.row}>
               <label className={styles.field}>

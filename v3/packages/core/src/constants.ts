@@ -66,7 +66,7 @@ export const STICKER_STYLE_SUGGESTIONS = [
 ];
 
 export const DEFAULT_POLISH = {
-  num: '', name: '', brand: '', color: '#ff6699', finish: 'Classic' as FinishType,
+  num: '', name: '', brand: '', color: '#ff6699', finish: ['Classic'] as FinishType[],
   count: 1, categories: [] as string[], status: 'ok' as PolishStatus, notes: '', rating: 0,
 };
 

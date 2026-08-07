@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeData, filterPolishes, sortPolishes } from './logic';
+import { mergeData, filterPolishes, sortPolishes, normalizePolish, normalizeAppData } from './logic';
 import type { AppData, Polish } from './types';
 
 const emptyData = (): AppData => ({
@@ -8,7 +8,7 @@ const emptyData = (): AppData => ({
 
 const polish = (overrides: Partial<Polish> = {}): Polish => ({
   id: 'p1', name: 'Blue', brand: 'OPI', num: '001', color: '#0000ff',
-  finish: 'Classic', status: 'ok', createdAt: 1000, updatedAt: 1000,
+  finish: ['Classic'], status: 'ok', createdAt: 1000, updatedAt: 1000,
   ...overrides,
 });
 
@@ -43,9 +43,9 @@ describe('mergeData', () => {
 
 describe('filterPolishes', () => {
   const polishes = [
-    polish({ id: 'p1', name: 'Blue Sky', brand: 'OPI', status: 'ok', finish: 'Classic' }),
-    polish({ id: 'p2', name: 'Red Rose', brand: 'Catrice', status: 'wish', finish: 'Shimmer' }),
-    polish({ id: 'p3', name: 'Green Leaf', brand: 'OPI', status: 'ok', finish: 'Classic', deletedAt: 1 }),
+    polish({ id: 'p1', name: 'Blue Sky', brand: 'OPI', status: 'ok', finish: ['Classic'] }),
+    polish({ id: 'p2', name: 'Red Rose', brand: 'Catrice', status: 'wish', finish: ['Shimmer', 'Glitter'] }),
+    polish({ id: 'p3', name: 'Green Leaf', brand: 'OPI', status: 'ok', finish: ['Classic'], deletedAt: 1 }),
   ];
   const base = { search: '', finish: '' as const, category: '', status: '' as const, brand: '', sort: 'newest' as const };
 
@@ -64,6 +64,39 @@ describe('filterPolishes', () => {
     const result = filterPolishes(polishes, { ...base, status: 'wish' });
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('p2');
+  });
+
+  it('matches a polish that has the filtered finish among several', () => {
+    const result = filterPolishes(polishes, { ...base, finish: 'Glitter' });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('p2');
+  });
+});
+
+describe('normalizePolish', () => {
+  it('leaves an already-array finish untouched', () => {
+    const p = polish({ finish: ['Glitter', 'Top Coat'] });
+    expect(normalizePolish(p).finish).toEqual(['Glitter', 'Top Coat']);
+  });
+
+  it('wraps a legacy single-string finish (e.g. from the Android app) in an array', () => {
+    const p = { ...polish(), finish: 'Shimmer' as unknown as Polish['finish'] };
+    expect(normalizePolish(p).finish).toEqual(['Shimmer']);
+  });
+
+  it('defaults a missing finish to an empty array', () => {
+    const p = { ...polish(), finish: undefined as unknown as Polish['finish'] };
+    expect(normalizePolish(p).finish).toEqual([]);
+  });
+});
+
+describe('normalizeAppData', () => {
+  it('normalizes finish across all polishes', () => {
+    const data: AppData = {
+      ...emptyData(),
+      polishes: [{ ...polish(), finish: 'Classic' as unknown as Polish['finish'] }],
+    };
+    expect(normalizeAppData(data).polishes[0].finish).toEqual(['Classic']);
   });
 });
 

@@ -1,11 +1,11 @@
-import type { Polish, Sticker, Manicure, Category, FilterState, AppData } from './types';
+import type { Polish, Sticker, Manicure, Category, FilterState, AppData, FinishType } from './types';
 import { hexToHue } from './utils';
 
 export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
   return polishes.filter((p) => {
     if (p.deletedAt) return false;
     if (f.status && p.status !== f.status) return false;
-    if (f.finish && p.finish !== f.finish) return false;
+    if (f.finish && !p.finish.includes(f.finish)) return false;
     if (f.brand && p.brand !== f.brand) return false;
     if (f.category && !p.categories?.includes(f.category)) return false;
     if (f.search) {
@@ -14,12 +14,28 @@ export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
         p.name.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q) ||
         p.num.toLowerCase().includes(q) ||
-        p.finish.toLowerCase().includes(q) ||
+        p.finish.some((v) => v.toLowerCase().includes(q)) ||
         (p.notes ?? '').toLowerCase().includes(q)
       );
     }
     return true;
   });
+}
+
+/**
+ * `Polish.finish` used to be a single value; older cached/exported data and
+ * clients that have not been updated yet (e.g. the Android app, #192) still
+ * write it as a plain string rather than an array. Normalizing on every read
+ * boundary lets the rest of the app assume `finish` is always an array.
+ */
+export function normalizePolish(p: Polish): Polish {
+  const raw = p.finish as unknown;
+  if (Array.isArray(raw)) return p;
+  return { ...p, finish: raw ? [raw as FinishType] : [] };
+}
+
+export function normalizeAppData(data: AppData): AppData {
+  return { ...data, polishes: data.polishes.map(normalizePolish) };
 }
 
 export function sortPolishes(polishes: Polish[], sort: FilterState['sort']): Polish[] {

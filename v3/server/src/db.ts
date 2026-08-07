@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AppData } from '@nagellacke/core';
+import { normalizeAppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
 
@@ -42,12 +43,12 @@ function readDataFile(file: string): AppData {
   try {
     if (!fs.existsSync(file)) return EMPTY_DATA;
     const raw = JSON.parse(fs.readFileSync(file, 'utf-8')) as Partial<AppData>;
-    return {
+    return normalizeAppData({
       polishes:   (raw.polishes   ?? []).map((p) => p.count == null ? { ...p, count: 1 } : p),
       customCats: raw.customCats  ?? [],
       manicures:  raw.manicures   ?? [],
       stickers:   raw.stickers    ?? [],
-    };
+    });
   } catch (e) {
     console.error(`${file} corrupt — returning empty:`, e);
     return EMPTY_DATA;

@@ -4,7 +4,7 @@ import type { FinishType, PolishStatus } from '@nagellacke/core';
 
 interface Props {
   color: string;
-  finish?: FinishType;
+  finish?: FinishType[];
   selected?: boolean;
   status?: PolishStatus;
   brand?: string;
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
-  const uid = useMemo(() => `${color.replace('#', '')}_${finish ?? 'c'}`, [color, finish]);
+  const uid = useMemo(() => `${color.replace('#', '')}_${finish?.join('-') || 'c'}`, [color, finish]);
 
   if (photoUrl) {
     const faded = status === 'empty' || status === 'gone';
@@ -30,7 +30,7 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === 'empty' || status === 'gone';
   const isWish = status === 'wish';
-  const shimmer = SHIMMER_FINISHES.has(finish ?? 'Classic');
+  const shimmer = (finish ?? []).some((f) => SHIMMER_FINISHES.has(f));
   const brandLabel = (brand ?? '').toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? '3' : '4';
 
