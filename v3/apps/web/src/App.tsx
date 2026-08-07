@@ -26,8 +26,9 @@ export default function App() {
   const appData = useAppData();
 
   const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
-  const activeCount = polishes.filter((p) => p.status === 'ok').length;
-  const totalCount = polishes.reduce((a, p) => a + (p.count ?? 1), 0);
+  const ownedPolishes = polishes.filter((p) => p.status === 'ok');
+  const activeCount = ownedPolishes.length;
+  const totalCount = ownedPolishes.reduce((a, p) => a + (p.count ?? 1), 0);
 
   return (
     <SnackbarProvider>
