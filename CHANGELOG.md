@@ -7,6 +7,8 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.2.0-rc.5] – 2026-08-07
+
 ### Hinzugefügt
 - **Android: „Farbe aus Foto" im Lack-Formular**: Port von `ColorFromPhoto.tsx` — Foto auswählen, per Tippen oder Ziehen eine Farbe daraus picken, als Lackfarbe übernehmen. Die Bild-Box wird exakt auf das Seitenverhältnis der Bitmap gezwungen, damit `ContentScale.Fit` sie ohne Letterboxing ausfüllt — Tipp-Position lässt sich dadurch per einfacher linearer Skalierung auf Bildpixel abbilden, ohne Versatz durch Balken berücksichtigen zu müssen. Farbextraktion arbeitet mit reiner Bit-Arithmetik statt `android.graphics.Color`, damit sie ohne Robolectric mit JUnit testbar ist. (#147)
 - **Android: Export/Import der Sammlung als ZIP**: gleiches Format wie `SettingsPage.tsx` — `data.json` (komplette Sammlung, seit #141 dieselben Feldnamen wie `@nagellacke/core`) plus `photos/`-Ordner. Import führt die Daten per `mergeData()` mit der lokalen Sammlung zusammen (wie beim Sync) statt sie zu überschreiben. Fotos lassen sich nur über einen konfigurierten Sync-Anbieter sichtbar machen — nichts in der App löst einen bloßen lokalen Dateinamen außerhalb eines offenen Formulars auf —, deshalb werden importierte Fotos beim jeweiligen Anbieter hochgeladen statt nur lokal abgelegt; ohne konfigurierten Sync zählen sie als fehlgeschlagen statt unsichtbare Referenzen anzulegen. Export liest Fotos zuerst lokal, sonst vom aktuellen Sync-Anbieter (derselbe Pfad, den die App auch sonst zur Anzeige nutzt) und überspringt mit Zähler, was sich nicht auflösen lässt. Dateiauswahl läuft über den Storage-Access-Framework-Picker, keine Speicher-Berechtigung nötig. (#146)
