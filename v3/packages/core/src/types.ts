@@ -20,7 +20,7 @@ export interface Polish {
   brand: string;
   num: string;
   color: string;
-  finish: FinishType;
+  finish: FinishType[];
   status: PolishStatus;
   count?: number;
   categories?: string[];
