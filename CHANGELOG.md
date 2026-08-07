@@ -7,6 +7,16 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.2.0] – 2026-08-07
+
+Finale 3.2.0, gegenüber rc.5 vier weitere Fixes aus einem zweiten, vollständigen QA-Durchlauf über die Web-App (Chrome-Extension, echte Server-Interaktion statt nur Code-Review).
+
+### Fixed
+- **Web: Tagebuch-Lackauswahl verwechselte gleichnamige Lacke**: das Formular führte die Auswahl über `PolishRef` (`{name, brand, color}` — ohne `id`) statt über die Lack-id, dadurch waren zwei Lacke mit gleichem Namen/Marke in der Sammlung ununterscheidbar; das Anhaken des zweiten hob stattdessen den ersten wieder auf, statt einen zweiten Eintrag hinzuzufügen. Formularstatus läuft jetzt über `selectedPolishIds: string[]`, `PolishRef`s werden erst beim Speichern aus der aktuellen Auswahl gebaut — analog zur bereits korrekten Android-Implementierung. (#176)
+- **Web: Sync-Konfiguration wurde ohne Validierung gespeichert**: „Speichern" akzeptierte Server-Sync ohne Token und Nextcloud ohne Zugangsdaten anstandslos, der anschließende automatische Sync-Versuch beim nächsten Laden schlug dann bei jedem Start mit einer kryptischen Fehlermeldung fehl. `saveConfig()` prüft jetzt vor dem Speichern auf vollständige Zugangsdaten und zeigt bei fehlenden Feldern eine konkrete Fehlermeldung statt eines falschen „✓ Gespeichert"; OAuth-Anbieter (Google Drive/OneDrive/Dropbox), die auf der Web-App nur ein Platzhalter sind, zeigen jetzt ebenfalls eine Fehlermeldung statt still durchzufallen. (#177)
+- **Web: Foto-Upload ohne konfigurierten Sync scheiterte mit unerklärtem „401"**: der Foto-Button in Lack-, Sticker- und Tagebuch-Formular war immer aktiv, obwohl die Foto-Endpunkte serverseitig zwingend einen API-Key oder Server-Sync-Token verlangen (`requireApiKeyOrJwt`) — im Standardzustand „Kein Sync" scheiterte jeder Upload mit einem rohen `Upload fehlgeschlagen (401)`. Neues `hasPhotoUploadAuth()` prüft dieselbe Bedingung wie der Server und deaktiviert den Button mit erklärendem Hinweistext, analog zum bestehenden Gating von KI-Auto-Fill. (#180)
+- **Web: Header-Zähler „Flaschen gesamt" zählte Wunschliste- und „Nicht mehr da"-Lacke mit**: `totalCount` summierte `count` über alle Lacke unabhängig vom Status, während der danebenstehende „vorhanden"-Zähler korrekt nur `status === 'ok'` zählte — ein reiner Wunschlisten-Eintrag erhöhte damit die Anzahl vermeintlich besessener Flaschen. Beide Zähler filtern jetzt einheitlich auf `status === 'ok'`. (#182)
+
 ## [3.2.0-rc.5] – 2026-08-07
 
 ### Hinzugefügt
