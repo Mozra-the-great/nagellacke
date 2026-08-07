@@ -1,27 +1,22 @@
 # Architektur & Technische Entscheidungen
 
-Dieses Dokument erklärt den Aufbau der Nagellack-Kollektion-App, den verwendeten Software-Stack und die Gründe hinter den getroffenen Entscheidungen. Es deckt beide Generationen ab: **v2** (Express, aktuell im Einsatz) und **v3** (Fastify + Monorepo + Android-App, nach Upgrade aktiv).
+Dieses Dokument erklärt den Aufbau der Nagellack-Kollektion-App, den verwendeten Software-Stack und die Gründe hinter den getroffenen Entscheidungen.
+
+> **Hinweis zur Historie:** Es gab eine frühere Generation ("v2": Express + einfaches React/Vite-Frontend unter `backend/`/`frontend/`, kein Sync, keine App). Sie wurde vollständig entfernt (siehe Änderungshistorie um v3.0.x); der aktuelle Code kennt nur noch den unten beschriebenen Stand. Wo Entscheidungen historisch v2 vs. v3 gegeneinander abgewogen haben, ist das nur noch für's Verständnis von Altdaten (z. B. `.api_key`-Kompatibilität) relevant.
 
 ---
 
 ## Überblick
 
-### v2
-
-```
-Browser
-  └── React SPA (statische Dateien, vom Express-Server ausgeliefert)
-        └── /api/* → Express-Routen → data.json (Dateisystem)
-```
-
-### v3
-
 ```
 Browser / Android-App
-  └── React SPA / Expo React Native
-        ├── /api/*       → Fastify-Routen → data.json (Dateisystem)
+  └── React-SPA (Web) / natives Kotlin+Compose (Android)
+        ├── /api/photos, /api/version, /api/update/*, /api/logs, /api/admin/*
+        │     → Fastify-Routen → data.json / Dateisystem (Foto-Uploads)
         ├── /api/auth/*  → JWT-Authentifizierung → users.json
-        └── /api/sync/*  → Merge-Algorithmus (@nagellacke/core) → data.json
+        ├── /api/sync*   → Merge-Algorithmus (@nagellacke/core) → data.json (pro Benutzer)
+        ├── /api/ai/*    → KI-Provider (OpenAI-kompatibel / Gemini) + eigener web_search-Tool-Server
+        └── /api/reports/* → HTML-Bericht-Generator + optionaler SMTP-Versand
 ```
 
 ---
@@ -30,49 +25,39 @@ Browser / Android-App
 
 ```
 nagellacke/
-├── backend/
-│   ├── server.js           ← Express-Server, alle API-Routen, Auth, Rate-Limiting, v3-Upgrade-Logik
-│   ├── package.json        ← v3.0.1, nur Express als Dependency
-│   └── data/               ← wird beim ersten Start automatisch angelegt
-│       ├── data.json       ← Persistenz (Lacke + Kategorien + Maniküren + Sticker)
-│       ├── photos/         ← Flaschenfoto- und Tagebuch-Fotos (UUID-benannt)
-│       └── .api_key        ← API-Schlüssel (mode 0o600)
-├── frontend/
-│   ├── public/             ← statische Assets (von Vite 1:1 in dist kopiert)
-│   │   ├── manifest.json   ← PWA-Manifest
-│   │   ├── sw.js           ← Service Worker (Cache-First, /api/ ausgenommen)
-│   │   ├── icon-192.svg    ← PWA-Icon
-│   │   └── icon-512.svg    ← PWA-Icon (groß)
-│   ├── src/
-│   │   ├── themes.js       ← THEMES-Objekt (6 vollständige Designs)
-│   │   ├── constants.js    ← FINISH_OPTIONS, STATUS_OPTIONS, SORT_OPTIONS, BRAND_SUGGESTIONS, EMPTY_FORM, …
-│   │   ├── utils.js        ← hexToHue() und weitere shared Helpers
-│   │   ├── App.jsx         ← State, Handler, Main-Render (~1370 Zeilen, 4 Views)
-│   │   ├── main.jsx        ← React-Einstiegspunkt + SW-Registrierung
-│   │   └── components/
-│   │       ├── NailBottle.jsx        ← SVG-Darstellung einer Nagellack-Flasche
-│   │       ├── PolishForm.jsx        ← Formular zum Anlegen/Bearbeiten von Lacken
-│   │       ├── StatsPage.jsx         ← Statistiken-Dashboard
-│   │       ├── DiaryPage.jsx         ← Maniküre-Tagebuch
-│   │       ├── StickerPage.jsx       ← Nail-Sticker-Inventar
-│   │       ├── SyncPanel.jsx         ← Cloud-Sync-Konfiguration (v3-Feature in v2-UI)
-│   │       ├── UpdatePanel.jsx       ← In-App-Update-System + Upgrade-auf-v3-Button
-│   │       └── LogPanel.jsx          ← systemd Journal Viewer
-│   ├── index.html
-│   ├── vite.config.js
-│   └── package.json
-├── install.sh              ← v2 Installer und Update-Skript
-├── CHANGELOG.md            ← Vollständige Versionshistorie
-└── v3/                     ← v3 Monorepo (npm workspaces)
-    ├── package.json        ← Monorepo-Root, Node ≥20, Scripts für alle Workspaces
+├── android/                 ← Native Android-App (Kotlin/Jetpack Compose), Root-Ebene, NICHT im npm-Workspace
+│   └── app/src/main/java/de/nagellacke/
+│       ├── data/
+│       │   ├── local/       ← Room Entities, DAOs, AppDatabase
+│       │   ├── repo/        ← NagellackeRepository, PhotoRepository, SyncConfigStore, DisplayPrefsStore
+│       │   └── sync/        ← SyncAdapter Interface + ServerAdapter, NextcloudAdapter, …
+│       ├── domain/
+│       │   ├── model/       ← Polish, Sticker, Manicure, Category, AppData (kotlinx.serialization)
+│       │   └── Constants.kt ← FINISH_OPTIONS, SHIMMER_FINISHES, BRAND_SUGGESTIONS, …
+│       └── ui/
+│           ├── collection/  ← CollectionScreen, PolishCard, PolishFormSheet, CollectionViewModel
+│           ├── stickers/    ← StickersScreen, StickerFormSheet, StickersViewModel
+│           ├── diary/       ← DiaryScreen, DiaryFormSheet, DiaryViewModel
+│           ├── stats/       ← StatsScreen
+│           ├── settings/    ← SettingsScreen, SettingsViewModel
+│           └── common/      ← LoadingScreen, EmptyScreen, ErrorScreen, NailBottle
+├── docs/                    ← Projektseite auf GitHub Pages (statisch, kein Build nötig)
+│   ├── index.html           ← Landingpage
+│   ├── privacy-policy.html  ← Datenschutzerklärung
+│   ├── store-listing.md     ← Play-Store-Metadaten
+│   └── releases/            ← Release-Notes pro Version
+├── install.sh                ← Installer/Updater (Debian/Ubuntu, systemd)
+├── CHANGELOG.md              ← Vollständige Versionshistorie
+└── v3/                       ← Monorepo (npm workspaces, Node ≥20)
+    ├── package.json          ← Monorepo-Root, Scripts für alle Workspaces
     ├── packages/
-    │   ├── core/           ← @nagellacke/core — Typen, Logic, Merge-Algo, Konstanten
+    │   ├── core/             ← @nagellacke/core — Typen, Logic, Merge-Algo, Konstanten
     │   │   └── src/
     │   │       ├── types.ts      ← Polish, Sticker, Manicure, Category, AppData
     │   │       ├── logic.ts      ← filterPolishes, sortPolishes, mergeData, mergeList
     │   │       ├── constants.ts  ← FINISH_OPTIONS, STATUS_OPTIONS, BRAND_SUGGESTIONS, …
     │   │       └── utils.ts      ← hexToHue, generateId, now
-    │   └── sync/           ← @nagellacke/sync — Sync-Adapter-Abstraktionsschicht
+    │   └── sync/             ← @nagellacke/sync — Sync-Adapter-Abstraktionsschicht
     │       └── src/
     │           ├── adapter.ts          ← SyncAdapter Interface + SyncConfig Typ
     │           ├── factory.ts          ← createAdapter(config) Factory-Funktion
@@ -82,158 +67,90 @@ nagellacke/
     │               ├── onedrive.ts     ← Microsoft Graph v1.0
     │               ├── nextcloud.ts    ← WebDAV (remote.php/dav)
     │               └── dropbox.ts      ← Dropbox API v2
-    ├── server/             ← Fastify-Server (nach Upgrade aktiver Dienst)
+    ├── server/                ← Fastify-Server
     │   └── src/
-    │       ├── index.ts    ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
-    │       └── db.ts       ← getData/setData, getUser/createUser, Dateipersistenz
+    │       ├── index.ts       ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
+    │       ├── db.ts          ← Datei-Persistenz (data.json pro User, users.json, Fotos)
+    │       ├── ai.ts          ← KI-Provider-Anbindung (Auto-Fill, Smart-Cart, Tool-Loop)
+    │       ├── tooling.ts     ← Tool-Definitionen/-Aufruf für den KI-Provider (web_search)
+    │       ├── websearch.ts   ← Eigener web_search-Tool-Server (DuckDuckGo/SearXNG/Brave)
+    │       ├── report.ts      ← Wochen-/Monatsberichte (HTML-Generator)
+    │       └── email.ts       ← Berichtsversand per SMTP
     └── apps/
-        ├── web/            ← v3 Web-App (React 18 + TypeScript + Vite)
-        │   └── src/
-        │       ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|stats|settings)
-        │       ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
-        │       └── pages/              ← CollectionPage, StickersPage, DiaryPage, StatsPage, SettingsPage
-        └── web/            ← v3 Web-App (React 18 + TypeScript + Vite) [nur Webapp]
-android/                    ← Native Android-App (Kotlin / Jetpack Compose)
-    └── app/src/main/java/de/nagellacke/
-        ├── data/
-        │   ├── local/      ← Room Entities, DAOs, AppDatabase
-        │   ├── repo/       ← NagellackeRepository, PhotoRepository, SyncConfigStore, DisplayPrefsStore
-        │   └── sync/       ← SyncAdapter Interface + ServerAdapter, NextcloudAdapter, …
-        ├── domain/
-        │   ├── model/      ← Polish, Sticker, Manicure, Category, AppData (kotlinx.serialization)
-        │   └── Constants.kt ← FINISH_OPTIONS, SHIMMER_FINISHES, BRAND_SUGGESTIONS, …
-        └── ui/
-            ├── collection/ ← CollectionScreen, PolishCard, PolishFormSheet, CollectionViewModel
-            ├── stickers/   ← StickersScreen, StickerFormSheet, StickersViewModel
-            ├── diary/      ← DiaryScreen, DiaryFormSheet, DiaryViewModel
-            ├── stats/      ← StatsScreen
-            ├── settings/   ← SettingsScreen, SettingsViewModel
-            └── common/     ← LoadingScreen, EmptyScreen, ErrorScreen, NailBottle
+        └── web/                ← Web-App (React 18 + TypeScript + Vite)
+            └── src/
+                ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|cart|stats|settings)
+                ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
+                └── pages/               ← CollectionPage, StickersPage, DiaryPage, CartPage, StatsPage, SettingsPage
 ```
 
 ---
 
-## Frontend (v2)
+## Web-App (React + TypeScript + Vite)
 
-### React 18
+### Warum React?
 
-**Warum React?**
-React wurde gewählt, weil es der de-facto-Standard für reaktive UIs ist und der Einstieg ohne komplexes Setup möglich ist. Die App hat viele interabhängige Zustände (Filterauswahl, Suchbegriff, Sortierung, Batch-Selektion, Undo-Stack, offene Formulare), die mit React-Hooks (`useState`, `useMemo`, `useCallback`, `useEffect`) sauber ausgedrückt werden können.
+React ist der de-facto-Standard für reaktive UIs mit vielen interabhängigen Zuständen (Filterauswahl, Suchbegriff, Sortierung, Batch-Selektion, Undo-Stack, offene Formulare) — mit Hooks (`useState`, `useMemo`, `useCallback`, `useEffect`) sauber ausdrückbar.
 
 ### Vite
 
-Vite bietet wesentlich schnellere Builds durch nativen ESM-Support und Rollup als Bundler. Create React App ist deprecated. Vite baut das Frontend in `backend/public/` — genau dort, wo Express seine statischen Dateien erwartet.
+Nativer ESM-Support und Rollup als Bundler machen Vite deutlich schneller als ältere Toolchains. Die Update-Pipeline baut das Web-App-Bundle in `apps/web/dist/` und kopiert es nach `server/public/`, wo Fastify es statisch ausliefert.
 
-### Modulare Dateistruktur (seit v1.9.0)
+### Seitenbasierte Struktur
 
-`App.jsx` wurde in separate Module aufgeteilt: `themes.js` (Theme-Daten), `constants.js` (Optionslisten, EMPTY_FORM), `utils.js` (shared Helpers) und sieben Komponentendateien unter `components/`. `App.jsx` enthält nur noch State, Handler und den Haupt-Render (~1370 Zeilen für 4 Views).
-
-### 4 Views
-
-Die App hat vier Hauptansichten und schaltet zwischen ihnen per `useState`:
-- `"collection"` — Nagellack-Kollektion (Standard)
-- `"diary"` — Maniküre-Tagebuch
-- `"stickers"` — Nail-Sticker-Inventar
-- `"stats"` — Statistiken-Dashboard
-
-Kein vollständiger Router — für vier Views ohne URL-Navigation wäre er Overhead.
+`App.tsx` hält die Tab-Navigation und globalen State, die eigentlichen Ansichten liegen als eigene Komponenten unter `pages/` (`CollectionPage`, `StickersPage`, `DiaryPage`, `CartPage`/Wunschliste, `StatsPage`, `SettingsPage`). Datenzugriff und Mutationen laufen über den zentralen `useAppData`-Hook. Kein Router — für eine feste Tab-Leiste ohne URL-Navigation wäre er Overhead.
 
 ### Kein State-Management-Framework
 
-Kein Redux, Zustand, Jotai oder ähnliches. Der Zustand besteht aus ca. 25 `useState`-Hooks. Alles lebt in `App` und wird als Props nach unten gereicht. Für diese Größenordnung ist das die einfachste und wartbarste Lösung.
-
-### Styling ohne CSS-Framework
-
-Keine Tailwind, kein Bootstrap, kein CSS-in-JS-Framework. Alle Styles sind inline-Objekte oder eine kleine `<style>`-Komponente. Das vermeidet Build-Komplexität.
-
-### Theme-System (seit v1.7.0)
-
-Sechs vollständige Theme-Definitionen in `themes.js`, jedes mit 30+ Farb- und Style-Tokens:
-
-| Theme-ID | Stil | Karten-Layout | Filter-Layout |
-|----------|------|---------------|---------------|
-| `darkLuxury` | Dunkel, Luxus | Flasche (bounce) | Pills |
-| `candyPop` | Hell, verspielt | Blob (weiche Formen) | Pills |
-| `vintageWarm` | Hell, Retro | Stripe (horizontal, einspaltig) | Underline |
-| `neonNightclub` | Dunkel, Neon | Flasche | Block-Glow |
-| `cleanWhite` | Hell, Minimalist | Row (Liste, einspaltig) | Pills |
-| `forestGreen` | Dunkel, Nature | Blob | Pills |
-
-Theme-Auswahl wird in `localStorage` (Key: `nagellacke_theme`) gespeichert. Option `"system"` folgt `prefers-color-scheme`.
+Kein Redux, Zustand, Jotai o. ä. Für die Größenordnung der App ist Prop-Drilling ausgehend von `App`/`useAppData` die einfachste und wartbarste Lösung.
 
 ---
 
-## Backend (v2)
+## Server — Fastify
 
-### Node.js + Express
+### Warum Fastify?
 
-Express ist das bekannteste und einfachste Node.js-Framework. Es hat minimale Abstraktion und kommt mit `npm install express` ohne weiteres Setup aus. Für eine App mit ~8 Routen gibt es keinen Grund für ein schwergewichtigeres Framework in v2.
+Native TypeScript-Unterstützung, Plugin-basierte Architektur (`@fastify/jwt`, `@fastify/cors`, `@fastify/static`) und gute Performance — relevant, weil dieselbe Instanz sowohl die Web-App ausliefert als auch Sync für Web/Android sowie KI-Hintergrundjobs bedient.
 
-### API-Routen (v2)
+### API-Routen
 
 | Endpoint | Methode | Auth | Funktion |
 |----------|---------|------|---------|
-| `/api/data` | GET | — | Kollektion lesen |
-| `/api/data` | POST | API-Key | Kollektion speichern |
-| `/api/photos` | POST | API-Key | Foto hochladen (Base64, UUID-Dateiname) |
-| `/api/photos/:filename` | DELETE | API-Key | Foto löschen |
-| `/api/version` | GET | — | Aktuelle Version |
+| `/api/version` | GET | — | Server-Version |
+| `/api/auth/register` | POST | — | Neuer User → JWT (nur wenn noch kein User existiert oder `ALLOW_REGISTRATION=true`) |
+| `/api/auth/login` | POST | — | Login → Access-Token (7d) + Refresh-Token (30d) |
+| `/api/auth/refresh` | POST | Refresh-Token | Neues Access-Token ausstellen |
+| `/api/auth/me` | GET | JWT | Aktuellen User abrufen |
+| `/api/auth/logout-all` | POST | JWT | Alle Tokens invalidieren (Token-Version hochzählen) |
+| `/api/sync` | GET/POST | JWT | Datenstand abrufen / Client-Daten mergen (`mergeData` aus `@nagellacke/core`) |
+| `/api/sync/push` | POST | JWT | Gemergten Stand hochladen |
+| `/api/photos` | POST | API-Key oder JWT | Foto hochladen (Base64, Magic-Bytes-Check, UUID-Dateiname) |
+| `/api/photos/:filename` | DELETE | API-Key oder JWT | Foto löschen |
+| `/api/ai/settings` | GET/POST | JWT | KI-Provider/Modell/Schlüssel/Websuche-Backend konfigurieren |
+| `/api/ai/autofill` | POST | JWT | Farbe & Finish für einen Lack per KI ermitteln (Hintergrundjob) |
+| `/api/ai/smart-cart` | POST | JWT | Wunschlisten-Vorschläge per KI |
+| `/api/ai/jobs/:id` | GET | JWT | Status/Ergebnis eines KI-Hintergrundjobs |
+| `/api/reports/preview` | GET | JWT | Bericht als HTML generieren |
+| `/api/reports/send` | POST | JWT | Bericht per E-Mail versenden |
+| `/api/reports/schedule` | GET/POST | JWT | Automatischen Berichts-Zeitplan lesen/setzen |
 | `/api/update/check` | GET | API-Key | GitHub-Update-Check (Rate: 10/min) |
 | `/api/update/apply` | POST | API-Key | Update durchführen (Rate: 3/5min) |
+| `/api/admin/api-key/rotate` | POST | API-Key | API-Schlüssel rotieren |
 | `/api/logs` | GET | API-Key | systemd Journal (Rate: 30/min) |
-| `/api/v3/status` | GET | API-Key | v3-Installations-Status |
-| `/api/v3/install` | POST | API-Key | v2→v3-Migration (Rate: 2/5min) |
-| `/api/v3/logs` | GET | API-Key | v3 systemd Journal |
+
+**Admin-Endpunkte** (`/api/update/*`, `/api/admin/*`, `/api/logs`) akzeptieren bewusst nur `X-Api-Key`, kein JWT — der Schlüssel ist ein De-facto-Root-Credential (er löst `git pull` + `npm install` + Rebuild auf dem Host aus), siehe [README](README.md#erster-start--api-schlüssel-einrichten) und #73. JWT ist auf Daten-/Sync-Endpunkte beschränkt.
 
 ### Keine externe Datenbank
 
-Die App ist für **eine Person** auf einem **privaten Server** ausgelegt. Eine JSON-Datei erfüllt alle Anforderungen:
+Die App ist für **eine Handvoll Personen** auf einem **privaten Server** ausgelegt. Eine JSON-Datei pro Benutzer erfüllt alle Anforderungen:
 - Keine Installation eines Datenbankservers
 - Backup = `cp data.json backup.json`
 - Im Fehlerfall direkt lesbar und editierbar
 - Atomic Write: erst in `.tmp` schreiben, dann `fs.renameSync` → kein korruptes File bei Absturz
 
-### Datenmigration beim Laden
-
-`loadData()` enthält eine automatische Migration: ältere Datensätze ohne neue Felder werden beim Laden auf sinnvolle Defaults gesetzt und sofort zurückgeschrieben. Das ermöglicht Datenschema-Erweiterungen ohne manuelles Migrationsskript.
-
 ### API-Key-Authentifizierung
 
-Ein statischer API-Schlüssel im HTTP-Header (`X-Api-Key`) ist für das Heimnetz ausreichend. Der Schlüssel wird beim ersten Start generiert (`crypto.randomBytes(24).toString("hex")`), in `data/.api_key` persistiert (0o600) und einmalig in der Konsole ausgegeben.
-
-### Rate-Limiting ohne externe Bibliothek
-
-Kein `express-rate-limit`, kein Redis. Ein `Map`-basierter In-Memory-Limiter reicht für den Anwendungsfall.
-
----
-
-## v3 — Fastify-Server
-
-### Warum Fastify statt Express?
-
-v3 wurde von Grund auf in TypeScript geschrieben. Fastify bietet native TypeScript-Unterstützung, Plugin-basierte Architektur (`@fastify/jwt`, `@fastify/cors`, `@fastify/static`) und ist deutlich performanter als Express — relevant wenn die gleiche Instanz auch den Sync für die Android-App betreibt.
-
-### API-Routen (v3)
-
-| Endpoint | Methode | Auth | Funktion |
-|----------|---------|------|---------|
-| `/api/data` | GET | API-Key | Kollektion lesen (v2-kompatibel) |
-| `/api/data` | POST | API-Key oder JWT | Kollektion speichern |
-| `/api/photos` | POST | API-Key oder JWT | Foto hochladen |
-| `/api/photos/:filename` | DELETE | API-Key oder JWT | Foto löschen |
-| `/api/version` | GET | — | Server-Version |
-| `/api/update/check` | GET | JWT | GitHub-Update-Check (Rate: 10/min) |
-| `/api/update/apply` | POST | JWT | Update durchführen (Rate: 3/5min) |
-| `/api/logs` | GET | JWT | systemd Journal (Rate: 30/min) |
-| `/api/auth/register` | POST | — | Neuer User → JWT (min. 8 Zeichen Passwort) |
-| `/api/auth/login` | POST | — | Login → JWT (30 Tage gültig) |
-| `/api/sync` | GET | JWT | Aktuellen Datenstand abrufen |
-| `/api/sync` | POST | JWT | Client-Daten merge (mergeData aus @nagellacke/core) |
-| `/api/sync/push` | POST | JWT | Gemergten Stand hochladen |
-
-### Dual-Auth (API-Key + JWT)
-
-`POST /api/data` akzeptiert sowohl `X-Api-Key` (v2-Clients, PWA) als auch `Authorization: Bearer <token>` (v3 Android/Web mit Account). Das ermöglicht einen nahtlosen Übergang ohne Breaking Change.
+Ein statischer API-Schlüssel im HTTP-Header (`X-Api-Key`) ist für Admin-Operationen im Heimnetz ausreichend. Der Schlüssel wird beim ersten Start generiert (`crypto.randomBytes(24).toString("hex")`), in `data/.api_key` persistiert (0o600) und einmalig in der Konsole ausgegeben. Rotierbar über `/api/admin/api-key/rotate` oder durch Löschen der Datei + Neustart.
 
 ### Passwort-Hashing
 
@@ -243,9 +160,13 @@ v3 wurde von Grund auf in TypeScript geschrieben. Fastify bietet native TypeScri
 
 Magic-Bytes-Check vor dem Speichern: JPEG (`0xFFD8FF`), PNG (`0x89504E47`), WebP (`RIFF...WEBP`). MIME-Type-Spoofing ist damit nicht möglich.
 
-### Update-Pipeline (v3)
+### Rate-Limiting ohne externe Bibliothek
 
-1. Antwortet sofort mit `{ok: true}` (verhindert Nginx-Timeout)
+Kein Redis. Ein In-Memory-Limiter (`config: { rateLimit: {...} }` pro Route) reicht für den Anwendungsfall.
+
+### Update-Pipeline
+
+1. Antwortet sofort mit `{ok: true}` (verhindert Reverse-Proxy-Timeout)
 2. `setImmediate()` startet Build im Hintergrund:
    - `git pull origin main` (30 s Timeout)
    - `npm install --omit=dev` (60 s)
@@ -253,15 +174,31 @@ Magic-Bytes-Check vor dem Speichern: JPEG (`0xFFD8FF`), PNG (`0x89504E47`), WebP
    - `npm run build:server` (60 s)
    - `npm run build:web` (120 s)
    - Kopiert `v3/apps/web/dist` → `server/public/`
-3. Nach 300 ms: `process.exit(0)` — `Restart=always` in der Unit startet den Prozess automatisch neu (kein `systemctl restart` mehr, s. #71)
+3. Nach 300 ms: `process.exit(0)` — `Restart=always` in der systemd-Unit startet den Prozess automatisch neu
 
 ---
 
-## v3 — Monorepo
+## KI-Funktionen und Websuche
+
+### Eigener web_search-Tool-Server statt Anbieter-Websuche
+
+Statt der kostenpflichtigen Websuche der KI-Anbieter (die z. B. auch bei kostenlosen Modellen extra berechnet wird oder im Free-Tier fehlt) stellt der Server selbst die Suchanfrage und bietet sie dem Modell als Werkzeug `web_search` an — für beide unterstützten Wire-Formate (OpenAI-kompatibel und Gemini `functionDeclarations`). Backend wählbar: DuckDuckGo (ohne Einrichtung, aber rate-limited bei Rechenzentrums-IPs — erkennt und loggt die HTTP-202-CAPTCHA-Antwort separat, `websearch.ts`), eigene SearXNG-Instanz oder Brave.
+
+### Hintergrundjobs
+
+Auto-Fill (Lack-Formular) und Smart-Cart (Wunschliste) laufen als asynchrone Jobs (`data/ai_jobs.json`), damit ein mehrere Sekunden dauernder Tool-Loop den Request nicht blockiert. Ergebnisse werden über `/api/ai/jobs/:id` abgefragt und auf den frisch aus der DB gelesenen Datensatz angewendet (nicht auf eine veraltete Kopie), damit parallele Bearbeitung nicht durch Last-Write-Wins verloren geht.
+
+### KI-Konfiguration
+
+Provider, Modell, API-Schlüssel und Websuche-Backend liegen in `data/ai_config.json` (mode 0600). Modellwahl ist bewusst konservativ dokumentiert (z. B. Gemini-Free-Tier-Limits, veraltete Modell-IDs) — siehe [CLAUDE.md](CLAUDE.md) für aktuelle Stolpersteine.
+
+---
+
+## Monorepo (`v3/`)
 
 ### npm workspaces
 
-Das v3-Verzeichnis ist ein npm-Workspace-Monorepo mit fünf Packages:
+`v3/` ist ein npm-Workspace-Monorepo. Die native Android-App liegt bewusst **außerhalb** davon (`android/` auf Root-Ebene) — sie teilt keine npm-Dependencies, sondern portiert die relevante Logik (Merge-Algorithmus, Report-Generator, Konstanten) nach Kotlin.
 
 | Package | Name | Zweck |
 |---------|------|-------|
@@ -269,14 +206,13 @@ Das v3-Verzeichnis ist ein npm-Workspace-Monorepo mit fünf Packages:
 | `packages/sync` | `@nagellacke/sync` | Sync-Adapter-Abstraktionsschicht |
 | `server` | `nagellacke-server` | Fastify HTTP-Server |
 | `apps/web` | `nagellacke-web` | React Web-App |
-| `apps/android` | — | Expo React Native App |
 
 **Warum Monorepo?**
-`@nagellacke/core` (Typen + Merge-Logik) und `@nagellacke/sync` (Adapter) werden von Server, Web-App und Android-App gemeinsam genutzt. Ein Monorepo vermeidet Code-Duplikation und stellt sicher, dass alle Teile denselben Typen-Stand haben.
+`@nagellacke/core` (Typen + Merge-Logik) und `@nagellacke/sync` (Adapter) werden von Server und Web-App gemeinsam genutzt. Ein Monorepo vermeidet Code-Duplikation und stellt sicher, dass beide denselben Typen-Stand haben.
 
 ---
 
-## v3 — @nagellacke/core
+## @nagellacke/core
 
 ### Typen
 
@@ -287,7 +223,7 @@ Polish    { id, name, brand, num, color, finish, status, count?, categories?,
 Sticker   { id, name, brand?, style?, type, colors?, status, rating?,
             notes?, photo?, createdAt, updatedAt, deletedAt? }
 
-Manicure  { id, date, polishes: string[], notes?, photos?: string[],
+Manicure  { id, date, polishRefs, stickerRefs, notes?, photos?,
             createdAt, updatedAt, deletedAt? }
 
 Category  { id, label, deletedAt?, updatedAt }
@@ -295,7 +231,7 @@ Category  { id, label, deletedAt?, updatedAt }
 AppData   { polishes[], customCats[], manicures[], stickers[] }
 ```
 
-**Unterschied zu v2:** Alle Items haben ein `id`-Feld (stabile ID, unabhängig von Array-Position) und ein optionales `deletedAt`-Feld für Soft-Deletes (notwendig für den Merge-Algorithmus).
+Jedes Item hat eine stabile `id` (unabhängig von Array-Position oder Name+Marke-Kombination — siehe #178) und ein optionales `deletedAt`-Feld für Soft-Deletes, das der Merge-Algorithmus braucht.
 
 ### Merge-Algorithmus (Last-Write-Wins)
 
@@ -308,11 +244,11 @@ mergeData(local, remote): AppData
   → merged alle 4 Listen per mergeList
 ```
 
-Dieser Algorithmus wird serverseitig bei `POST /api/sync` und clientseitig nach `GET /api/sync` ausgeführt. Beide Seiten laufen dieselbe Logik aus `@nagellacke/core`.
+Dieser Algorithmus läuft serverseitig bei `POST /api/sync` und clientseitig nach `GET /api/sync` — beide Seiten nutzen dieselbe Logik aus `@nagellacke/core`; die Android-App hat einen äquivalenten Kotlin-Port.
 
 ---
 
-## v3 — @nagellacke/sync (Sync-Adapter)
+## @nagellacke/sync (Sync-Adapter)
 
 ### Abstraktion
 
@@ -342,11 +278,11 @@ interface SyncAdapter {
 
 ---
 
-## v3 — Android-App
+## Android-App
 
 ### Native Kotlin / Jetpack Compose
 
-Die Android-App ist nativ in Kotlin geschrieben (kein React Native). Stack:
+Die Android-App ist nativ in Kotlin geschrieben (kein React Native, kein Expo). Stack:
 
 | Schicht | Technologie |
 |---------|-------------|
@@ -358,20 +294,21 @@ Die Android-App ist nativ in Kotlin geschrieben (kein React Native). Stack:
 | OAuth | AppAuth-Android |
 | Sync-Protokolle | Eigener Server (JWT), Nextcloud (WebDAV), Google Drive, OneDrive, Dropbox (OAuth2) |
 
-**Package-ID:** `de.nagellacke.app`  
+**Package-ID:** `de.nagellacke.app`
 **Verzeichnis:** `android/` (Root-Ebene des Repos, **nicht** im v3-Monorepo)
 
-### Navigation (Bottom Navigation, 5 Tabs)
+### Navigation (Bottom Navigation, 6 Tabs)
 
 1. **Nagellacke** — LazyVerticalGrid mit Suchbar, Status-Filter, FAB, PolishCard
 2. **Sticker** — LazyColumn mit ListItem
 3. **Tagebuch** — LazyColumn mit ListItem
-4. **Statistik** — StatsScreen
-5. **Einstellungen** — Sync-Konfiguration, Darstellung, Statistik
+4. **Wunschliste** — Grid der Lacke mit `status == Wish`, „Gekauft ✓" setzt Status zurück
+5. **Statistik** — StatsScreen
+6. **Einstellungen** — Sync-Konfiguration, Darstellung, KI-Einstellungen, Berichte, Statistik
 
 ### Datenpersistenz
 
-- **App-Daten:** Room-Datenbank (5 Tabellen: polishes, stickers, manicures, categories + je Sticker-/Manikür-IDs)
+- **App-Daten:** Room-Datenbank (Tabellen für polishes, stickers, manicures, categories)
 - **Sync-Konfiguration:** `EncryptedSharedPreferences` (`sync_config`) via `SyncConfigStore`
 - **Darstellungs-Einstellungen:** Plain `SharedPreferences` (`display_prefs`) via `DisplayPrefsStore`
 - **Fotos lokal:** `filesDir/photos/` (JPEG, max 1024×1024, 80 % Qualität)
@@ -403,6 +340,10 @@ Foto-URL-Konstruktion (nur Server-Provider):
 // /photos/ ist öffentliche statische Route in index.ts, kein Auth nötig
 ```
 
+### Berichte (`ReportGenerator.kt`)
+
+Kotlin-Port von `report.ts`s `generateReport()` (gleiches HTML/CSS, gleiche Kennzahlen), läuft komplett lokal — „Bericht erstellen" öffnet ihn in einem WebView ohne Serveranfrage. Bei aktivem Server-Sync zusätzlich: Bericht per E-Mail senden und automatischer Zeitplan über die `/api/reports/*`-Endpunkte.
+
 ### Design
 
 Material Design 3 (`androidx.compose.material3`). Primärfarbe `#c2185b` (Pink). Light + Dark Mode via `MaterialTheme`.
@@ -413,18 +354,19 @@ Material Design 3 (`androidx.compose.material3`). Primärfarbe `#c2185b` (Pink).
 
 ### systemd
 
-Der Dienst läuft als systemd-Unit. Das gibt:
+Der Dienst läuft als systemd-Unit (`nagellacke-v3`) mit `EnvironmentFile` (`.env` mit `JWT_SECRET` und weiteren Variablen). Das gibt:
 - Autostart beim Server-Boot
 - Automatischer Neustart bei Absturz (`Restart=always`)
 - Logs über `journalctl`
-
-**v2:** Unit-Datei in `install.sh` generiert, inline `Environment=PORT=3000`  
-**v3:** Unit-Datei mit `EnvironmentFile` (`.env` mit `JWT_SECRET` und weiteren Variablen)
+- Dedizierter Systembenutzer (`User=nagellacke`/`Group=nagellacke`), dem `/opt/nagellacke` gehört — der Dienst läuft nicht als root (#71)
 
 ### Vite Build-Output
 
-v2: Vite baut in `backend/public/` — Express liefert mit `express.static()` aus.  
-v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `server/public/`.
+Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `server/public/`, wo Fastify es statisch ausliefert.
+
+### GitHub Pages
+
+Die Projektseite (`docs/`) ist statisch und unabhängig vom Server-Deployment. Der Workflow [`pages.yml`](.github/workflows/pages.yml) deployt sie bei jedem Push auf `main`, der etwas unter `docs/` ändert (außer reine Release-Notes unter `docs/releases/`), sowie manuell per `workflow_dispatch`. Läuft über die offiziellen `actions/configure-pages` + `actions/deploy-pages` Actions, kein eigener Build-Schritt nötig.
 
 ---
 
@@ -434,7 +376,7 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
 
 ```json
 {
-  "id":         "1716900000000-a3f8c",   // Stabile ID (seit v2.2.7), fehlt in v2-Daten
+  "id":         "1716900000000-a3f8c",   // Stabile ID, unabhängig von Name/Marke
   "name":       "Blue You A Kiss",
   "brand":      "Catrice",
   "num":        "029",
@@ -447,7 +389,7 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
   "rating":     4,                       // 1–5 (optional)
   "createdAt":  1716900000000,
   "updatedAt":  1716900000000,
-  "deletedAt":  null,                    // Soft-Delete für Sync-Merge (v3)
+  "deletedAt":  null,                    // Soft-Delete für Sync-Merge
   "photo":      "a3f8c2d1.jpg"           // UUID-Dateiname in data/photos/
 }
 ```
@@ -456,11 +398,12 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
 
 ```json
 {
-  "id":         "1716900000000-abc",
-  "date":       "2025-05-28",
-  "polishRefs": [{ "name": "Blue You A Kiss", "brand": "Catrice", "color": "#3a7bd5" }],
+  "id":          "1716900000000-abc",
+  "date":        "2025-05-28",
+  "polishRefs":  [{ "name": "Blue You A Kiss", "brand": "Catrice", "color": "#3a7bd5" }],
+  "polishIds":   ["1716900000000-a3f8c"],
   "stickerRefs": [],
-  "notes":      "für den Urlaub",
+  "notes":       "für den Urlaub",
   "photos": {
     "fingerRight": "manicure-uuid1.jpg",
     "fingerLeft":  "manicure-uuid2.jpg",
@@ -470,6 +413,8 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
   "createdAt":  1716900000000
 }
 ```
+
+`polishRefs`/`stickerRefs` werden beim Speichern aus der aktuellen Auswahl über `polishIds` neu gebaut (nicht umgekehrt) — die Auswahl selbst läuft über IDs, nicht über Name+Marke+Farbe, damit gleichnamige Lacke unterscheidbar bleiben (#176).
 
 ### Sticker-Objekt
 
@@ -490,7 +435,7 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
 }
 ```
 
-### data.json-Struktur
+### data.json-Struktur (pro Benutzer)
 
 ```json
 {
@@ -507,52 +452,26 @@ v3: Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `serve
 
 Die App ist für den Einsatz im **privaten Heimnetz** konzipiert, nicht für das öffentliche Internet.
 
-| Bedrohung | v2-Maßnahme | v3-Maßnahme |
-|-----------|-------------|-------------|
-| Unberechtigte Schreibzugriffe | API-Key auf allen Mutationen | API-Key + JWT |
-| Passwort-Angriffe | — | scrypt + Salt + timingSafeEqual |
-| Replay / Brute-Force | In-Memory Rate-Limiting | In-Memory Rate-Limiting |
-| Riesige Payloads | `express.json({ limit: "4mb" })` | Fastify body limit |
-| Bösartige Foto-Uploads | Magic-Bytes-Check | Magic-Bytes-Check |
-| MIME-Type-Spoofing | Magic-Bytes-Check | Magic-Bytes-Check |
-| Bösartige Importdaten | Validierung vor Übernahme | Validierung + Typprüfung |
-| Information Leakage | Interne Fehler nur geloggt | Interne Fehler nur geloggt |
-| Datenverlust bei Absturz | Atomic Write (`.tmp` + `renameSync`) | Atomic Write |
-| Shell-Injection (UPDATE) | SERVICE_NAME Regex-Validierung | SERVICE_NAME Regex-Validierung |
+| Bedrohung | Maßnahme |
+|-----------|----------|
+| Unberechtigte Schreibzugriffe | API-Key (Admin) + JWT (Daten/Sync) |
+| Passwort-Angriffe | scrypt + Salt + timingSafeEqual |
+| Replay / Brute-Force | In-Memory Rate-Limiting pro Route |
+| Riesige Payloads | Fastify body limit (Fotos: 15 MB) |
+| Bösartige Foto-Uploads | Magic-Bytes-Check vor dem Speichern |
+| MIME-Type-Spoofing | Magic-Bytes-Check (nicht der `Content-Type`-Header) |
+| Bösartige Importdaten | Validierung + Typprüfung vor Übernahme |
+| Information Leakage | Interne Fehler nur geloggt, nicht an den Client |
+| Datenverlust bei Absturz | Atomic Write (`.tmp` + `renameSync`) |
+| Shell-Injection (Update-Pipeline) | `SERVICE_NAME` Regex-Validierung |
+| Offene Registrierung | `/api/auth/register` nur beim ersten User oder mit `ALLOW_REGISTRATION=true` |
 
 Bekannte offene Punkte (für Heimnetz-Betrieb akzeptiert):
-- HTTP, kein HTTPS — im Heimnetz ohne externen Zugang akzeptabel; für externen Zugang: Nginx-Reverse-Proxy mit Let's Encrypt
-
-Behoben:
-- Der Dienst lief bisher standardmäßig als root; `install.sh` legt jetzt einen dedizierten Systembenutzer an (`User=nagellacke`/`Group=nagellacke` in der Unit), dem `/opt/nagellacke` gehört (#71)
+- HTTP, kein HTTPS — im Heimnetz ohne externen Zugang akzeptabel; für externen Zugang: Reverse-Proxy (Nginx) mit Let's Encrypt
+- `X-Api-Key` ist ein De-facto-Root-Credential (`/api/update/apply` zieht ungeprüft `origin/main` und führt `npm install`/`postinstall` aus) — bewusst akzeptiert für den Heimnetz-Anwendungsfall, siehe #73
 
 ---
 
 ## Versionierung
 
 Semantisches Versioning (`MAJOR.MINOR.PATCH`). Versionen werden als Git-Tags gesetzt. Vollständige Änderungshistorie: [CHANGELOG.md](CHANGELOG.md)
-
-| Version | Inhalt |
-|---------|--------|
-| v1.0.0 | Erste Version — Grundfunktionen, In-App-Update, systemd |
-| v1.1.0 | System-Log-Viewer (journalctl) |
-| v1.2.0 | Multi-Brand-Support |
-| v1.3.0 | Statistiken-Seite |
-| v1.4.0 | 15 Finish-Typen, 36 Marken-Vorschläge, dynamische Filter |
-| v1.5.0 | Kategorien, Notizen, Batch-Modus, Undo, Export/Import, Sortierung |
-| v1.6.0 | API-Key-Auth, Security Hardening, Magic-Bytes-Validierung, Atomic Write |
-| v1.6.1 | Foto-Farbpicker (Canvas API) |
-| v1.6.2 | Kamera-Button direkt auf Mobilgeräten |
-| v1.7.0 | Theme-Switcher: 6 Designs |
-| v1.7.1 | Theme-spezifische Karten- und Filter-Layouts (4 + 3 Varianten) |
-| v1.7.2 | Sternebewertung (1–5), Farbklick in Statistik |
-| v1.7.3 | Accessibility (WCAG AA), aria-*, Fokus-Ringe |
-| v1.8.0 | Tastatur-Shortcuts, System-Theme, Duplikat-Detektor, Update-Cache |
-| v1.9.0 | Code-Split, Timestamps, Batch-Edit, Import-Merge, PWA |
-| v2.0.0 | Flaschenfoto, Maniküre-Tagebuch, 3. Nav-Tab |
-| v2.1.0 | Nail-Sticker-Inventar |
-| v2.1.1–2.1.9 | Mobile-Fixes, Foto-Slots, PhotoPicker-Einheitlichkeit, Stats-Erweiterung |
-| v2.2.0 | v3 Sync-Server, v2→v3-Upgrade-Pfad |
-| v2.2.1–2.2.9 | Upgrade-Pipeline-Fixes, SyncPanel, JWT-Auth, sync-sichere IDs |
-| v3.0.0 | Native Android-App (Expo React Native, Play Store, 5 Tabs) |
-| v3.0.1 | Update-Check Testrelease |
