@@ -108,15 +108,20 @@ class DropboxAdapter(
     }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+        if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val filename = "${UUID.randomUUID()}.jpg"
         val path = "/nagellacke/photos/$filename"
         val arg = """{"path":"$path","mode":"add"}"""
-        client.newCall(
+        val res = client.newCall(
             Request.Builder().url("$content/files/upload")
                 .post(data.toRequestBody("application/octet-stream".toMediaType()))
                 .header("Dropbox-API-Arg", arg)
                 .build()
-        ).execute().close()
+        ).execute()
+        val ok = res.isSuccessful
+        val code = res.code
+        res.close()
+        if (!ok) error("Foto-Upload fehlgeschlagen (HTTP $code)")
         return PhotoUploadResult(filename, path)
     }
 

@@ -161,6 +161,7 @@ class GoogleDriveAdapter(
     }
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+        if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val folderId = ensurePhotoFolder()
         val filename = "${UUID.randomUUID()}.jpg"
         val meta = """{"name":"$filename","parents":["$folderId"]}"""
@@ -172,8 +173,11 @@ class GoogleDriveAdapter(
         val res = client.newCall(
             Request.Builder().url("$uploadApi/files?uploadType=multipart").post(multipart).build()
         ).execute()
+        val ok = res.isSuccessful
+        val code = res.code
         val id = runCatching { json.decodeFromString<DriveFile>(res.body?.string() ?: "").id }.getOrElse { "" }
         res.close()
+        if (!ok || id.isBlank()) error("Foto-Upload fehlgeschlagen (HTTP $code)")
         return PhotoUploadResult(filename, "$driveApi/files/$id?alt=media")
     }
 
