@@ -20,7 +20,7 @@ const FINISH_MIGRATION_BACKUP_KEY = 'nagellacke_v3_backup_pre_finish_migration';
 const FINISH_MIGRATION_SEEN_KEY = 'nagellacke_v3_finish_migration_seen';
 
 function hasLegacyFinish(data: AppData): boolean {
-  return data.polishes.some((p) => !Array.isArray((p as { finish: unknown }).finish));
+  return Array.isArray(data.polishes) && data.polishes.some((p) => !Array.isArray((p as { finish: unknown }).finish));
 }
 
 function migrateFinish(data: AppData): AppData {
@@ -275,12 +275,21 @@ export function useAppData() {
   // rather than going through `sync()` — that callback closes over `data` from
   // this render, which is stale the instant `commit` below fires, and would
   // silently re-upload the very state this is meant to undo.
+  //
+  // The restored snapshot is run back through `migrateFinish` before it ever
+  // reaches live state: every other component in the app (NailBottle,
+  // CollectionPage, StatsPage, ...) now assumes `finish` is an array, so
+  // putting the raw pre-migration (bare-string) shape into `commit` would
+  // crash on the very next render. This still restores the actual pre-
+  // migration field values byte-for-byte — only `finish`'s shape is
+  // normalized to match what the current code expects, which is exactly the
+  // form the automatic migration would have produced from that same data.
   const rollbackFinishMigration = useCallback(async () => {
     const backup = localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY);
     if (!backup) return;
     let restored: AppData;
     try {
-      restored = JSON.parse(backup) as AppData;
+      restored = migrateFinish(JSON.parse(backup) as AppData);
     } catch {
       return;
     }
