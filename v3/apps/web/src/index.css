@@ -5,6 +5,7 @@
 html { overflow-x: hidden; }
 
 :root {
+  color-scheme: dark;
   --md-primary: rgba(255,200,230,0.9);
   --md-primary-container: rgba(255,255,255,0.08);
   --md-on-primary: #0a080f;
