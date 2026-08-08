@@ -1,4 +1,4 @@
-import { loadSyncConfig } from '../useAppData';
+import { loadSyncConfig, persistRefreshedTokens } from '../useAppData';
 
 function authHeaders(): Record<string, string> {
   const apiKey = localStorage.getItem('nagellacke_v3_apikey');
@@ -6,6 +6,41 @@ function authHeaders(): Record<string, string> {
   const cfg = loadSyncConfig();
   if (cfg?.serverToken) return { 'Authorization': `Bearer ${cfg.serverToken}` };
   return {};
+}
+
+/**
+ * Trades the stored refresh token for a fresh access token and persists it,
+ * mirroring ServerAdapter.refreshAccessToken() in @nagellacke/sync (#109) —
+ * this module talks to /api/photos directly instead of going through the
+ * sync adapter, so it needs its own copy of the same retry-on-401 logic
+ * rather than silently failing once the access token expires (#201).
+ */
+async function refreshAccessToken(): Promise<boolean> {
+  const cfg = loadSyncConfig();
+  if (!cfg || cfg.provider !== 'server' || !cfg.serverRefreshToken) return false;
+  try {
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: cfg.serverRefreshToken }),
+    });
+    if (!res.ok) return false;
+    const { token, refreshToken } = await res.json() as { token?: string; refreshToken?: string };
+    if (!token || !refreshToken) return false;
+    persistRefreshedTokens(token, refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** fetch + one transparent retry after refreshing on a 401 (no-op when an
+ *  X-Api-Key is in use, since that never expires and can't be refreshed). */
+async function authedFetch(url: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(url, { ...init, headers: { ...init.headers, ...authHeaders() } });
+  if (res.status !== 401 || localStorage.getItem('nagellacke_v3_apikey')) return res;
+  if (!(await refreshAccessToken())) return res;
+  return fetch(url, { ...init, headers: { ...init.headers, ...authHeaders() } });
 }
 
 /**
@@ -33,9 +68,9 @@ function fileToBase64(file: File): Promise<string> {
 
 export async function uploadPhoto(file: File): Promise<string> {
   const data = await fileToBase64(file);
-  const res = await fetch('/api/photos', {
+  const res = await authedFetch('/api/photos', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, mimeType: file.type }),
   });
   if (!res.ok) throw new Error(`Upload fehlgeschlagen (${res.status})`);
@@ -44,8 +79,7 @@ export async function uploadPhoto(file: File): Promise<string> {
 }
 
 export async function deletePhoto(filename: string): Promise<void> {
-  await fetch(`/api/photos/${encodeURIComponent(filename)}`, {
+  await authedFetch(`/api/photos/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
-    headers: authHeaders(),
   });
 }
