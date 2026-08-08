@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import type { AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
+import { hashRecoveryCode } from './totp';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
@@ -109,12 +111,33 @@ export function migrateGlobalDataToFirstUser(): void {
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
-interface User {
+export interface User {
   username: string;
   password_hash: string;
   created_at: number;
   email?: string;
   token_version?: number;
+  // TOTP (2FA, #174). Zero-migration: readUsers() has no normalizer, so
+  // existing records simply lack these keys and read back as undefined —
+  // every call site that gates on them already treats undefined as "off".
+  totp_secret?: string;          // base32, set by setTotpPending; only "live" once totp_enabled is true
+  totp_enabled?: boolean;        // false/undefined until verify-before-enable succeeds
+  totp_last_counter?: number;    // replay guard — see totp.ts / login/verify
+  recovery_codes?: string[];     // sha256 hex hashes, single-use
+  // Account-scoped brute-force lockout for /api/auth/login/verify (#174
+  // follow-up security review). Independent of source IP and of the
+  // per-challenge (`jti`) attempt cap in index.ts's in-memory mfaAttempts map —
+  // both of those reset for an attacker who rotates IP or mints a fresh
+  // challenge (a fresh challenge just needs the password again, which is
+  // exactly the case this guards: an attacker who already has the password).
+  // Persisted here (rather than in-memory) so a server restart doesn't reset
+  // it — seemed clearly worth doing since the field already lives right next
+  // to totp_last_counter with the same persistence story.
+  totp_fail_count?: number;
+  totp_locked_until?: number;    // epoch ms; login/verify rejects while in the future
+  // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
+  // single fixed RP ID across this app's self-hosted deployment topologies).
+  // webauthn_credentials?: WebAuthnCredential[];
 }
 
 function readUsers(): User[] {
@@ -127,9 +150,12 @@ function readUsers(): User[] {
   }
 }
 
+// Holds password hashes and, as of #174, TOTP secrets and recovery-code
+// hashes — the same trust boundary as .jwt_secret and .api_key (DATA_DIR,
+// host-level trust; no separate encryption layer, see #174 plan §2).
 function writeUsers(users: User[]): void {
   const tmp = `${USERS_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(users));
+  fs.writeFileSync(tmp, JSON.stringify(users), { mode: 0o600 });
   fs.renameSync(tmp, USERS_FILE);
 }
 
@@ -178,6 +204,182 @@ export function updateUserEmail(username: string, email: string): void {
     users[idx] = { ...users[idx], email };
     writeUsers(users);
   }
+}
+
+// ── TOTP (2FA, #174) ─────────────────────────────────────────────────────────
+
+/**
+ * Stores a freshly generated, *unverified* TOTP secret. `totp_enabled` is
+ * deliberately left untouched — enable-before-verify never happens; only
+ * enableTotp() (called after a successful code check) flips it. Calling this
+ * again (e.g. the user re-scans) simply replaces the pending secret.
+ */
+export function setTotpPending(username: string, secret: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], totp_secret: secret, totp_enabled: false };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Flips totp_enabled on and stores recovery-code hashes. Only ever called
+ * after a verify step succeeds.
+ *
+ * Also bumps token_version (security review of #174 — BLOCKER 1): without
+ * this, a refresh token stolen *before* enrollment stays valid forever after
+ * 2FA is turned on, since /api/auth/refresh only checks tokenVersion, never
+ * totp_enabled. Bumping it here invalidates every session that predates
+ * enrollment, including the enrolling user's own — the caller (POST
+ * /api/auth/totp/enable) mints and returns a fresh pair in the same response
+ * so the UI doesn't 401 mid-flow, mirroring what disableTotp() already does.
+ * Returns the new token_version so the caller doesn't need a second read.
+ *
+ * Clears any stale account-lockout counters too, so a locked-out account that
+ * disables and re-enrolls 2FA doesn't start back at zero attempts already
+ * spent.
+ */
+export function enableTotp(username: string, recoveryCodeHashes: string[]): number {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return 0;
+  const nextVersion = (users[idx].token_version ?? 0) + 1;
+  const { totp_fail_count, totp_locked_until, ...rest } = users[idx];
+  void totp_fail_count; void totp_locked_until;
+  users[idx] = {
+    ...rest,
+    totp_enabled: true,
+    totp_last_counter: -1,
+    recovery_codes: recoveryCodeHashes,
+    token_version: nextVersion,
+  };
+  writeUsers(users);
+  return nextVersion;
+}
+
+/**
+ * Clears all TOTP fields and bumps token_version, so a leaked session from
+ * before the disable cannot be used to silently re-enable 2FA (e.g. under an
+ * attacker-controlled authenticator) on the same account.
+ */
+export function disableTotp(username: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    const { totp_secret, totp_enabled, totp_last_counter, recovery_codes, totp_fail_count, totp_locked_until, ...rest } = users[idx];
+    void totp_secret; void totp_enabled; void totp_last_counter; void recovery_codes;
+    void totp_fail_count; void totp_locked_until;
+    users[idx] = { ...rest, token_version: (rest.token_version ?? 0) + 1 };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Replaces recovery-code hashes without touching totp_enabled/totp_last_counter
+ * — used by the "regenerate recovery codes" endpoint, which must not reset the
+ * replay-guard counter the way enableTotp() (re-enrollment) does.
+ */
+export function setRecoveryCodes(username: string, hashes: string[]): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], recovery_codes: hashes };
+    writeUsers(users);
+  }
+}
+
+/** Persists the replay-guard counter after an accepted TOTP code. */
+export function updateTotpCounter(username: string, counter: number): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], totp_last_counter: counter };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Hashes `code`, scans recovery_codes for a match with a constant-time
+ * comparison (avoids a timing side channel across candidates), splices the
+ * matched hash out (single-use) and persists. Returns whether a match was found.
+ */
+export function consumeRecoveryCode(username: string, code: string): boolean {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return false;
+  const hashes = users[idx].recovery_codes ?? [];
+  const candidate = hashRecoveryCode(code);
+  const candidateBuf = Buffer.from(candidate);
+  const matchIdx = hashes.findIndex((h) => {
+    const hBuf = Buffer.from(h);
+    return hBuf.length === candidateBuf.length && crypto.timingSafeEqual(hBuf, candidateBuf);
+  });
+  if (matchIdx < 0) return false;
+  const remaining = hashes.slice(0, matchIdx).concat(hashes.slice(matchIdx + 1));
+  users[idx] = { ...users[idx], recovery_codes: remaining };
+  writeUsers(users);
+  return true;
+}
+
+// Account-scoped brute-force lockout for /api/auth/login/verify (security
+// review of #174, hardening items 3+4). The route rate limit (per IP) and the
+// per-challenge attempt cap in index.ts's mfaAttempts map (per `jti`) both
+// reset for an attacker who rotates IP or mints a fresh challenge — minting a
+// fresh challenge only needs the password again, and this guards exactly the
+// case where the attacker already has it. This counter is keyed on the
+// account alone and persisted here, so it survives both.
+const TOTP_ACCOUNT_MAX_FAILURES = 10;
+const TOTP_ACCOUNT_LOCKOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Records one failed TOTP/recovery-code verification against `username`. On
+ * the Nth consecutive failure (no successful verification in between —
+ * clearTotpFailures resets the counter), locks the account for
+ * TOTP_ACCOUNT_LOCKOUT_MS. Returns the lockout expiry (epoch ms) if the
+ * account is now locked, or 0 otherwise. Already-locked accounts are left
+ * untouched rather than having their lockout extended by further attempts —
+ * the fixed window is enough to make guessing impractical without also
+ * giving an attacker a way to keep a victim locked out indefinitely.
+ */
+export function recordTotpFailure(username: string): number {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return 0;
+  const now = Date.now();
+  const user = users[idx];
+  if (user.totp_locked_until && user.totp_locked_until > now) {
+    return user.totp_locked_until;
+  }
+  const count = (user.totp_fail_count ?? 0) + 1;
+  if (count >= TOTP_ACCOUNT_MAX_FAILURES) {
+    const lockedUntil = now + TOTP_ACCOUNT_LOCKOUT_MS;
+    users[idx] = { ...user, totp_fail_count: 0, totp_locked_until: lockedUntil };
+    writeUsers(users);
+    return lockedUntil;
+  }
+  users[idx] = { ...user, totp_fail_count: count };
+  writeUsers(users);
+  return 0;
+}
+
+/** Resets the failure counter after a successful verification. */
+export function clearTotpFailures(username: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  if (!users[idx].totp_fail_count && !users[idx].totp_locked_until) return;
+  const { totp_fail_count, totp_locked_until, ...rest } = users[idx];
+  void totp_fail_count; void totp_locked_until;
+  users[idx] = rest;
+  writeUsers(users);
+}
+
+/** Returns the lockout expiry (epoch ms) if `username` is currently locked out, or 0 otherwise. */
+export function totpLockedUntil(username: string): number {
+  const user = getUser(username);
+  if (!user?.totp_locked_until) return 0;
+  return user.totp_locked_until > Date.now() ? user.totp_locked_until : 0;
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────

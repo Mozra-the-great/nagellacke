@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import staticFiles from '@fastify/static';
@@ -15,12 +15,15 @@ import {
   getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, getScheduleConfig, setScheduleConfig,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
+  setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
+  recordTotpFailure, clearTotpFailures, totpLockedUntil,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob } from './db';
 import { processAiJobQueue, isAiConfigured } from './ai';
 import type { SearchBackend } from './websearch';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail } from './email';
+import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
@@ -100,6 +103,15 @@ function loadOrCreateSecret(): string {
 }
 const JWT_SECRET = loadOrCreateSecret();
 
+// users.json already holds scrypt password hashes and, as of this PR, TOTP
+// secrets and recovery-code hashes too. writeUsers() (db.ts) now creates it
+// with mode 0600, but that only applies at file *creation* - installs
+// upgrading in place may have an existing users.json created world/group
+// readable under the old default mode. Tighten it once at startup.
+if (fs.existsSync(path.join(DATA_DIR, 'users.json'))) {
+  fs.chmodSync(path.join(DATA_DIR, 'users.json'), 0o600);
+}
+
 // Access tokens were 30d, so a token leaked out of localStorage stayed usable
 // for a month (#109). Shortened to 7d, with a long-lived refresh token the web
 // client trades in silently. 7d rather than minutes because the Android client
@@ -155,7 +167,15 @@ function httpsGet(url: string): Promise<string> {
   });
 }
 
-async function main() {
+/**
+ * Builds and configures the Fastify instance (plugins, auth helpers, every
+ * route) without binding a port or starting any background interval. Split
+ * out of main() so tests can exercise routes via app.inject() (see #174) —
+ * the report-scheduler and AI-job-queue intervals stay in main(), not here,
+ * because moving them into buildApp() would leave dangling timers/open
+ * handles behind every test that calls this function.
+ */
+export async function buildApp(): Promise<FastifyInstance> {
   // Must run before any request is served (#87).
   migrateGlobalDataToFirstUser();
 
@@ -164,7 +184,7 @@ async function main() {
   // this behind a reverse proxy, set trustProxy to that proxy's address specifically
   // — never `true` — or every client collapses onto one rate-limit bucket and an
   // X-Forwarded-For header lets anyone spoof their way around the limits.
-  const app = Fastify({ logger: { level: 'info' } });
+  const app = Fastify({ logger: { level: process.env.VITEST ? 'silent' : 'info' } });
 
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
@@ -230,13 +250,33 @@ async function main() {
     return !!user && (tokenVersion ?? 0) === (user.token_version ?? 0);
   }
 
+  // Pre-existing security hole this feature forced us to notice and fix:
+  // requireJwt/requireApiKeyOrJwt used to accept *any* validly signed JWT with
+  // a matching tokenVersion, regardless of its `typ` claim - only
+  // POST /api/auth/refresh checked `typ`. That meant a refresh token already
+  // authenticated every protected route (/api/sync, /api/auth/me, /api/photos,
+  // ...), since it carries the same secret and a valid tokenVersion. Now that
+  // we're about to mint a third token type (`typ: 'mfa'`, the two-step-login
+  // challenge token, see totp.ts), leaving this open would make the MFA gate
+  // decorative too - the challenge token would authenticate full API access on
+  // its own.
+  //
+  // Legacy tokens minted before the `typ` claim existed have no `typ` at all;
+  // the `?? 'access'` fallback keeps them working as access tokens, so this is
+  // backwards compatible. Only the new `refresh` and `mfa` types are now
+  // rejected on protected routes.
+  function tokenTypeValid(request: FastifyRequest): boolean {
+    const { typ } = request.user as { typ?: string };
+    return (typ ?? 'access') === 'access';
+  }
+
   async function requireJwt(request: FastifyRequest, reply: FastifyReply) {
     try {
       await request.jwtVerify();
     } catch {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
-    if (!tokenVersionValid(request)) {
+    if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
   }
@@ -254,7 +294,7 @@ async function main() {
     } catch {
       return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
     }
-    if (!tokenVersionValid(request)) {
+    if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
       return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
     }
   }
@@ -458,7 +498,13 @@ async function main() {
   }, async (request) => {
     const { username } = request.user as { username: string };
     const user = getUser(username);
-    return { username, email: user?.email ?? null, smtpConfigured: isEmailConfigured() };
+    return {
+      username,
+      email: user?.email ?? null,
+      smtpConfigured: isEmailConfigured(),
+      totpEnabled: !!user?.totp_enabled,
+      recoveryCodesRemaining: user?.recovery_codes?.length ?? 0,
+    };
   });
 
   // PATCH /api/auth/me
@@ -586,6 +632,12 @@ async function main() {
   });
 
   // POST /api/auth/login
+  // If the account has TOTP enabled, this does not return real tokens — it
+  // returns a short-lived MFA challenge that only POST /api/auth/login/verify
+  // accepts (see tokenTypeValid above: a `typ: 'mfa'` token cannot reach any
+  // other protected route). Accounts without 2FA get the unchanged response
+  // shape, so this is fully backwards compatible for existing clients
+  // (including the Android app, which only ever reads `.token`).
   app.post('/api/auth/login', {
     config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
@@ -593,6 +645,9 @@ async function main() {
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (user.totp_enabled) {
+      return { mfaRequired: true, challengeToken: issueMfaChallenge(user.username, user.token_version ?? 0) };
+    }
     return issueTokens(user.username, user.token_version ?? 0);
   });
 
@@ -611,6 +666,216 @@ async function main() {
       refreshToken: app.jwt.sign({ username, tokenVersion, typ: 'refresh' }, { expiresIn: REFRESH_TOKEN_TTL }),
     };
   }
+
+  // ── TOTP two-step login (#174) ────────────────────────────────────────────────
+  //
+  // Two independent brute-force layers on /api/auth/login/verify, because a
+  // per-IP rate limit alone doesn't stop a distributed guesser:
+  //   1. the route-level `config.rateLimit` below (per source IP);
+  //   2. mfaAttempts, keyed on the challenge token's `jti`, independent of IP —
+  //      this is what stops an attacker who rotates IPs but is still stuck
+  //      brute-forcing the *same* challenge, since minting a fresh one needs
+  //      the password again.
+  // In-memory, scoped to this app instance: a restart (or, in tests, a fresh
+  // buildApp()) invalidates all in-flight challenges and their attempt counts
+  // — the same tradeoff already accepted for the rate-limit plugin's
+  // in-memory store. This is backstopped by the account-scoped counter in
+  // db.ts (recordTotpFailure/totpLockedUntil), which IS persisted to
+  // users.json and therefore survives a restart — chosen over just
+  // documenting the gap since it was no extra work once item 3's counter
+  // existed anyway (hardening items 3+4, #174 security review).
+  const MFA_MAX_ATTEMPTS = 5;
+  const mfaAttempts = new Map<string, { count: number; mintedAt: number }>();
+  // Opportunistic pruning so a long-running process doesn't accumulate dead
+  // entries forever. unref() so it never keeps the process (or a test) alive.
+  setInterval(() => {
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    for (const [jti, a] of mfaAttempts) {
+      if (a.mintedAt < cutoff) mfaAttempts.delete(jti);
+    }
+  }, 5 * 60 * 1000).unref();
+
+  function issueMfaChallenge(username: string, tokenVersion: number): string {
+    const jti = uuidv4();
+    mfaAttempts.set(jti, { count: 0, mintedAt: Date.now() });
+    return app.jwt.sign({ username, tokenVersion, typ: 'mfa', jti }, { expiresIn: '5m' });
+  }
+
+  // POST /api/auth/login/verify — second step of a 2FA login. Accepts either
+  // a 6-digit TOTP code or a recovery code.
+  app.post('/api/auth/login/verify', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { challengeToken, code } = request.body as { challengeToken?: string; code?: string };
+    if (!challengeToken || !code) return reply.code(400).send({ error: 'challengeToken und code erforderlich' });
+
+    let payload: { username?: string; tokenVersion?: number; typ?: string; jti?: string };
+    try {
+      payload = app.jwt.verify(challengeToken);
+    } catch {
+      return reply.code(401).send({ error: 'Challenge ungültig oder abgelaufen' });
+    }
+    if (payload.typ !== 'mfa' || !payload.username || !payload.jti) {
+      return reply.code(401).send({ error: 'Challenge ungültig oder abgelaufen' });
+    }
+
+    const attempt = mfaAttempts.get(payload.jti) ?? { count: 0, mintedAt: Date.now() };
+    if (attempt.count >= MFA_MAX_ATTEMPTS) {
+      return reply.code(401).send({ error: 'Zu viele Fehlversuche' });
+    }
+    attempt.count += 1;
+    mfaAttempts.set(payload.jti, attempt);
+
+    const user = getUser(payload.username);
+    if (!user || !user.totp_enabled || (payload.tokenVersion ?? 0) !== (user.token_version ?? 0)) {
+      return reply.code(401).send({ error: 'Challenge ungültig oder abgelaufen' });
+    }
+
+    // Account-scoped lockout (hardening item 3, #174 security review):
+    // independent of source IP and of the per-jti cap above, both of which
+    // reset for an attacker who rotates IP or mints a fresh challenge (which
+    // only needs the password again — the case this guards against an
+    // attacker who already has).
+    const lockedUntil = totpLockedUntil(user.username);
+    if (lockedUntil) {
+      return reply.code(401).send({ error: 'Konto vorübergehend gesperrt — zu viele Fehlversuche' });
+    }
+
+    const trimmedCode = code.trim();
+    let ok = false;
+    if (/^\d{6}$/.test(trimmedCode) && user.totp_secret) {
+      const counter = verifyTotpCode(user.totp_secret, trimmedCode, user.username);
+      // Reject a code whose step has already been accepted — stops a
+      // shoulder-surfed code from being replayed inside its own validity window.
+      if (counter !== null && counter > (user.totp_last_counter ?? -1)) {
+        updateTotpCounter(user.username, counter);
+        ok = true;
+      }
+    } else {
+      ok = consumeRecoveryCode(user.username, trimmedCode);
+    }
+
+    if (!ok) {
+      recordTotpFailure(user.username);
+      return reply.code(401).send({ error: 'Ungültiger Code' });
+    }
+
+    clearTotpFailures(user.username);
+    mfaAttempts.delete(payload.jti);
+    return issueTokens(user.username, user.token_version ?? 0);
+  });
+
+  // POST /api/auth/totp/setup — starts (or restarts) enrollment: generates a
+  // fresh, unverified secret and stores it as pending. Never flips
+  // totp_enabled — only POST /api/auth/totp/enable does, after a successful
+  // code check (verify-before-enable, see #174 plan §5).
+  //
+  // Blocked while 2FA is already enabled: setTotpPending() also clears
+  // totp_enabled, so without this check a session-only call (no password)
+  // could silently turn 2FA off — exactly the bypass /disable's
+  // password-reentry requirement exists to prevent, just routed through a
+  // different endpoint. Disable first, then re-enroll.
+  app.post('/api/auth/totp/setup', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    if (getUser(username)?.totp_enabled) {
+      return reply.code(400).send({ error: '2FA ist bereits aktiviert — zuerst deaktivieren, um neu einzurichten' });
+    }
+    const secret = generateTotpSecret();
+    setTotpPending(username, secret);
+    // otpauthUri/secret must only ever appear in the response body — never as a
+    // query param or path segment, or they'd end up in the server's own access
+    // log (Fastify logs at { level: 'info' }, which includes the request URL).
+    return { secret, otpauthUri: buildOtpauthUri(secret, username), qrLabel: username };
+  });
+
+  // POST /api/auth/totp/enable — verifies a code against the pending secret
+  // from /setup. Only on success does totp_enabled flip true and recovery
+  // codes get generated. On a wrong code, the pending secret is left in place
+  // so the user can retry without re-scanning.
+  //
+  // Requires re-entering the password (security review of #174 — BLOCKER 2):
+  // requireJwt alone means a stolen access token, without the password, was
+  // enough to turn 2FA on with a secret/recovery codes only the attacker
+  // holds — an unrecoverable lockout for the real owner, since this app has
+  // no password-reset flow. /disable and /recovery-codes/regenerate already
+  // required the password for the equivalent reason; /enable was the odd one
+  // out.
+  //
+  // Also blocked while already enabled (same reasoning as /setup above): it
+  // would otherwise regenerate recovery codes and reset the replay-guard
+  // counter on session alone.
+  //
+  // enableTotp() bumps token_version, which invalidates the very access token
+  // this request is authenticated with — a fresh pair is minted and returned
+  // in the same response so the caller isn't logged out mid-enrollment,
+  // mirroring what /disable already does.
+  app.post('/api/auth/totp/enable', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { code, password } = request.body as { code?: string; password?: string };
+    const user = getUser(username);
+    if (user?.totp_enabled) {
+      return reply.code(400).send({ error: '2FA ist bereits aktiviert' });
+    }
+    if (!user || !password || !verifyPassword(password, user.password_hash)) {
+      return reply.code(401).send({ error: 'Passwort erforderlich' });
+    }
+    if (!user.totp_secret) {
+      return reply.code(400).send({ error: 'Kein 2FA-Setup gestartet — zuerst /totp/setup aufrufen' });
+    }
+    if (!code || verifyTotpCode(user.totp_secret, code.trim(), username) === null) {
+      return reply.code(401).send({ error: 'Ungültiger Code' });
+    }
+    const { codes, hashes } = generateRecoveryCodes();
+    const newTokenVersion = enableTotp(username, hashes);
+    return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion) };
+  });
+
+  // POST /api/auth/totp/disable — requires re-entering the password (not just
+  // having a session), so a stolen unlocked tab can't silently disable 2FA.
+  // Bumps token_version (via disableTotp), which would otherwise kill the
+  // caller's own access token mid-flow — a fresh token pair is minted and
+  // returned in the same response so the UI doesn't silently 401 right after.
+  app.post('/api/auth/totp/disable', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { password } = request.body as { password?: string };
+    const user = getUser(username);
+    if (!user || !password || !verifyPassword(password, user.password_hash)) {
+      return reply.code(401).send({ error: 'Passwort erforderlich' });
+    }
+    disableTotp(username);
+    const updated = getUser(username);
+    return { ok: true, ...issueTokens(username, updated?.token_version ?? 0) };
+  });
+
+  // POST /api/auth/totp/recovery-codes/regenerate — invalidates all previous
+  // recovery codes. Does not touch totp_last_counter (unlike enableTotp),
+  // since this isn't a re-enrollment.
+  app.post('/api/auth/totp/recovery-codes/regenerate', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { password } = request.body as { password?: string };
+    const user = getUser(username);
+    if (!user || !password || !verifyPassword(password, user.password_hash)) {
+      return reply.code(401).send({ error: 'Passwort erforderlich' });
+    }
+    if (!user.totp_enabled) {
+      return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
+    }
+    const { codes, hashes } = generateRecoveryCodes();
+    setRecoveryCodes(username, hashes);
+    return { recoveryCodes: codes };
+  });
 
   // POST /api/auth/refresh — trade a refresh token for a fresh access token.
   // Deliberately not behind requireJwt: the caller presents a refresh token in
@@ -830,6 +1095,12 @@ async function main() {
     }
   });
 
+  return app;
+}
+
+async function main() {
+  const app = await buildApp();
+
   // ── Report scheduler ──────────────────────────────────────────────────────────
   // Checks every hour whether a scheduled report should be sent.
   setInterval(async () => {
@@ -914,7 +1185,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Skipped under vitest (VITEST is set automatically by the test runner) so
+// importing this module for buildApp() in integration tests doesn't also
+// bind a port and start the background intervals.
+if (!process.env.VITEST) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

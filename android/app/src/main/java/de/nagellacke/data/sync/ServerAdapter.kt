@@ -77,9 +77,25 @@ class AuthRepository(private val baseUrl: String) {
             .create(ServerApi::class.java)
     }
 
-    suspend fun login(username: String, password: String): String =
-        api.login(LoginRequest(username, password)).token
+    // Two-factor accounts (server #174) return { mfaRequired: true,
+    // challengeToken } instead of a token here. There is no code-entry screen
+    // in this app yet, so surface a clear, actionable error instead of a null
+    // token reaching the caller — the alternative before the LoginResponse
+    // nullability fix was a hard crash on this exact response.
+    suspend fun login(username: String, password: String): String {
+        val response = api.login(LoginRequest(username, password))
+        if (response.mfaRequired || response.token == null) {
+            throw IllegalStateException(
+                "Dieses Konto hat Zwei-Faktor-Authentifizierung (2FA) aktiviert. " +
+                    "Die Android-App unterstützt 2FA-Login noch nicht — bitte über die Web-Oberfläche anmelden."
+            )
+        }
+        return response.token
+    }
 
-    suspend fun register(username: String, password: String): String =
-        api.register(LoginRequest(username, password)).token
+    suspend fun register(username: String, password: String): String {
+        val response = api.register(LoginRequest(username, password))
+        return response.token
+            ?: throw IllegalStateException("Registrierung fehlgeschlagen: kein Token erhalten.")
+    }
 }

@@ -9,7 +9,21 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 @Serializable data class LoginRequest(val username: String, val password: String)
-@Serializable data class LoginResponse(val token: String)
+
+// All fields are nullable/defaulted — as of server #174, an account with TOTP
+// 2FA enabled gets { mfaRequired: true, challengeToken } instead of { token,
+// refreshToken } from POST /api/auth/login. kotlinx.serialization throws
+// MissingFieldException on a non-optional field that's absent from the JSON,
+// so a non-nullable `token` here would hard-crash the login call (not just
+// fail gracefully) the moment any user enables 2FA from the web while still
+// running this app. There is no code-entry screen yet (see AuthRepository) —
+// this only stops the crash and surfaces a clear error instead.
+@Serializable data class LoginResponse(
+    val token: String? = null,
+    val refreshToken: String? = null,
+    val mfaRequired: Boolean = false,
+    val challengeToken: String? = null,
+)
 @Serializable data class SyncRequest(val data: AppData, val clientTime: Long)
 @Serializable data class SyncResponse(val data: AppData)
 @Serializable data class PhotoRequest(val data: String, val mimeType: String)
