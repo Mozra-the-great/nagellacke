@@ -11,7 +11,7 @@ fun filterPolishes(polishes: List<Polish>, f: FilterState): List<Polish> =
     polishes.filter { p ->
         if (p.deletedAt != null) return@filter false
         if (f.status != null && p.status != f.status) return@filter false
-        if (f.finish != null && p.finish != f.finish) return@filter false
+        if (f.finish != null && !p.finish.contains(f.finish)) return@filter false
         if (f.brand.isNotBlank() && p.brand != f.brand) return@filter false
         if (f.category.isNotBlank() && !p.categories.contains(f.category)) return@filter false
         if (f.search.isNotBlank()) {
@@ -19,7 +19,7 @@ fun filterPolishes(polishes: List<Polish>, f: FilterState): List<Polish> =
             p.name.lowercase().contains(q) ||
                 p.brand.lowercase().contains(q) ||
                 p.num.lowercase().contains(q) ||
-                p.finish.label.lowercase().contains(q) ||
+                p.finish.any { it.label.lowercase().contains(q) } ||
                 p.notes.lowercase().contains(q)
         } else true
     }

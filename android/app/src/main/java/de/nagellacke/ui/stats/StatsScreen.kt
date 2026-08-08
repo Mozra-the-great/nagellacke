@@ -96,7 +96,9 @@ fun StatsScreen(vm: StatsViewModel = hiltViewModel()) {
                 Spacer(Modifier.height(20.dp))
                 Text("Nach Finish", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
-                val byFinish = active.groupingBy { it.finish }.eachCount()
+                // Counts a polish once per finish it carries (a "Top Coat" + "Glitter" polish
+                // adds one to each bucket), matching StatsPage.tsx's finish tally on the web app.
+                val byFinish = active.flatMap { it.finish }.groupingBy { it }.eachCount()
                 FINISH_OPTIONS.filter { (byFinish[it] ?: 0) > 0 }.forEach { f ->
                     BarRow("${f.icon} ${f.label}", byFinish[f] ?: 0, active.size, MaterialTheme.colorScheme.primary)
                 }

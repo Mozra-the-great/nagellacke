@@ -1,17 +1,18 @@
 package de.nagellacke.data.local
 
 import de.nagellacke.domain.model.Category
-import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
 import de.nagellacke.domain.model.PolishStatus
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.domain.model.StickerType
 
-// FinishType stored as label string (e.g. "Gel Look") for readability
+// FinishType list stored as a JSON array of labels (e.g. ["Top Coat","Glitter"]) via
+// FinishListConverter, which already guarantees a non-empty list, so no extra normalization
+// needed here.
 fun PolishEntity.toDomain() = Polish(
     id = id, name = name, brand = brand, num = num, color = color,
-    finish = FinishType.entries.firstOrNull { it.label == finish } ?: FinishType.Classic,
+    finish = finish,
     status = PolishStatus.entries.firstOrNull { it.name.equals(status, ignoreCase = true) } ?: PolishStatus.Ok,
     count = count, categories = categories, notes = notes, rating = rating, photo = photo,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,
@@ -19,7 +20,7 @@ fun PolishEntity.toDomain() = Polish(
 
 fun Polish.toEntity() = PolishEntity(
     id = id, name = name, brand = brand, num = num, color = color,
-    finish = finish.label,
+    finish = finish,
     status = status.name,
     count = count, categories = categories, notes = notes, rating = rating, photo = photo,
     createdAt = createdAt, updatedAt = updatedAt, deletedAt = deletedAt,

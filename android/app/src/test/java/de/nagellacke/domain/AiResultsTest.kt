@@ -15,7 +15,7 @@ class AiResultsTest {
 
     @Test fun `parses color and finish when both present and finish label matches`() {
         val job = doneJob("""{"color":"#ffc0cb","finish":"Classic"}""")
-        assertEquals(AutofillResult(color = "#ffc0cb", finish = FinishType.Classic), parseAutofillResult(job))
+        assertEquals(AutofillResult(color = "#ffc0cb", finish = listOf(FinishType.Classic)), parseAutofillResult(job))
     }
 
     @Test fun `parses color only when finish is missing`() {
@@ -30,7 +30,7 @@ class AiResultsTest {
 
     @Test fun `finish label with a space (SerialName-only value) still matches`() {
         val job = doneJob("""{"finish":"Gel Look"}""")
-        assertEquals(AutofillResult(color = null, finish = FinishType.GelLook), parseAutofillResult(job))
+        assertEquals(AutofillResult(color = null, finish = listOf(FinishType.GelLook)), parseAutofillResult(job))
     }
 
     @Test fun `returns null when neither field is present`() {

@@ -36,7 +36,7 @@ val STICKER_STYLE_SUGGESTIONS = listOf(
 
 fun defaultPolish(now: Long): Polish = Polish(
     id = "", name = "", brand = "", num = "",
-    color = "#ff6699", finish = FinishType.Classic, status = PolishStatus.Ok,
+    color = "#ff6699", finish = listOf(FinishType.Classic), status = PolishStatus.Ok,
     count = 1, categories = emptyList(), notes = "", rating = 0, photo = null,
     createdAt = now, updatedAt = now,
 )

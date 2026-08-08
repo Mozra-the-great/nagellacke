@@ -169,7 +169,7 @@ fun generateReportHtml(data: AppData, period: ReportPeriod, ref: LocalDate, phot
     val ratedPolishes = activePolishes.filter { it.rating > 0 }
     val avgRating = if (ratedPolishes.isNotEmpty()) String.format(Locale.US, "%.1f", ratedPolishes.map { it.rating }.average()) else null
 
-    val finishCounts = activePolishes.groupingBy { it.finish.label }.eachCount()
+    val finishCounts = activePolishes.flatMap { it.finish }.groupingBy { it.label }.eachCount()
     val topFinishes = finishCounts.entries.sortedByDescending { it.value }.take(5)
     val maxFinish = topFinishes.firstOrNull()?.value ?: 1
 
@@ -191,7 +191,7 @@ fun generateReportHtml(data: AppData, period: ReportPeriod, ref: LocalDate, phot
               <div class="polish-body">
                 <div class="polish-name">${escHtml(p.name)}</div>
                 <div class="polish-brand">${escHtml(p.brand)}${if (p.num.isNotBlank()) " · ${escHtml(p.num)}" else ""}</div>
-                <span class="polish-finish">${escHtml(p.finish.label)}</span>
+                ${p.finish.joinToString(" ") { "<span class=\"polish-finish\">${escHtml(it.label)}</span>" }}
                 ${if (p.rating > 0) "<div class=\"polish-stars\">${stars(p.rating)}</div>" else ""}
                 ${if (p.notes.isNotBlank()) "<div class=\"polish-notes\">${escHtml(p.notes)}</div>" else ""}
               </div></div>"""
