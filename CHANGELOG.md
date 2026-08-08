@@ -7,6 +7,15 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Web: echtes Admin-Panel, alle Server-Einstellungen aus der Web-App erreichbar**: neue Rolle `admin`/`user` je Benutzerkonto, gated per JWT statt des rohen `X-Api-Key`. Der erste registrierte Account wird automatisch Admin (bei einem Neustart eines bestehenden Servers ebenso — `migrateFirstUserToAdmin()`); alternativ tauscht `POST /api/admin/bootstrap` den `X-Api-Key` einmalig gegen ein Admin-Konto ein. Neue Seite „Admin" (nur für Admins sichtbar) mit Benutzerverwaltung (anlegen/Rolle ändern/löschen), Server-Einstellungen (Registrierung, SMTP inkl. Testmail, KI-Anbieter inkl. Verbindungstest), API-Schlüssel-Rotation, Update-Installation und Audit-Log. Neuer Store `data/server_settings.json`: ein im Panel gesetzter Wert (SMTP, Registrierung) überschreibt die entsprechende Umgebungsvariable, die weiterhin als Fallback dient. (#173)
+
+### Geändert
+- **`POST /api/ai/settings` erfordert jetzt eine Admin-Rolle** statt eines beliebigen eingeloggten Kontos — vorher konnte jedes registrierte Haushaltsmitglied den KI-Anbieter/die API-Schlüssel für alle ändern; bewusste Verschärfung im Zuge von #173, nicht nur eine Nebenwirkung.
+- `GET /api/update/check`, `GET /api/logs` und `POST /api/admin/api-key/rotate` akzeptieren jetzt zusätzlich zum `X-Api-Key` ein Admin-JWT (additiv, `X-Api-Key` funktioniert unverändert weiter). `POST /api/update/apply` akzeptiert ein Admin-JWT nur zusammen mit einer frischen Passwort-Bestätigung im Request-Body — dieser Endpunkt bleibt als dokumentierte RCE-Fläche (`git pull` + `npm install`) bewusst strenger.
+
+Restart-pflichtige Einstellungen (`PORT`, `ALLOWED_ORIGIN`, `SERVICE_NAME`, `JWT_SECRET`, `DATA_DIR`, `NODE_ENV`, `APP_URL`) sind im Admin-Panel weiterhin nur informativ sichtbar, nicht live editierbar — siehe Begründung in der Server-Einstellungen-Sektion und im PR-Beschreibung von #173.
+
 ## [3.3.0-rc.1] – 2026-08-08
 
 Erste Vorabversion von 3.3.0. Fünf Fixes plus eine Verbesserung aus einem gezielten Bugfix-Durchlauf über die Web-App und den Server.
