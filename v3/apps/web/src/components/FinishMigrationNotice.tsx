@@ -60,9 +60,12 @@ export default function FinishMigrationNotice({ onRollback, onClose }: FinishMig
           )}
           {confirming && (
             <p className={styles.warning}>
-              Achtung: Ein Rückgängigmachen setzt deine Sammlung exakt auf den
-              Stand direkt vor der Umstellung zurück. Alle Änderungen, die du
-              seitdem gemacht hast, gehen dabei verloren.
+              Achtung: Ein Rückgängigmachen setzt dein lokales Gerät auf den
+              Stand direkt vor der Umstellung zurück und synchronisiert das
+              anschließend mit dem Server. Änderungen, die du seitdem nur auf
+              diesem Gerät gemacht hast, gehen dabei verloren — neuere Einträge
+              von anderen Geräten, die bereits mit dem Server synchronisiert
+              wurden, bleiben erhalten.
             </p>
           )}
         </div>

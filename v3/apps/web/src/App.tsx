@@ -24,8 +24,14 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
-  const [showFinishMigrationNotice, setShowFinishMigrationNotice] = useState(shouldShowFinishMigrationNotice);
   const appData = useAppData();
+  // `useAppData()` above runs `loadLocal()` synchronously as part of its own
+  // `useState` initializer, which is what sets the migration-backup flag
+  // `shouldShowFinishMigrationNotice()` reads. Must be initialized after that
+  // call so the notice can already appear on the very first render post-
+  // upgrade, instead of only from the next app start (days later for an
+  // installed PWA).
+  const [showFinishMigrationNotice, setShowFinishMigrationNotice] = useState(shouldShowFinishMigrationNotice);
 
   const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
   const ownedPolishes = polishes.filter((p) => p.status === 'ok');

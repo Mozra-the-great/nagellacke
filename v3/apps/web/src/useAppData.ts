@@ -27,6 +27,16 @@ function migrateFinish(data: AppData): AppData {
   return { ...data, polishes: data.polishes.map((p) => ({ ...p, finish: normalizeFinish(p.finish) })) };
 }
 
+// Pure merge step behind `importMerge()`, split out so it's testable without
+// mounting the hook. Runs the incoming payload through `migrateFinish` before
+// merging, since callers (e.g. SettingsPage's backup/ZIP import) only
+// validate that `polishes` is an array, not the shape of each polish's
+// `finish` — a backup exported before the finish migration can still contain
+// bare-string `finish` values.
+export function mergeImport(prev: AppData, imported: AppData): AppData {
+  return mergeData(prev, migrateFinish(imported));
+}
+
 function loadLocal(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -241,9 +251,9 @@ export function useAppData() {
     }));
   }, [commit]);
 
-  // Direct import (merge imported JSON into local data)
+  // Direct import (merge imported JSON into local data).
   const importMerge = useCallback((merged: AppData) => {
-    commit((prev) => mergeData(prev, merged));
+    commit((prev) => mergeImport(prev, merged));
   }, [commit]);
 
   // Sync
