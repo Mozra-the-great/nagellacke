@@ -28,19 +28,25 @@ function buildPolishRefs(selectedIds: string[], available: Polish[]): PolishRef[
   return selectedIds
     .map((id) => available.find((p) => p.id === id))
     .filter((p): p is Polish => !!p)
-    .map((p) => ({ name: p.name, brand: p.brand, color: p.color }));
+    .map((p) => ({ id: p.id, name: p.name, brand: p.brand, color: p.color }));
 }
 
 /**
- * Best-effort reverse lookup for editing an entry saved before ids were tracked (or with
- * legacy `polishes` name list): PolishRef only stores name/brand/color, so two polishes
- * sharing both are indistinguishable here. Consumes one matching, not-yet-used polish id per
- * ref so duplicate-named refs resolve to distinct ids where possible instead of collapsing.
+ * Reverse lookup for editing an entry: refs written after this fix carry the
+ * polish `id` directly, so a rename/rebrand of the polish can't break the
+ * link (same fix already applied to StickerRef). Refs saved before ids were
+ * tracked (or from the legacy `polishes` name list) fall back to a
+ * best-effort name+brand match, which stays ambiguous for polishes sharing
+ * both — consumes one matching, not-yet-used polish id per ref so
+ * duplicate-named refs resolve to distinct ids where possible instead of
+ * collapsing.
  */
 function resolvePolishIds(refs: PolishRef[], available: Polish[]): string[] {
   const used = new Set<string>();
   return refs.flatMap((r) => {
-    const match = available.find((p) => p.name === r.name && p.brand === r.brand && !used.has(p.id));
+    const match = r.id
+      ? available.find((p) => p.id === r.id)
+      : available.find((p) => p.name === r.name && p.brand === r.brand && !used.has(p.id));
     if (!match) return [];
     used.add(match.id);
     return [match.id];
