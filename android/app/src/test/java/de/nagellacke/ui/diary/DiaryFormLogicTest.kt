@@ -20,7 +20,7 @@ class DiaryFormLogicTest {
 
     private fun polish(id: String, name: String, brand: String = "OPI", color: String = "#ff6699") = Polish(
         id = id, name = name, brand = brand, num = "", color = color,
-        finish = FinishType.Classic, status = PolishStatus.Ok, createdAt = 1L, updatedAt = 1L,
+        finish = listOf(FinishType.Classic), status = PolishStatus.Ok, createdAt = 1L, updatedAt = 1L,
     )
 
     @Test fun `resolveStickerRefs returns null entry as empty`() {

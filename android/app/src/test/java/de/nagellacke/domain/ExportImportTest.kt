@@ -14,7 +14,7 @@ import org.junit.Test
 class ExportImportTest {
     private fun polish(id: String, photo: String? = null) = Polish(
         id = id, name = id, brand = "", num = "", color = "#ff0000",
-        finish = FinishType.Classic, status = PolishStatus.Ok, photo = photo, createdAt = 1L, updatedAt = 1L,
+        finish = listOf(FinishType.Classic), status = PolishStatus.Ok, photo = photo, createdAt = 1L, updatedAt = 1L,
     )
 
     private fun sticker(id: String, photo: String? = null) = Sticker(

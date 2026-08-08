@@ -4,12 +4,15 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import de.nagellacke.domain.model.FinishType
 import de.nagellacke.domain.model.ManicurePhotos
 import de.nagellacke.domain.model.PolishRef
 import de.nagellacke.domain.model.StickerRef
+import de.nagellacke.domain.model.finishListFromJsonElement
 import de.nagellacke.domain.model.manicurePhotosFromJsonElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 
 class ListConverter {
     private val json = Json
@@ -43,6 +46,20 @@ class StickerRefListConverter {
         runCatching { json.decodeFromString<List<StickerRef>>(raw) }.getOrDefault(emptyList())
 }
 
+class FinishListConverter {
+    private val json = Json
+
+    @TypeConverter
+    fun fromFinishList(list: List<FinishType>): String = json.encodeToString(list)
+
+    // Reads both the current JSON-array shape and, defensively, a lingering pre-migration
+    // bare-label string, so a row that somehow slipped past MIGRATION_2_3 doesn't crash reads.
+    @TypeConverter
+    fun toFinishList(raw: String): List<FinishType> =
+        runCatching { finishListFromJsonElement(json.parseToJsonElement(raw)) }
+            .getOrElse { finishListFromJsonElement(JsonPrimitive(raw)) }
+}
+
 class ManicurePhotosConverter {
     private val json = Json
 
@@ -57,14 +74,14 @@ class ManicurePhotosConverter {
 }
 
 @Entity(tableName = "polishes")
-@TypeConverters(ListConverter::class)
+@TypeConverters(ListConverter::class, FinishListConverter::class)
 data class PolishEntity(
     @PrimaryKey val id: String,
     val name: String,
     val brand: String,
     val num: String,
     val color: String,
-    val finish: String,
+    val finish: List<FinishType>,
     val status: String,
     val count: Int,
     val categories: List<String>,
