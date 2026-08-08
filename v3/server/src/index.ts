@@ -340,7 +340,10 @@ async function main() {
 
     const latestVersion = await Promise.race([fetchLatest(), deadline]);
     const semverGt = (a: string, b: string): boolean => {
-      const p = (v: string) => v.split('.').map(Number);
+      // Strip pre-release suffixes (e.g. "-rc.1") before parsing - otherwise
+      // Number("0-rc") is NaN and every comparison against a running
+      // pre-release build silently evaluates to false (#203).
+      const p = (v: string) => v.split('-')[0].split('.').map(Number);
       const [aMaj, aMin, aPat] = p(a);
       const [bMaj, bMin, bPat] = p(b);
       return aMaj !== bMaj ? aMaj > bMaj : aMin !== bMin ? aMin > bMin : aPat > bPat;
