@@ -14,10 +14,10 @@ type Tab = 'collection' | 'cart' | 'stickers' | 'diary' | 'stats' | 'settings';
 
 const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'collection', label: '◈ Nagellack' },
-  { id: 'cart',       label: '◈ Einkaufswagen' },
   { id: 'stickers',   label: '◈ Sticker' },
-  { id: 'stats',      label: '◈ Statistiken' },
   { id: 'diary',      label: '◈ Tagebuch' },
+  { id: 'cart',       label: '◈ Einkaufswagen' },
+  { id: 'stats',      label: '◈ Statistiken' },
   { id: 'settings',   label: '◈ Mehr' },
 ];
 
