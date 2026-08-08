@@ -265,6 +265,11 @@ export function setAiConfig(config: AiConfig): void {
 export type AiJobType = 'autofill' | 'smart-cart';
 export type AiJobStatus = 'pending' | 'running' | 'done' | 'error';
 
+export interface AiJobTraceStep {
+  round: number;
+  toolCalls: { name: string; query: string }[];
+}
+
 export interface AiJob {
   id: string;
   type: AiJobType;
@@ -283,6 +288,7 @@ export interface AiJob {
     prompt?: string;
   };
   result?: unknown;
+  trace?: AiJobTraceStep[];
   error?: string;
   createdAt: number;
   updatedAt: number;

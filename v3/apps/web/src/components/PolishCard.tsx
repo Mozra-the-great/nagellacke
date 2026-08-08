@@ -27,8 +27,13 @@ export default function PolishCard({
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onEdit()}
       aria-label={`${polish.name} bearbeiten`}
     >
-      {count > 1 && (
-        <span className={styles.countBadge}>{count}×</span>
+      {(count > 1 || polish.status === 'wish') && (
+        <div className={styles.topBadges}>
+          {polish.status === 'wish' && (
+            <span className={styles.wishBadge} title="Wunschliste">🛒</span>
+          )}
+          {count > 1 && <span className={styles.countBadge}>{count}×</span>}
+        </div>
       )}
 
       <div className={styles.bottle}>

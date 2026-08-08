@@ -33,6 +33,7 @@ export interface Polish {
 }
 
 export interface PolishRef {
+  id?: string; // absent on refs written before ids were tracked (legacy entries)
   name: string;
   brand?: string;
   color?: string;

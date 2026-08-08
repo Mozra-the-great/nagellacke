@@ -7,6 +7,24 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.3.0-rc.1] – 2026-08-08
+
+Erste Vorabversion von 3.3.0. Fünf Fixes plus eine Verbesserung aus einem gezielten Bugfix-Durchlauf über die Web-App und den Server.
+
+### Hinzugefügt
+- **Web: Smart-Cart zeigt Fortschritt und KI-Recherche-Verlauf**: das Losschicken der Smart-Cart-KI zeigte bisher nur einen deaktivierten Button mit statischem Text „KI recherchiert…" für bis zu 180 Sekunden. Jede Tool-Aufruf-Runde wird jetzt laufend auf dem Job persistiert (`AiJob.trace`) statt erst am Ende, `pollAiJob` meldet jeden Poll statt nur den letzten, und die Oberfläche zeigt einen Spinner plus ein aufklappbares Panel mit den bisherigen Suchanfragen. (#185)
+
+### Fixed
+- **Web: Finish-Dropdown am PC unlesbar (weißer Text auf weißem Hintergrund)**: der aufgeklappten `<select>`-Optionsliste fehlte ein `color-scheme`, obwohl die App reines Dark-Theme ist — Browser rendern native Formularelemente dadurch mit ihrer hellen Standardpalette. `color-scheme: dark` auf `:root` behebt das für alle `<select>`-Felder der App, nicht nur „Finish". (#193)
+- **Web: Farbige Top Coats (und andere Mehrwort-Finishes) wurden schwarz angezeigt**: die SVG-Flaschendarstellung baut ihre Gradient-Element-IDs direkt aus dem Finish-Wert — „Top Coat", „Base Coat" und „Gel Look" enthalten ein Leerzeichen, das in einer Element-ID ungültig ist. Die resultierende `url(#...)`-Referenz löste sich nicht auf, `fill` fiel still auf seinen SVG-Startwert Schwarz zurück statt auf die tatsächliche Lackfarbe. Bestätigt durch Pixel-Abgleich eines betroffenen Screenshots gegen den gespeicherten Hex-Wert. Alle einwortigen Finishes waren nie betroffen. (#191)
+- **Web: Statistik zählte Wunschlisten- und „Nicht mehr da"-Lacke mit**: Farbpalette, KPI „Lacke", „Nach Finish", „Top-Marken" und „Bestbewertet" liefen über alle nicht gelöschten Lacke statt nur über tatsächlich besessene (`status === 'ok'`) — analog zum bereits gefixten Header-Zähler. „Nach Status" zeigt weiterhin absichtlich alle Status. (#190)
+- **Web: Wunschlisten-Lacke in der Übersicht visuell nicht von besessenen zu unterscheiden**: einziger Unterschied war eine leichte Opacity-Abstufung, im Foto-Modus (Standardansicht) gar keine. Neues, immer sichtbares 🛒-Badge auf der Karte, oben links neben dem Mengen-Badge gestapelt (oben rechts ist durch den Lösch-Button belegt). (#186)
+
+Alle Fixes samt genauer Root-Cause pro Issue: [#185](https://github.com/Mozra-the-great/nagellacke/issues/185), [#186](https://github.com/Mozra-the-great/nagellacke/issues/186), [#190](https://github.com/Mozra-the-great/nagellacke/issues/190), [#191](https://github.com/Mozra-the-great/nagellacke/issues/191), [#193](https://github.com/Mozra-the-great/nagellacke/issues/193).
+
+### Ausstehend
+- **#192 (Mehrfachauswahl bei „Finish")** ist bewusst nicht Teil dieser Vorabversion: die Web/Server-Seite ist fertig, die Android-App braucht noch eine eigene Room-Migration. Folgt als eigener Zyklus.
+
 ## [3.2.0] – 2026-08-07
 
 Finale 3.2.0, gegenüber rc.5 vier weitere Fixes aus einem zweiten, vollständigen QA-Durchlauf über die Web-App (Chrome-Extension, echte Server-Interaktion statt nur Code-Review).

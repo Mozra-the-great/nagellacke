@@ -10,30 +10,31 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
   const { polishes, stickers, manicures } = appData.data;
 
   const active = useMemo(() => polishes.filter((p) => !p.deletedAt), [polishes]);
+  const owned = useMemo(() => active.filter((p) => p.status === 'ok'), [active]);
   const activeStickers = useMemo(() => stickers.filter((s) => !s.deletedAt), [stickers]);
   const activeManicures = useMemo(() => manicures.filter((m) => !m.deletedAt), [manicures]);
 
   const byFinish = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const p of active) {
+    for (const p of owned) {
       for (const f of p.finish) counts[f] = (counts[f] ?? 0) + 1;
     }
     return counts;
-  }, [active]);
+  }, [owned]);
   const byStatus = useMemo(() => countBy(active, (p) => p.status), [active]);
   const byBrand = useMemo(() => {
-    const counts = countBy(active, (p) => p.brand || 'Unbekannt');
+    const counts = countBy(owned, (p) => p.brand || 'Unbekannt');
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  }, [active]);
+  }, [owned]);
 
   const topRated = useMemo(
-    () => [...active].filter((p) => (p.rating ?? 0) > 0).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 5),
-    [active],
+    () => [...owned].filter((p) => (p.rating ?? 0) > 0).sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 5),
+    [owned],
   );
 
   const colorPalette = useMemo(
-    () => [...active].sort((a, b) => hexToHue(a.color) - hexToHue(b.color)),
-    [active],
+    () => [...owned].sort((a, b) => hexToHue(a.color) - hexToHue(b.color)),
+    [owned],
   );
 
   return (
@@ -43,7 +44,7 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
       </header>
 
       <div className={styles.kpiRow}>
-        <KpiCard num={active.length} label="Lacke" />
+        <KpiCard num={owned.length} label="Lacke" />
         <KpiCard num={activeStickers.length} label="Sticker" />
         <KpiCard num={activeManicures.length} label="Maniküren" />
       </div>
@@ -66,7 +67,7 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
         <h2 className={styles.sectionTitle}>Nach Finish</h2>
         <BarChart
           data={FINISH_OPTIONS.map((o) => ({ label: `${o.icon} ${o.label}`, value: byFinish[o.value] ?? 0 }))}
-          total={active.length}
+          total={owned.length}
         />
       </section>
 
@@ -82,7 +83,7 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
         <h2 className={styles.sectionTitle}>Top-Marken</h2>
         <BarChart
           data={byBrand.map(([label, value]) => ({ label, value }))}
-          total={active.length}
+          total={owned.length}
         />
       </section>
 

@@ -4,7 +4,7 @@ import { FINISH_OPTIONS } from '@nagellacke/core';
 import {
   getAiConfig, getNextPendingAiJob, updateAiJob, getData, setData,
 } from './db';
-import type { AiConfig, AiJob } from './db';
+import type { AiConfig, AiJob, AiJobTraceStep } from './db';
 import type { WebSearchConfig } from './websearch';
 import { isWebSearchConfigured } from './websearch';
 import {
@@ -56,12 +56,17 @@ function toFreeModel(model: string): string {
   return model.endsWith(':free') ? model : `${model}:free`;
 }
 
+/** Reports one completed tool-call round while a job is still running, so the
+ *  client can show live progress instead of a silent wait. */
+type OnRound = (info: { round: number; toolCalls: { name: string; query: string }[] }) => void;
+
 export async function callOpenRouter(
   config: AiConfig['openrouter'],
   systemPrompt: string,
   userPrompt: string,
   webSearch: boolean,
   search: WebSearchConfig,
+  onRound?: OnRound,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('OpenRouter-API-Schlüssel fehlt');
   let model = config.model || 'openrouter/auto';
@@ -115,6 +120,8 @@ export async function callOpenRouter(
       return content;
     }
 
+    onRound?.({ round, toolCalls: calls.map((c) => ({ name: c.name, query: c.query })) });
+
     // Echo the assistant turn back verbatim, then one tool result per call —
     // the API rejects a tool message that doesn't answer a preceding call.
     messages.push(message);
@@ -137,6 +144,7 @@ export async function callGemini(
   userPrompt: string,
   webSearch: boolean,
   search: WebSearchConfig,
+  onRound?: OnRound,
 ): Promise<string> {
   if (!config.apiKey) throw new Error('Gemini-API-Schlüssel fehlt');
   // "gemini-2.5-flash" is closed to new API keys — it answers 404 "no longer
@@ -183,6 +191,8 @@ export async function callGemini(
       }
       return content;
     }
+
+    onRound?.({ round, toolCalls: calls.map((c) => ({ name: c.name, query: c.query })) });
 
     contents.push({ role: 'model', parts });
     contents.push({
@@ -243,10 +253,11 @@ async function callLlm(
   systemPrompt: string,
   userPrompt: string,
   webSearch = true,
+  onRound?: OnRound,
 ): Promise<LlmAnswer> {
   const call = (useSearch: boolean) => config.provider === 'gemini'
-    ? callGemini(config.gemini, systemPrompt, userPrompt, useSearch, search)
-    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, useSearch, search);
+    ? callGemini(config.gemini, systemPrompt, userPrompt, useSearch, search, onRound)
+    : callOpenRouter(config.openrouter, systemPrompt, userPrompt, useSearch, search, onRound);
 
   const attemptSearch = webSearch && webSearchAvailable(search);
   if (!attemptSearch) return { text: await call(false), webSearchUsed: false };
@@ -282,11 +293,11 @@ interface AutofillResult {
   finish: FinishType;
 }
 
-async function researchAutofill(config: AiConfig, search: WebSearchConfig, polish: { name: string; brand: string; num: string }): Promise<AutofillResult & { webSearchUsed: boolean }> {
+async function researchAutofill(config: AiConfig, search: WebSearchConfig, polish: { name: string; brand: string; num: string }, onRound?: OnRound): Promise<AutofillResult & { webSearchUsed: boolean }> {
   const canResearch = webSearchAvailable(search);
   const system = `Du bist ein Assistent, der Fakten zu Nagellacken ${canResearch ? 'recherchiert' : 'aus deinem Modellwissen beantwortet'}. ${canResearch ? '' : 'Du hast KEINEN Internetzugriff — schätze anhand dessen, was du über die Produktlinie weisst. '}Antworte AUSSCHLIESSLICH mit einem JSON-Objekt ohne weiteren Text im Format {"color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}. "color" ist die tatsächliche Lackfarbe als Hex-Code, "finish" die Oberflächenart.`;
   const user = `Nagellack: Name="${polish.name}", Nummer="${polish.num}", Hersteller="${polish.brand}". ${canResearch ? 'Recherchiere im Internet die tatsächliche' : 'Nenne die'} Farbe und das Finish dieses konkreten Lacks.`;
-  const { text, webSearchUsed } = await callLlm(config, search, system, user, true);
+  const { text, webSearchUsed } = await callLlm(config, search, system, user, true, onRound);
   const parsed = extractJson(text) as Partial<AutofillResult>;
   const color = typeof parsed.color === 'string' && HEX_RE.test(parsed.color) ? parsed.color : '#ff6699';
   const finish = FINISH_VALUES.includes(parsed.finish as FinishType) ? (parsed.finish as FinishType) : 'Classic';
@@ -309,6 +320,7 @@ async function researchSmartCart(
   prompt: string,
   collection: Polish[],
   cart: Polish[],
+  onRound?: OnRound,
 ): Promise<{ suggestions: SmartCartSuggestion[]; webSearchUsed: boolean }> {
   const describe = (p: Polish) => `${p.brand} ${p.num} "${p.name}" (${p.color}, ${p.finish.join(', ')})`;
   const collectionSummary = collection.map(describe).join('; ') || 'leer';
@@ -326,7 +338,7 @@ async function researchSmartCart(
   const system = `Du bist ein Assistent für Nagellack-Kaufempfehlungen. Analysiere die bestehende Sammlung und den aktuellen Einkaufswagen des Nutzers, ermittle anhand des Nutzer-Prompts fehlende Eigenschaften (z.B. fehlende Farben), ${sourcing} Antworte AUSSCHLIESSLICH mit einem JSON-Array ohne weiteren Text im Format [{"name": "...", "brand": "...", "num": "...", "color": "#rrggbb", "finish": "<einer von: ${FINISH_VALUES.join(', ')}>"}]. Maximal 10 Vorschläge. Falls du keine passenden Produkte findest, gib ein leeres Array zurück.`;
   const user = `Bestehende Sammlung: ${collectionSummary}\nAktueller Einkaufswagen: ${cartSummary}\nAnfrage: ${prompt}`;
 
-  const { text, webSearchUsed } = await callLlm(config, search, system, user, true);
+  const { text, webSearchUsed } = await callLlm(config, search, system, user, true, onRound);
   const parsed = extractJson(text);
   if (!Array.isArray(parsed)) return { suggestions: [], webSearchUsed };
   const suggestions = parsed
@@ -353,19 +365,24 @@ let processing = false;
 async function runJob(job: AiJob): Promise<void> {
   const config = getAiConfig();
   const search = config.webSearch;
+  const trace: AiJobTraceStep[] = [];
+  const onRound: OnRound = (info) => {
+    trace.push(info);
+    updateAiJob(job.id, { trace: [...trace] });
+  };
   if (job.type === 'autofill') {
     const polish = job.input.polish;
     if (!polish) throw new Error('Lack-Daten fehlen');
     // The result is handed back via the job, not written to data.json here —
     // the client applies it to its own state and syncs, so this doesn't race
     // against the client's local edits/sync cycle.
-    const result = await researchAutofill(config, search, polish);
+    const result = await researchAutofill(config, search, polish, onRound);
     updateAiJob(job.id, { status: 'done', result });
   } else {
     const data = getData(job.username);
     const collection = data.polishes.filter((p) => !p.deletedAt && p.status !== 'wish');
     const cart = data.polishes.filter((p) => !p.deletedAt && p.status === 'wish');
-    const { suggestions, webSearchUsed } = await researchSmartCart(config, search, job.input.prompt ?? '', collection, cart);
+    const { suggestions, webSearchUsed } = await researchSmartCart(config, search, job.input.prompt ?? '', collection, cart, onRound);
     const createdAt = Date.now();
     const newPolishes: Polish[] = suggestions.map((s) => ({
       id: uuidv4(),

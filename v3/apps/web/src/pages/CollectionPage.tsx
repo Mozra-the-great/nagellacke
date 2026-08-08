@@ -42,7 +42,6 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
       if (result?.color && result?.finish) {
         appData.updatePolish(polish.id, { color: result.color, finish: [result.finish] as Polish['finish'] });
       }
-      void appData.sync();
       showSnackbar(`✨ KI hat Farbe & Finish für „${polish.name}" ermittelt`);
     } catch (e) {
       showSnackbar(`KI-Recherche fehlgeschlagen: ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);

@@ -10,6 +10,7 @@ import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
 import { hasServerSync, startAutofillJob, startSmartCartJob, pollAiJob } from '../utils/ai';
+import type { AiJobTraceStep } from '../utils/ai';
 import styles from './CartPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -66,7 +67,6 @@ export default function CartPage({ appData }: { appData: AppData }) {
       if (result?.color && result?.finish) {
         appData.updatePolish(polish.id, { color: result.color, finish: [result.finish] as Polish['finish'] });
       }
-      void appData.sync();
       showSnackbar(`✨ KI hat Farbe & Finish für „${polish.name}" ermittelt`);
     } catch (e) {
       showSnackbar(`KI-Recherche fehlgeschlagen: ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
@@ -77,15 +77,18 @@ export default function CartPage({ appData }: { appData: AppData }) {
   const [prompt, setPrompt] = useState('');
   const [smartCartStatus, setSmartCartStatus] = useState<'idle' | 'running' | 'error'>('idle');
   const [smartCartError, setSmartCartError] = useState('');
+  const [smartCartTrace, setSmartCartTrace] = useState<AiJobTraceStep[]>([]);
+  const [showTrace, setShowTrace] = useState(false);
 
   const runSmartCart = async () => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
     setSmartCartStatus('running');
     setSmartCartError('');
+    setSmartCartTrace([]);
     try {
       const { jobId } = await startSmartCartJob(trimmed);
-      const job = await pollAiJob(jobId, { timeoutMs: 180_000 });
+      const job = await pollAiJob(jobId, { timeoutMs: 180_000, onUpdate: (job) => setSmartCartTrace((job.trace as AiJobTraceStep[] | undefined) ?? []) });
       if (job.status === 'error') throw new Error(job.error ?? 'Unbekannter Fehler');
       await appData.sync();
       const added = (job.result as { added?: number } | undefined)?.added ?? 0;
@@ -137,8 +140,24 @@ export default function CartPage({ appData }: { appData: AppData }) {
               onClick={() => void runSmartCart()}
               disabled={!prompt.trim() || smartCartStatus === 'running'}
             >
-              {smartCartStatus === 'running' ? 'KI recherchiert…' : '✨ Vorschläge finden'}
+              {smartCartStatus === 'running'
+                ? <span className={styles.smartCartSpinnerRow}><span className={styles.spinner} />KI recherchiert…</span>
+                : '✨ Vorschläge finden'}
             </button>
+            {smartCartTrace.length > 0 && (
+              <button type="button" className={styles.traceToggle} onClick={() => setShowTrace((v) => !v)}>
+                {showTrace ? 'KI-Recherche ausblenden' : `KI-Recherche anzeigen (${smartCartTrace.length})`}
+              </button>
+            )}
+            {showTrace && smartCartTrace.length > 0 && (
+              <ul className={styles.tracePanel}>
+                {smartCartTrace.map((step) => (
+                  <li key={step.round} className={styles.traceItem}>
+                    Runde {step.round}: {step.toolCalls.map((c) => c.query).join(', ')}
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </section>
