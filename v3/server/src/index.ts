@@ -82,7 +82,19 @@ function writeApiKey(key: string): void {
 }
 
 if (fs.existsSync(API_KEY_FILE)) {
-  API_KEY = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
+  const stored = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
+  // Fail closed, not open: safeEqual() below compares two zero-length
+  // buffers as equal, and an empty X-Api-Key header passes the `typeof
+  // === 'string'` check - so a zero-byte .api_key (truncated write, disk
+  // full, manual `> data/.api_key`) would otherwise silently accept an
+  // empty key and hand out the same de-facto root credential as
+  // /api/update/apply and now /api/admin/bootstrap to anyone (#216 review
+  // item 3). Refuse to start instead.
+  if (!stored) {
+    console.error(`[FATAL] ${API_KEY_FILE} exists but is empty. Refusing to start with an empty API key (that would authenticate an empty X-Api-Key header). Delete the file to generate a fresh key on next start, or restore a valid one.`);
+    process.exit(1);
+  }
+  API_KEY = stored;
 } else {
   API_KEY = crypto.randomBytes(24).toString('hex');
   writeApiKey(API_KEY);
@@ -336,10 +348,18 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // POST /api/update/apply keeps its extra bar even under the admin-JWT path
   // (#173 §6): it is a documented RCE surface (git pull + npm install as this
-  // process's user), so an admin JWT alone — which now only proves "knows a
-  // password", not "holds data/.api_key on the host" — must not be sufficient.
-  // A fresh password re-confirmation in the body closes that gap; X-Api-Key
-  // still works exactly as before with no extra step.
+  // process's user). Precisely what the re-confirmation buys, and what it
+  // doesn't (PR #216 review item 5 — corrects an earlier, broader claim
+  // here): the password check re-verifies the *same* password that was
+  // already required to obtain the JWT via login, so it adds nothing against
+  // someone who already knows that password — they could just log in again.
+  // What it does guard against is a *stolen bearer token* held by someone who
+  // does NOT know the password (e.g. exfiltrated via XSS from localStorage,
+  // a copy-pasted Authorization header, a leaked log line): that token alone
+  // is no longer enough to trigger the RCE path, unlike every other
+  // admin-JWT-gated endpoint. X-Api-Key still works exactly as before with
+  // no extra step; the update/apply auth mechanism itself is a separate,
+  // pending decision — not changed here.
   async function requireApiKeyOrAdminReconfirm(request: FastifyRequest, reply: FastifyReply) {
     const key = request.headers['x-api-key'];
     if (key) {
@@ -574,8 +594,19 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    // If the account already exists, promoting it to admin and handing back
+    // a session must not happen without proving knowledge of *that account's*
+    // real password - the length check above only validates a fresh
+    // password for the create-user branch, it says nothing about `existing`.
+    // (PR #216 review item 2 - currently unreachable in practice since it
+    // needs countAdmins() === 0 with an existing user, which
+    // migrateFirstUserToAdmin() already prevents at every startup, but this
+    // must not rely on that invariant alone.)
     const existing = getUser(username);
     if (existing) {
+      if (!verifyPassword(password, existing.password_hash)) {
+        return reply.code(401).send({ error: 'Passwort ungültig' });
+      }
       setUserRole(username, 'admin');
     } else {
       createUser(username, hashPassword(password), 'admin');

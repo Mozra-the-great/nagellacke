@@ -164,7 +164,7 @@ describe('admin/user db helpers', () => {
 });
 
 describe('logAdminAction / getAuditLog', () => {
-  it('records entries newest-first and never a raw secret value', async () => {
+  it('records entries newest-first', async () => {
     const { db, dir } = await freshDb();
     tmpDirs.push(dir);
     db.logAdminAction('alice', 'server_settings.updated', undefined, { smtp: ['pass'] });
@@ -172,6 +172,34 @@ describe('logAdminAction / getAuditLog', () => {
     const entries = db.getAuditLog();
     expect(entries[0].action).toBe('user.created');
     expect(entries[1].action).toBe('server_settings.updated');
+  });
+
+  // Regression for PR #216 review item 4: the original version of this
+  // asserted `'hunter2'` never appears in the log without ever putting
+  // `'hunter2'` into the test data anywhere — it passed trivially. This one
+  // starts from a request body that actually carries a real secret value
+  // and mirrors index.ts's POST /api/admin/settings transform
+  // (`Object.keys(body.smtp)`, never the values) before logging, then
+  // asserts the secret specifically — not just any string — is absent.
+  //
+  // This alone would still pass if that transform regressed to logging
+  // `body.smtp` verbatim, since the transform itself is re-applied here
+  // rather than exercised through index.ts — the end-to-end coverage for
+  // *that* regression is the route-level test in admin.test.ts ("secrets
+  // never reach the audit log").
+  it('logging a settings update containing a real secret never persists that secret value', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    const body = { smtp: { host: 'smtp.example.com', port: 587, user: 'alice', pass: 'hunter2', from: 'a@b.c' } };
+    db.logAdminAction('alice', 'server_settings.updated', undefined, {
+      allowRegistration: false,
+      appUrl: false,
+      smtp: Object.keys(body.smtp),
+    });
+    const entries = db.getAuditLog();
+    expect(entries[0].action).toBe('server_settings.updated');
     expect(JSON.stringify(entries)).not.toContain('hunter2');
+    // The keys themselves are expected to be there — only the secret value is excluded.
+    expect(JSON.stringify(entries)).toContain('"pass"');
   });
 });

