@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
 import { generateId, now, mergeData } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
@@ -88,140 +88,50 @@ export function useAppData() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
 
+  // Authoritative latest value, updated synchronously by every commit()
+  // (setDataState only applies on the next render, so relying on the `data`
+  // state variable here would race whenever sync() runs in the same tick as
+  // the commit that triggered it - see commit() below). Every mutator calls
+  // sync() right after commit() (#206), so sync() reads dataRef, not `data`.
+  const dataRef = useRef(data);
+
   // Takes an updater rather than a plain value so long-running async callers
   // (e.g. an AI background job that resolves a minute later) always apply
   // their change on top of the latest state instead of clobbering whatever
-  // else happened in the meantime with a stale snapshot.
+  // else happened in the meantime with a stale snapshot. Computed against
+  // dataRef.current (not via the setDataState updater) so dataRef is
+  // guaranteed current before this function returns, even across multiple
+  // commits in the same tick - setDataState's updater form only eagerly
+  // re-runs when React's queue happens to be empty, which isn't guaranteed.
   const commit = useCallback((updater: (prev: AppData) => AppData) => {
-    setDataState((prev) => {
-      const next = updater(prev);
-      saveLocal(next);
-      return next;
-    });
+    const next = updater(dataRef.current);
+    dataRef.current = next;
+    saveLocal(next);
+    setDataState(next);
   }, []);
 
-  // Polishes
-  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
-    const item: Polish = { ...p, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit((prev) => ({ ...prev, polishes: [...prev.polishes, item] }));
-    return item;
-  }, [commit]);
-
-  const updatePolish = useCallback((id: string, changes: Partial<Polish>) => {
-    commit((prev) => ({
-      ...prev,
-      polishes: prev.polishes.map((p) => p.id === id ? { ...p, ...changes, updatedAt: now() } : p),
-    }));
-  }, [commit]);
-
-  const deletePolish = useCallback((id: string): (() => void) => {
-    const p = data.polishes.find((p) => p.id === id);
-    commit((prev) => ({
-      ...prev,
-      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: now(), updatedAt: now() } : p),
-    }));
-    return () => { if (p?.photo) void deletePhotoFromServer(p.photo); };
-  }, [data, commit]);
-
-  const restorePolish = useCallback((id: string) => {
-    commit((prev) => ({
-      ...prev,
-      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: undefined, updatedAt: now() } : p),
-    }));
-  }, [commit]);
-
-  // Stickers
-  const addSticker = useCallback((s: Omit<Sticker, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const item: Sticker = { ...s, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit((prev) => ({ ...prev, stickers: [...prev.stickers, item] }));
-  }, [commit]);
-
-  const updateSticker = useCallback((id: string, changes: Partial<Sticker>) => {
-    commit((prev) => ({
-      ...prev,
-      stickers: prev.stickers.map((s) => s.id === id ? { ...s, ...changes, updatedAt: now() } : s),
-    }));
-  }, [commit]);
-
-  const deleteSticker = useCallback((id: string): (() => void) => {
-    const s = data.stickers.find((s) => s.id === id);
-    commit((prev) => ({
-      ...prev,
-      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: now(), updatedAt: now() } : s),
-    }));
-    return () => { if (s?.photo) void deletePhotoFromServer(s.photo); };
-  }, [data, commit]);
-
-  const restoreSticker = useCallback((id: string) => {
-    commit((prev) => ({
-      ...prev,
-      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: undefined, updatedAt: now() } : s),
-    }));
-  }, [commit]);
-
-  // Manicures
-  const addManicure = useCallback((m: Omit<Manicure, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const item: Manicure = { ...m, id: generateId(), createdAt: now(), updatedAt: now() };
-    commit((prev) => ({ ...prev, manicures: [...prev.manicures, item] }));
-  }, [commit]);
-
-  const updateManicure = useCallback((id: string, changes: Partial<Manicure>) => {
-    commit((prev) => ({
-      ...prev,
-      manicures: prev.manicures.map((m) => m.id === id ? { ...m, ...changes, updatedAt: now() } : m),
-    }));
-  }, [commit]);
-
-  const deleteManicure = useCallback((id: string): (() => void) => {
-    const m = data.manicures.find((m) => m.id === id);
-    commit((prev) => ({
-      ...prev,
-      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
-    }));
-    return () => {
-      if (m?.photo) void deletePhotoFromServer(m.photo);
-      if (m?.photos) void Promise.all(Object.values(m.photos).filter((f): f is string => !!f).map(deletePhotoFromServer));
-    };
-  }, [data, commit]);
-
-  const restoreManicure = useCallback((id: string) => {
-    commit((prev) => ({
-      ...prev,
-      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: undefined, updatedAt: now() } : m),
-    }));
-  }, [commit]);
-
-  // Categories
-  const addCategory = useCallback((label: string) => {
-    const item: Category = { id: generateId(), label, updatedAt: now() };
-    commit((prev) => ({ ...prev, customCats: [...prev.customCats, item] }));
-  }, [commit]);
-
-  const deleteCategory = useCallback((id: string) => {
-    commit((prev) => ({
-      ...prev,
-      customCats: prev.customCats.map((c) => c.id === id ? { ...c, deletedAt: now(), updatedAt: now() } : c),
-    }));
-  }, [commit]);
-
-  // Direct import (merge imported JSON into local data)
-  const importMerge = useCallback((merged: AppData) => {
-    commit((prev) => mergeData(prev, merged));
-  }, [commit]);
-
-  // Sync
+  // Sync - defined ahead of the mutators below so each of them can trigger a
+  // push right after committing locally (#206). Uses `commit` directly for
+  // its own merge-back rather than going through the mutators, so it doesn't
+  // re-trigger itself. Coalesces overlapping calls: a sync already in flight
+  // finishes with dataRef's *current* value, but a mutator committing while
+  // that request is on the wire wouldn't otherwise get pushed until the next
+  // unrelated sync - syncPendingRef ensures one more run happens right after.
+  const syncingRef = useRef(false);
+  const syncPendingRef = useRef(false);
   const sync = useCallback(async () => {
     const config = loadSyncConfig();
     if (!config) return;
+    if (syncingRef.current) { syncPendingRef.current = true; return; }
+    syncingRef.current = true;
     setSyncing(true);
     setSyncError(null);
     try {
       const adapter = createAdapter(config, persistRefreshedTokens);
-      const result = await adapter.sync(data);
+      const result = await adapter.sync(dataRef.current);
       if (result.success) {
-        // Merge against whatever's latest (not the `data` snapshot this
-        // closure started with) so edits made while this sync was in flight
-        // aren't discarded.
+        // Merge against whatever's latest (not the snapshot sync started
+        // with) so edits made while this sync was in flight aren't discarded.
         commit((prev) => mergeData(prev, result.merged));
         setLastSyncAt(result.lastSyncAt);
       } else {
@@ -230,9 +140,138 @@ export function useAppData() {
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
     } finally {
+      syncingRef.current = false;
       setSyncing(false);
+      if (syncPendingRef.current) {
+        syncPendingRef.current = false;
+        void sync();
+      }
     }
-  }, [data, commit]);
+  }, [commit]);
+
+  // Polishes
+  const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
+    const item: Polish = { ...p, id: generateId(), createdAt: now(), updatedAt: now() };
+    commit((prev) => ({ ...prev, polishes: [...prev.polishes, item] }));
+    void sync();
+    return item;
+  }, [commit, sync]);
+
+  const updatePolish = useCallback((id: string, changes: Partial<Polish>) => {
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, ...changes, updatedAt: now() } : p),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  const deletePolish = useCallback((id: string): (() => void) => {
+    const p = data.polishes.find((p) => p.id === id);
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: now(), updatedAt: now() } : p),
+    }));
+    void sync();
+    return () => { if (p?.photo) void deletePhotoFromServer(p.photo); };
+  }, [data, commit, sync]);
+
+  const restorePolish = useCallback((id: string) => {
+    commit((prev) => ({
+      ...prev,
+      polishes: prev.polishes.map((p) => p.id === id ? { ...p, deletedAt: undefined, updatedAt: now() } : p),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  // Stickers
+  const addSticker = useCallback((s: Omit<Sticker, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const item: Sticker = { ...s, id: generateId(), createdAt: now(), updatedAt: now() };
+    commit((prev) => ({ ...prev, stickers: [...prev.stickers, item] }));
+    void sync();
+  }, [commit, sync]);
+
+  const updateSticker = useCallback((id: string, changes: Partial<Sticker>) => {
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, ...changes, updatedAt: now() } : s),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  const deleteSticker = useCallback((id: string): (() => void) => {
+    const s = data.stickers.find((s) => s.id === id);
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: now(), updatedAt: now() } : s),
+    }));
+    void sync();
+    return () => { if (s?.photo) void deletePhotoFromServer(s.photo); };
+  }, [data, commit, sync]);
+
+  const restoreSticker = useCallback((id: string) => {
+    commit((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((s) => s.id === id ? { ...s, deletedAt: undefined, updatedAt: now() } : s),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  // Manicures
+  const addManicure = useCallback((m: Omit<Manicure, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const item: Manicure = { ...m, id: generateId(), createdAt: now(), updatedAt: now() };
+    commit((prev) => ({ ...prev, manicures: [...prev.manicures, item] }));
+    void sync();
+  }, [commit, sync]);
+
+  const updateManicure = useCallback((id: string, changes: Partial<Manicure>) => {
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, ...changes, updatedAt: now() } : m),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  const deleteManicure = useCallback((id: string): (() => void) => {
+    const m = data.manicures.find((m) => m.id === id);
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: now(), updatedAt: now() } : m),
+    }));
+    void sync();
+    return () => {
+      if (m?.photo) void deletePhotoFromServer(m.photo);
+      if (m?.photos) void Promise.all(Object.values(m.photos).filter((f): f is string => !!f).map(deletePhotoFromServer));
+    };
+  }, [data, commit, sync]);
+
+  const restoreManicure = useCallback((id: string) => {
+    commit((prev) => ({
+      ...prev,
+      manicures: prev.manicures.map((m) => m.id === id ? { ...m, deletedAt: undefined, updatedAt: now() } : m),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  // Categories
+  const addCategory = useCallback((label: string) => {
+    const item: Category = { id: generateId(), label, updatedAt: now() };
+    commit((prev) => ({ ...prev, customCats: [...prev.customCats, item] }));
+    void sync();
+  }, [commit, sync]);
+
+  const deleteCategory = useCallback((id: string) => {
+    commit((prev) => ({
+      ...prev,
+      customCats: prev.customCats.map((c) => c.id === id ? { ...c, deletedAt: now(), updatedAt: now() } : c),
+    }));
+    void sync();
+  }, [commit, sync]);
+
+  // Direct import (merge imported JSON into local data)
+  const importMerge = useCallback((merged: AppData) => {
+    commit((prev) => mergeData(prev, merged));
+    void sync();
+  }, [commit, sync]);
 
   // Auto-sync on load
   useEffect(() => { void sync(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
