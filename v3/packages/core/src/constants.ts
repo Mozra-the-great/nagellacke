@@ -38,6 +38,8 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'rating', label: 'Bewertung' },
 ];
 
+export const FINISH_VALUES = FINISH_OPTIONS.map((o) => o.value);
+
 export const STICKER_TYPE_OPTIONS: { value: StickerType; label: string; icon: string }[] = [
   { value: 'full',   label: 'Full Cover', icon: '▬' },
   { value: 'accent', label: 'Akzent',     icon: '◆' },
@@ -66,7 +68,7 @@ export const STICKER_STYLE_SUGGESTIONS = [
 ];
 
 export const DEFAULT_POLISH = {
-  num: '', name: '', brand: '', color: '#ff6699', finish: 'Classic' as FinishType,
+  num: '', name: '', brand: '', color: '#ff6699', finish: ['Classic'] as FinishType[],
   count: 1, categories: [] as string[], status: 'ok' as PolishStatus, notes: '', rating: 0,
 };
 

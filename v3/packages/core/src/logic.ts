@@ -5,7 +5,7 @@ export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
   return polishes.filter((p) => {
     if (p.deletedAt) return false;
     if (f.status && p.status !== f.status) return false;
-    if (f.finish && p.finish !== f.finish) return false;
+    if (f.finish && !p.finish.includes(f.finish)) return false;
     if (f.brand && p.brand !== f.brand) return false;
     if (f.category && !p.categories?.includes(f.category)) return false;
     if (f.search) {
@@ -14,7 +14,7 @@ export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
         p.name.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q) ||
         p.num.toLowerCase().includes(q) ||
-        p.finish.toLowerCase().includes(q) ||
+        p.finish.some((fn) => fn.toLowerCase().includes(q)) ||
         (p.notes ?? '').toLowerCase().includes(q)
       );
     }

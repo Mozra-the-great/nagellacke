@@ -1,3 +1,24 @@
+import type { FinishType } from './types';
+import { FINISH_VALUES } from './constants';
+
+const FINISH_TYPES = new Set<FinishType>(FINISH_VALUES);
+
+/**
+ * Normalizes a polish's `finish` field, which may still be the old
+ * pre-migration shape (a bare string) on data that hasn't been touched since
+ * the multi-finish change. Never throws, never drops data: an unrecognized or
+ * missing value falls back to 'Classic' rather than an empty array, so a
+ * polish is never left with zero finish tags.
+ */
+export function normalizeFinish(value: unknown): FinishType[] {
+  if (Array.isArray(value)) {
+    const filtered = value.filter((v): v is FinishType => typeof v === 'string' && FINISH_TYPES.has(v as FinishType));
+    return filtered.length > 0 ? Array.from(new Set(filtered)) : ['Classic'];
+  }
+  if (typeof value === 'string' && FINISH_TYPES.has(value as FinishType)) return [value as FinishType];
+  return ['Classic'];
+}
+
 export function hexToHue(hex: string): number {
   if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return 0;
   const r = parseInt(hex.slice(1, 3), 16) / 255;

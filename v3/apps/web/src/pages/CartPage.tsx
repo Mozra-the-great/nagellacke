@@ -65,7 +65,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
       if (job.status === 'error') throw new Error(job.error ?? 'Unbekannter Fehler');
       const result = job.result as { color?: string; finish?: string } | undefined;
       if (result?.color && result?.finish) {
-        appData.updatePolish(polish.id, { color: result.color, finish: result.finish as Polish['finish'] });
+        appData.updatePolish(polish.id, { color: result.color, finish: [result.finish] as Polish['finish'] });
       }
       showSnackbar(`✨ KI hat Farbe & Finish für „${polish.name}" ermittelt`);
     } catch (e) {
@@ -258,7 +258,8 @@ export default function CartPage({ appData }: { appData: AppData }) {
                   <div className={styles.detailCell}><span>Nummer</span><span>{viewing.num}</span></div>
                 )}
                 <div className={styles.detailCell}>
-                  <span>Finish</span><span>{FINISH_OPTIONS.find((o) => o.value === viewing.finish)?.icon} {viewing.finish}</span>
+                  <span>Finish</span>
+                  <span>{viewing.finish.map((f) => `${FINISH_OPTIONS.find((o) => o.value === f)?.icon ?? ''} ${f}`).join(', ')}</span>
                 </div>
               </div>
               {viewing.notes && <p className={styles.detailNotes}>{viewing.notes}</p>}
