@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import type { AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
+import { hashRecoveryCode } from './totp';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
@@ -109,12 +111,22 @@ export function migrateGlobalDataToFirstUser(): void {
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
-interface User {
+export interface User {
   username: string;
   password_hash: string;
   created_at: number;
   email?: string;
   token_version?: number;
+  // TOTP (2FA, #174). Zero-migration: readUsers() has no normalizer, so
+  // existing records simply lack these keys and read back as undefined —
+  // every call site that gates on them already treats undefined as "off".
+  totp_secret?: string;          // base32, set by setTotpPending; only "live" once totp_enabled is true
+  totp_enabled?: boolean;        // false/undefined until verify-before-enable succeeds
+  totp_last_counter?: number;    // replay guard — see totp.ts / login/verify
+  recovery_codes?: string[];     // sha256 hex hashes, single-use
+  // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
+  // single fixed RP ID across this app's self-hosted deployment topologies).
+  // webauthn_credentials?: WebAuthnCredential[];
 }
 
 function readUsers(): User[] {
@@ -127,9 +139,12 @@ function readUsers(): User[] {
   }
 }
 
+// Holds password hashes and, as of #174, TOTP secrets and recovery-code
+// hashes — the same trust boundary as .jwt_secret and .api_key (DATA_DIR,
+// host-level trust; no separate encryption layer, see #174 plan §2).
 function writeUsers(users: User[]): void {
   const tmp = `${USERS_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(users));
+  fs.writeFileSync(tmp, JSON.stringify(users), { mode: 0o600 });
   fs.renameSync(tmp, USERS_FILE);
 }
 
@@ -178,6 +193,101 @@ export function updateUserEmail(username: string, email: string): void {
     users[idx] = { ...users[idx], email };
     writeUsers(users);
   }
+}
+
+// ── TOTP (2FA, #174) ─────────────────────────────────────────────────────────
+
+/**
+ * Stores a freshly generated, *unverified* TOTP secret. `totp_enabled` is
+ * deliberately left untouched — enable-before-verify never happens; only
+ * enableTotp() (called after a successful code check) flips it. Calling this
+ * again (e.g. the user re-scans) simply replaces the pending secret.
+ */
+export function setTotpPending(username: string, secret: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], totp_secret: secret, totp_enabled: false };
+    writeUsers(users);
+  }
+}
+
+/** Flips totp_enabled on and stores recovery-code hashes. Only ever called after a verify step succeeds. */
+export function enableTotp(username: string, recoveryCodeHashes: string[]): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = {
+      ...users[idx],
+      totp_enabled: true,
+      totp_last_counter: -1,
+      recovery_codes: recoveryCodeHashes,
+    };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Clears all TOTP fields and bumps token_version, so a leaked session from
+ * before the disable cannot be used to silently re-enable 2FA (e.g. under an
+ * attacker-controlled authenticator) on the same account.
+ */
+export function disableTotp(username: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    const { totp_secret, totp_enabled, totp_last_counter, recovery_codes, ...rest } = users[idx];
+    void totp_secret; void totp_enabled; void totp_last_counter; void recovery_codes;
+    users[idx] = { ...rest, token_version: (rest.token_version ?? 0) + 1 };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Replaces recovery-code hashes without touching totp_enabled/totp_last_counter
+ * — used by the "regenerate recovery codes" endpoint, which must not reset the
+ * replay-guard counter the way enableTotp() (re-enrollment) does.
+ */
+export function setRecoveryCodes(username: string, hashes: string[]): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], recovery_codes: hashes };
+    writeUsers(users);
+  }
+}
+
+/** Persists the replay-guard counter after an accepted TOTP code. */
+export function updateTotpCounter(username: string, counter: number): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], totp_last_counter: counter };
+    writeUsers(users);
+  }
+}
+
+/**
+ * Hashes `code`, scans recovery_codes for a match with a constant-time
+ * comparison (avoids a timing side channel across candidates), splices the
+ * matched hash out (single-use) and persists. Returns whether a match was found.
+ */
+export function consumeRecoveryCode(username: string, code: string): boolean {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return false;
+  const hashes = users[idx].recovery_codes ?? [];
+  const candidate = hashRecoveryCode(code);
+  const candidateBuf = Buffer.from(candidate);
+  const matchIdx = hashes.findIndex((h) => {
+    const hBuf = Buffer.from(h);
+    return hBuf.length === candidateBuf.length && crypto.timingSafeEqual(hBuf, candidateBuf);
+  });
+  if (matchIdx < 0) return false;
+  const remaining = hashes.slice(0, matchIdx).concat(hashes.slice(matchIdx + 1));
+  users[idx] = { ...users[idx], recovery_codes: remaining };
+  writeUsers(users);
+  return true;
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────

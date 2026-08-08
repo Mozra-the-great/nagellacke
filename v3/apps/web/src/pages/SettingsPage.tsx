@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import JSZip from 'jszip';
+import QRCode from 'qrcode';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
@@ -88,6 +89,33 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [loginError, setLoginError] = useState('');
 
+  // ── Two-step login (TOTP 2FA, #174) ──
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaUseRecovery, setMfaUseRecovery] = useState(false);
+  const [mfaStatus, setMfaStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [mfaError, setMfaError] = useState('');
+
+  const applyLoginTokens = (token: string, refreshToken: string | undefined) => {
+    const c: SyncConfig = {
+      provider: 'server',
+      serverUrl,
+      serverToken: token,
+      serverRefreshToken: refreshToken,
+    };
+    saveSyncConfig(c);
+    setConfig(c);
+    setServerToken(token);
+    setLoginPass('');
+    setLoginStatus('idle');
+    setMfaChallengeToken(null);
+    setMfaCode('');
+    setMfaUseRecovery(false);
+    setMfaStatus('idle');
+    setMfaError('');
+    void appData.sync();
+  };
+
   const login = async () => {
     setLoginStatus('loading');
     setLoginError('');
@@ -98,28 +126,57 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: loginUser, password: loginPass }),
       });
-      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
+      const data = await res.json() as { token?: string; refreshToken?: string; mfaRequired?: boolean; challengeToken?: string; error?: string };
+      // Check the 2FA challenge shape *before* the "no token" error branch —
+      // an account with 2FA enabled deliberately gets { mfaRequired: true,
+      // challengeToken } instead of real tokens at this step.
+      if (res.ok && data.mfaRequired && data.challengeToken) {
+        setMfaChallengeToken(data.challengeToken);
+        setLoginStatus('idle');
+        return;
+      }
       if (!res.ok || !data.token) {
         setLoginError(data.error ?? `Fehler ${res.status}`);
         setLoginStatus('error');
         return;
       }
-      const c: SyncConfig = {
-        provider: 'server',
-        serverUrl,
-        serverToken: data.token,
-        serverRefreshToken: data.refreshToken,
-      };
-      saveSyncConfig(c);
-      setConfig(c);
-      setServerToken(data.token);
-      setLoginPass('');
-      setLoginStatus('idle');
-      void appData.sync();
+      applyLoginTokens(data.token, data.refreshToken);
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setLoginStatus('error');
     }
+  };
+
+  const verifyMfaCode = async () => {
+    if (!mfaChallengeToken) return;
+    setMfaStatus('loading');
+    setMfaError('');
+    const base = serverUrl.replace(/\/$/, '');
+    try {
+      const res = await fetch(`${base}/api/auth/login/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: mfaChallengeToken, code: mfaCode.trim() }),
+      });
+      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setMfaError(data.error ?? `Fehler ${res.status}`);
+        setMfaStatus('error');
+        return;
+      }
+      applyLoginTokens(data.token, data.refreshToken);
+    } catch (e) {
+      setMfaError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setMfaStatus('error');
+    }
+  };
+
+  const cancelMfaLogin = () => {
+    setMfaChallengeToken(null);
+    setMfaCode('');
+    setMfaUseRecovery(false);
+    setMfaStatus('idle');
+    setMfaError('');
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -343,6 +400,26 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [aiSaveStatus, setAiSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [aiSaveError, setAiSaveError] = useState('');
 
+  // ── Sicherheit (TOTP 2FA, #174) ──
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(0);
+  const [securityStep, setSecurityStep] = useState<'idle' | 'setup' | 'confirm'>('idle');
+  const [setupSecret, setSetupSecret] = useState('');
+  const [setupOtpauthUri, setSetupOtpauthUri] = useState('');
+  const [setupQrDataUrl, setSetupQrDataUrl] = useState('');
+  const [setupError, setSetupError] = useState('');
+  const [enableCode, setEnableCode] = useState('');
+  const [enableStatus, setEnableStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [enableError, setEnableError] = useState('');
+  const [revealedRecoveryCodes, setRevealedRecoveryCodes] = useState<string[] | null>(null);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableStatus, setDisableStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [disableError, setDisableError] = useState('');
+  const [regenPassword, setRegenPassword] = useState('');
+  const [regenStatus, setRegenStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [regenError, setRegenError] = useState('');
+  const [regenConfirmVisible, setRegenConfirmVisible] = useState(false);
+
   const isServerSync = config?.provider === 'server';
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
   const bearerHeaders = (): Record<string, string> =>
@@ -357,16 +434,18 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     const controller = new AbortController();
     const { signal } = controller;
 
-    type MeResponse = { email?: string | null; smtpConfigured?: boolean };
+    type MeResponse = { email?: string | null; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
     type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
 
-    // Load email + smtp status
+    // Load email + smtp status + 2FA status
     fetch(`${base}/api/auth/me`, { headers, signal })
       .then(r => r.ok ? r.json() as Promise<MeResponse> : Promise.resolve<MeResponse>({}))
       .then(d => {
         if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
+        setTotpEnabled(!!d.totpEnabled);
+        setRecoveryCodesRemaining(d.recoveryCodesRemaining ?? 0);
       })
       .catch(() => { /* ignore aborted / network errors */ });
 
@@ -432,6 +511,133 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     } catch (e) {
       setAiSaveError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setAiSaveStatus('error');
+    }
+  };
+
+  // ── Sicherheit: TOTP 2FA (#174) ──
+
+  const startTotpSetup = async () => {
+    setSetupError('');
+    setEnableError('');
+    setEnableCode('');
+    try {
+      const res = await fetch(`${serverBase}/api/auth/totp/setup`, {
+        method: 'POST',
+        headers: bearerHeaders(),
+      });
+      const data = await res.json() as { secret?: string; otpauthUri?: string; error?: string };
+      if (!res.ok || !data.secret || !data.otpauthUri) {
+        setSetupError(data.error ?? `Fehler ${res.status}`);
+        return;
+      }
+      setSetupSecret(data.secret);
+      setSetupOtpauthUri(data.otpauthUri);
+      setSetupQrDataUrl(await QRCode.toDataURL(data.otpauthUri));
+      setSecurityStep('setup');
+    } catch (e) {
+      setSetupError(e instanceof Error ? e.message : 'Verbindungsfehler');
+    }
+  };
+
+  const cancelTotpSetup = () => {
+    setSecurityStep('idle');
+    setSetupSecret('');
+    setSetupOtpauthUri('');
+    setSetupQrDataUrl('');
+    setSetupError('');
+    setEnableCode('');
+    setEnableError('');
+    setEnableStatus('idle');
+  };
+
+  const confirmTotpEnable = async () => {
+    setEnableStatus('loading');
+    setEnableError('');
+    try {
+      const res = await fetch(`${serverBase}/api/auth/totp/enable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
+        body: JSON.stringify({ code: enableCode.trim() }),
+      });
+      const data = await res.json() as { ok?: boolean; recoveryCodes?: string[]; error?: string };
+      if (!res.ok || !data.ok || !data.recoveryCodes) {
+        setEnableError(data.error ?? `Fehler ${res.status}`);
+        setEnableStatus('error');
+        return;
+      }
+      setTotpEnabled(true);
+      setRecoveryCodesRemaining(data.recoveryCodes.length);
+      setRevealedRecoveryCodes(data.recoveryCodes);
+      setSecurityStep('idle');
+      setSetupSecret('');
+      setSetupOtpauthUri('');
+      setSetupQrDataUrl('');
+      setEnableCode('');
+      setEnableStatus('idle');
+    } catch (e) {
+      setEnableError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setEnableStatus('error');
+    }
+  };
+
+  const disableTotpAccount = async () => {
+    setDisableStatus('loading');
+    setDisableError('');
+    try {
+      const res = await fetch(`${serverBase}/api/auth/totp/disable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
+        body: JSON.stringify({ password: disablePassword }),
+      });
+      const data = await res.json() as { ok?: boolean; token?: string; refreshToken?: string; error?: string };
+      if (!res.ok || !data.ok) {
+        setDisableError(data.error ?? `Fehler ${res.status}`);
+        setDisableStatus('error');
+        return;
+      }
+      // /disable bumps token_version, which would kill the token this very
+      // request was authenticated with — a fresh pair comes back in the same
+      // response, so the session keeps working without a forced re-login.
+      if (data.token) {
+        const c: SyncConfig = { provider: 'server', serverUrl, serverToken: data.token, serverRefreshToken: data.refreshToken };
+        saveSyncConfig(c);
+        setConfig(c);
+        setServerToken(data.token);
+      }
+      setTotpEnabled(false);
+      setRecoveryCodesRemaining(0);
+      setDisablePassword('');
+      setDisableStatus('idle');
+      setRevealedRecoveryCodes(null);
+    } catch (e) {
+      setDisableError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setDisableStatus('error');
+    }
+  };
+
+  const regenerateRecoveryCodes = async () => {
+    setRegenStatus('loading');
+    setRegenError('');
+    try {
+      const res = await fetch(`${serverBase}/api/auth/totp/recovery-codes/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
+        body: JSON.stringify({ password: regenPassword }),
+      });
+      const data = await res.json() as { recoveryCodes?: string[]; error?: string };
+      if (!res.ok || !data.recoveryCodes) {
+        setRegenError(data.error ?? `Fehler ${res.status}`);
+        setRegenStatus('error');
+        return;
+      }
+      setRecoveryCodesRemaining(data.recoveryCodes.length);
+      setRevealedRecoveryCodes(data.recoveryCodes);
+      setRegenPassword('');
+      setRegenStatus('idle');
+      setRegenConfirmVisible(false);
+    } catch (e) {
+      setRegenError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setRegenStatus('error');
     }
   };
 
@@ -548,6 +754,42 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                     setConfig(null);
                   }}
                 >Abmelden</button>
+              </div>
+            ) : mfaChallengeToken ? (
+              <div className={styles.loginBox}>
+                <label className={styles.field}>
+                  <span>{mfaUseRecovery ? 'Wiederherstellungscode' : 'Code aus der Authenticator-App'}</span>
+                  <input
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value)}
+                    inputMode={mfaUseRecovery ? 'text' : 'numeric'}
+                    autoComplete="one-time-code"
+                    placeholder={mfaUseRecovery ? 'XXXXX-XXXXX' : '123456'}
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') void verifyMfaCode(); }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={styles.logoutBtn}
+                  onClick={() => { setMfaUseRecovery((v) => !v); setMfaCode(''); setMfaError(''); }}
+                >
+                  {mfaUseRecovery ? 'Stattdessen Code aus der App verwenden' : 'Stattdessen Wiederherstellungscode verwenden'}
+                </button>
+                <div role="status" aria-live="polite" aria-atomic="true">
+                  {mfaStatus === 'loading' && <span className={styles.infoText}>Prüfe…</span>}
+                  {mfaStatus === 'error' && <div className={styles.errorBanner}>{mfaError}</div>}
+                </div>
+                <div className={styles.btnRow}>
+                  <button
+                    className={styles.saveBtn}
+                    onClick={() => void verifyMfaCode()}
+                    disabled={!mfaCode.trim() || mfaStatus === 'loading'}
+                  >
+                    {mfaStatus === 'loading' ? 'Prüfe…' : 'Bestätigen'}
+                  </button>
+                  <button className={styles.syncBtn} onClick={cancelMfaLogin}>Abbrechen</button>
+                </div>
               </div>
             ) : (
               <div className={styles.loginBox}>
@@ -1035,6 +1277,168 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         )}
       </section>
       )}
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Sicherheit</h2>
+
+        {!isServerSync && (
+          <p className={styles.fieldHelpText}>
+            Zwei-Faktor-Authentifizierung (2FA) ist nur mit dem Eigenen-Server-Sync verfügbar (siehe oben).
+          </p>
+        )}
+
+        {isServerSync && (
+          <>
+            {revealedRecoveryCodes && (
+              <div className={styles.confirmRow} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                <span className={styles.confirmText} style={{ fontWeight: 600 }}>
+                  Wiederherstellungscodes — jetzt notieren, werden nur einmal angezeigt:
+                </span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, fontFamily: 'monospace', fontSize: 13, userSelect: 'text' }}>
+                  {revealedRecoveryCodes.map((c) => <span key={c}>{c}</span>)}
+                </div>
+                <p className={styles.fieldHelpText} style={{ margin: 0 }}>
+                  Jeder Code funktioniert einmal als Ersatz für den 6-stelligen App-Code, falls du keinen Zugriff
+                  auf die Authenticator-App hast.
+                </p>
+                <div className={styles.btnRow}>
+                  <button
+                    className={styles.saveBtn}
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(revealedRecoveryCodes.join('\n')).catch(() => {});
+                    }}
+                  >Kopieren</button>
+                  <button className={styles.syncBtn} onClick={() => setRevealedRecoveryCodes(null)}>Verstanden</button>
+                </div>
+              </div>
+            )}
+
+            {totpEnabled ? (
+              <>
+                <div className={styles.tokenRow}>
+                  <span className={styles.tokenOk}>✓ 2FA aktiv</span>
+                  <span className={styles.fieldHint}>{recoveryCodesRemaining} Wiederherstellungscode(s) übrig</span>
+                </div>
+
+                {recoveryCodesRemaining <= 2 && (
+                  <div className={styles.warningBanner}>
+                    Nur noch {recoveryCodesRemaining} Wiederherstellungscode(s) übrig — bald neu erzeugen.
+                  </div>
+                )}
+
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '12px 0' }}>
+                  Wiederherstellungscodes neu erzeugen
+                </h3>
+                <p className={styles.fieldHelpText}>Ungültige alle bisherigen Codes und erzeugt einen neuen Satz.</p>
+                {!regenConfirmVisible ? (
+                  <div className={styles.btnRow}>
+                    <button className={styles.syncBtn} onClick={() => setRegenConfirmVisible(true)}>Neu erzeugen…</button>
+                  </div>
+                ) : (
+                  <div className={styles.loginBox}>
+                    <label className={styles.field}>
+                      <span>Passwort zur Bestätigung</span>
+                      <input
+                        type="password"
+                        value={regenPassword}
+                        onChange={(e) => setRegenPassword(e.target.value)}
+                        autoComplete="current-password"
+                      />
+                    </label>
+                    {regenStatus === 'error' && <div className={styles.errorBanner}>{regenError}</div>}
+                    <div className={styles.btnRow}>
+                      <button
+                        className={styles.saveBtn}
+                        onClick={() => void regenerateRecoveryCodes()}
+                        disabled={!regenPassword || regenStatus === 'loading'}
+                      >
+                        {regenStatus === 'loading' ? 'Erzeuge…' : 'Neue Codes erzeugen'}
+                      </button>
+                      <button className={styles.syncBtn} onClick={() => { setRegenConfirmVisible(false); setRegenPassword(''); setRegenError(''); }}>Abbrechen</button>
+                    </div>
+                  </div>
+                )}
+
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '16px 0 12px' }}>
+                  2FA deaktivieren
+                </h3>
+                <div className={styles.loginBox}>
+                  <label className={styles.field}>
+                    <span>Passwort zur Bestätigung</span>
+                    <input
+                      type="password"
+                      value={disablePassword}
+                      onChange={(e) => setDisablePassword(e.target.value)}
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  {disableStatus === 'error' && <div className={styles.errorBanner}>{disableError}</div>}
+                  <div className={styles.btnRow}>
+                    <button
+                      className={styles.syncBtn}
+                      onClick={() => void disableTotpAccount()}
+                      disabled={!disablePassword || disableStatus === 'loading'}
+                    >
+                      {disableStatus === 'loading' ? 'Deaktiviere…' : '2FA deaktivieren'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : securityStep === 'idle' ? (
+              <>
+                <p className={styles.fieldHelpText}>
+                  Schützt dein Konto mit einem zusätzlichen 6-stelligen Code aus einer Authenticator-App
+                  (z. B. Aegis, Google Authenticator, 1Password) beim Anmelden.
+                </p>
+                <div className={styles.warningBanner}>
+                  Nutzt du die Android-App? Bitte zuerst auf die neueste Version aktualisieren, bevor du 2FA
+                  aktivierst — ältere Versionen können einen Zwei-Faktor-Login nicht abschließen.
+                </div>
+                {setupError && <div className={styles.errorBanner}>{setupError}</div>}
+                <div className={styles.btnRow}>
+                  <button className={styles.saveBtn} onClick={() => void startTotpSetup()}>2FA aktivieren</button>
+                </div>
+              </>
+            ) : (
+              <div className={styles.loginBox}>
+                <p className={styles.fieldHelpText}>
+                  QR-Code mit der Authenticator-App scannen oder den Code manuell eingeben:
+                </p>
+                {setupQrDataUrl && (
+                  <img src={setupQrDataUrl} alt="QR-Code für die Authenticator-App" width={200} height={200} style={{ borderRadius: 'var(--radius-md)' }} />
+                )}
+                <label className={styles.field}>
+                  <span>Geheimer Schlüssel (manuelle Eingabe)</span>
+                  <input value={setupSecret} readOnly onFocus={(e) => e.target.select()} style={{ fontFamily: 'monospace', userSelect: 'text' }} />
+                </label>
+                <p className={styles.fieldHelpText} style={{ wordBreak: 'break-all' }}>{setupOtpauthUri}</p>
+                <label className={styles.field}>
+                  <span>Code aus der App</span>
+                  <input
+                    value={enableCode}
+                    onChange={(e) => setEnableCode(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="123456"
+                    autoComplete="one-time-code"
+                    onKeyDown={(e) => { if (e.key === 'Enter') void confirmTotpEnable(); }}
+                  />
+                </label>
+                {enableStatus === 'error' && <div className={styles.errorBanner}>{enableError}</div>}
+                <div className={styles.btnRow}>
+                  <button
+                    className={styles.saveBtn}
+                    onClick={() => void confirmTotpEnable()}
+                    disabled={!enableCode.trim() || enableStatus === 'loading'}
+                  >
+                    {enableStatus === 'loading' ? 'Prüfe…' : 'Bestätigen und aktivieren'}
+                  </button>
+                  <button className={styles.syncBtn} onClick={cancelTotpSetup}>Abbrechen</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Admin</h2>
