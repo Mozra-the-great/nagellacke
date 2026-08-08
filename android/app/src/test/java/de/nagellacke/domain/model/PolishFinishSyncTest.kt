@@ -4,6 +4,7 @@ import de.nagellacke.data.local.FinishListConverter
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -79,5 +80,27 @@ class PolishFinishSyncTest {
         val converter = FinishListConverter()
         assertEquals(listOf(FinishType.Classic), converter.toFinishList(""))
         assertEquals(listOf(FinishType.Classic), converter.toFinishList("Sparkly Rainbow"))
+    }
+
+    // Regression coverage for the MIGRATION_2_3 cursor/write-interleaving bug (#192, #214): the
+    // migration reads a row's raw `finish` column via `finishListFromJsonElement(JsonPrimitive(raw))`
+    // — the same conversion `FinishListConverter.toFinishList` uses when its JSON-array parse fails
+    // and it defensively retries the raw string as a bare label. That fallback treats the already-
+    // converted JSON-array text as one big bare label, which no FinishType matches, so it silently
+    // collapses to Classic. This is exactly what happened when Android's CursorWindow re-ran the
+    // migration's SELECT mid-loop and re-read a row the migration had itself already converted.
+    // The fix (materializing all rows before issuing any UPDATE) prevents an already-converted row
+    // from ever being fed back through this path — this test documents why that ordering matters by
+    // showing the raw conversion step is *not* safe to apply twice.
+    @Test fun `applying the migration's raw finish conversion to already-converted output loses data`() {
+        val converter = FinishListConverter()
+        val original = "Glitter"
+        val firstPass = converter.fromFinishList(finishListFromJsonElement(JsonPrimitive(original)))
+        assertEquals("[\"Glitter\"]", firstPass)
+
+        // Simulate a stale CursorWindow re-read handing the migration its own already-converted
+        // output as if it were still the legacy bare-label column value.
+        val secondPass = converter.fromFinishList(finishListFromJsonElement(JsonPrimitive(firstPass)))
+        assertEquals("[\"Classic\"]", secondPass)
     }
 }

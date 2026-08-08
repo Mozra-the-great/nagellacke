@@ -77,15 +77,24 @@ abstract class NagellackeDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE polishes_new RENAME TO polishes")
 
                 val converter = FinishListConverter()
+                // Read every (id, finish) pair into memory and close the cursor before running
+                // any UPDATEs. Interleaving reads and writes on the same table is unsafe here:
+                // CursorWindow refills by re-running the query, so an UPDATE issued mid-iteration
+                // can cause an already-converted row (now `["Glitter"]`) to be read a second time.
+                // `JsonPrimitive` on an already-array-shaped string then fails enum recognition and
+                // silently falls back to `['Classic']` — silent data loss in a one-shot, irreversible
+                // migration. Only triggers past the default cursor-window size, but the fix is cheap.
+                val rows = mutableListOf<Pair<String, String>>()
                 db.query("SELECT id, finish FROM polishes").use { cursor ->
                     val idIndex = cursor.getColumnIndexOrThrow("id")
                     val finishIndex = cursor.getColumnIndexOrThrow("finish")
                     while (cursor.moveToNext()) {
-                        val id = cursor.getString(idIndex)
-                        val legacyLabel = cursor.getString(finishIndex)
-                        val finishJson = converter.fromFinishList(finishListFromJsonElement(JsonPrimitive(legacyLabel)))
-                        db.execSQL("UPDATE polishes SET finish = ? WHERE id = ?", arrayOf(finishJson, id))
+                        rows.add(cursor.getString(idIndex) to cursor.getString(finishIndex))
                     }
+                }
+                for ((id, legacyLabel) in rows) {
+                    val finishJson = converter.fromFinishList(finishListFromJsonElement(JsonPrimitive(legacyLabel)))
+                    db.execSQL("UPDATE polishes SET finish = ? WHERE id = ?", arrayOf(finishJson, id))
                 }
             }
         }
@@ -98,12 +107,26 @@ abstract class NagellackeDatabase : RoomDatabase() {
         // MIGRATION_2_3), so a user can recover their pre-multi-finish data even if the
         // migration turns out to have a bug. No-op if there's nothing to back up yet (fresh
         // install) or a backup already exists (only the very first upgrade needs one).
+        //
+        // Also copies the WAL/SHM sidecar files (`-wal`/`-shm`), not just the main `.db` file:
+        // with WRITE_AHEAD_LOGGING, recent writes can live only in the WAL until it's
+        // checkpointed back into the main file. If a crash happens right before the update, the
+        // main file alone is an incomplete/stale snapshot, and the rollback would silently lose
+        // data in exactly the scenario it exists to protect against.
         private fun backupDatabaseFileBeforeMultiFinishMigration(context: Context) {
             val dbFile = context.getDatabasePath(DB_NAME)
             if (!dbFile.exists()) return
             val backupFile = File(dbFile.path + PRE_MULTI_FINISH_BACKUP_SUFFIX)
             if (backupFile.exists()) return
-            runCatching { dbFile.copyTo(backupFile) }
+            runCatching {
+                dbFile.copyTo(backupFile)
+                for (suffix in arrayOf("-wal", "-shm")) {
+                    val sidecar = File(dbFile.path + suffix)
+                    if (sidecar.exists()) {
+                        sidecar.copyTo(File(backupFile.path + suffix))
+                    }
+                }
+            }
         }
 
         fun create(context: Context): NagellackeDatabase {
