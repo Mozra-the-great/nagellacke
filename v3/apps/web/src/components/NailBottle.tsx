@@ -12,7 +12,13 @@ interface Props {
 }
 
 export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
-  const uid = useMemo(() => `${color.replace('#', '')}_${finish ?? 'c'}`, [color, finish]);
+  // Used to build SVG element ids below (gId/sId/glId) and referenced back via
+  // url(#...) in `fill`. Multi-word finishes like "Top Coat" or "Gel Look"
+  // contain a raw space, which is not a valid id character — the resulting
+  // url(#gff6699_Top Coat) fails to resolve, silently falling back to the
+  // fill's initial value (black) instead of the intended gradient. Strip
+  // anything that isn't alphanumeric so every finish produces a valid id.
+  const uid = useMemo(() => `${color.replace('#', '')}_${(finish ?? 'c').replace(/[^a-zA-Z0-9]/g, '-')}`, [color, finish]);
 
   if (photoUrl) {
     const faded = status === 'empty' || status === 'gone';
