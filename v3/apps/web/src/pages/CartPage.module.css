@@ -77,6 +77,51 @@
   font-size: 13px;
 }
 
+.smartCartSpinnerRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--md-on-primary);
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.traceToggle {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--md-primary);
+  text-decoration: underline;
+}
+
+.tracePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--md-surface);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--radius-md);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.traceItem {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  line-height: 1.5;
+}
+
 .count { padding: 0 24px 8px; font-size: 13px; color: var(--md-on-surface-variant); }
 
 .grid {

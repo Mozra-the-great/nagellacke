@@ -18,12 +18,18 @@ export interface AiSettingsInput {
   webSearch: { backend: SearchBackend; searxngUrl: string; braveApiKey?: string };
 }
 
+export interface AiJobTraceStep {
+  round: number;
+  toolCalls: { name: string; query: string }[];
+}
+
 export interface AiJob {
   id: string;
   type: 'autofill' | 'smart-cart';
   status: 'pending' | 'running' | 'done' | 'error';
   input: { polish?: { name: string; brand: string; num: string }; prompt?: string };
   result?: unknown;
+  trace?: AiJobTraceStep[];
   error?: string;
   createdAt: number;
   updatedAt: number;
@@ -71,10 +77,11 @@ function getAiJobStatus(jobId: string): Promise<{ job: AiJob }> {
   return request(`/api/ai/jobs/${encodeURIComponent(jobId)}`);
 }
 
-export async function pollAiJob(jobId: string, { intervalMs = 2000, timeoutMs = 120_000 } = {}): Promise<AiJob> {
+export async function pollAiJob(jobId: string, { intervalMs = 2000, timeoutMs = 120_000, onUpdate }: { intervalMs?: number; timeoutMs?: number; onUpdate?: (job: AiJob) => void } = {}): Promise<AiJob> {
   const start = Date.now();
   for (;;) {
     const { job } = await getAiJobStatus(jobId);
+    onUpdate?.(job);
     if (job.status === 'done' || job.status === 'error') return job;
     if (Date.now() - start > timeoutMs) throw new Error('Zeitüberschreitung bei der KI-Anfrage');
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
