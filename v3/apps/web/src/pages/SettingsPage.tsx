@@ -10,9 +10,24 @@ import { generateReport } from '../utils/report';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
+import { bootstrapAdmin } from '../utils/admin';
+import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
+
+interface SettingsPageProps {
+  appData: AppData;
+  /** null = not yet known (offline, not logged in, or a pre-#173 server that
+   *  doesn't send `role` yet) — the AI-Assistenz and Admin sections stay in
+   *  their pre-#173 place and behavior in that case, for backwards
+   *  compatibility. Once a role is known, both move to AdminPage (admin) or
+   *  disappear (non-admin, tightened by the server since #173). */
+  role: Role | null;
+  /** Re-probes /api/auth/me in App.tsx — call after anything that changes who
+   *  is logged in (login, bootstrap). */
+  onAuthChange: () => void;
+}
 
 function mimeTypeFromFilename(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase();
@@ -71,7 +86,7 @@ interface UpdateInfo {
   updateAvailable: boolean;
 }
 
-export default function SettingsPage({ appData }: { appData: AppData }) {
+export default function SettingsPage({ appData, role, onAuthChange }: SettingsPageProps) {
   const [config, setConfig] = useState<SyncConfig | null>(loadSyncConfig);
   const [provider, setProvider] = useState<SyncProviderType | 'none'>(config?.provider ?? 'none');
   const [serverUrl, setServerUrl] = useState(config?.serverUrl ?? '');
@@ -116,6 +131,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       setLoginPass('');
       setLoginStatus('idle');
       void appData.sync();
+      onAuthChange();
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setLoginStatus('error');
@@ -139,11 +155,15 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     else localStorage.removeItem(APIKEY_STORAGE);
   };
 
+  // Bare relative fetches broke in the cross-origin "Eigener Server" mode —
+  // they only ever worked because most install.sh deployments are
+  // same-origin. serverBase is '' for same-origin/no-config anyway, so this
+  // is a no-op there and only changes behavior when it was actually needed (#173).
   const checkUpdate = async () => {
     setUpdateStatus('checking');
     setUpdateError('');
     try {
-      const res = await fetch('/api/update/check', { headers: { 'X-Api-Key': apiKey } });
+      const res = await fetch(`${serverBase}/api/update/check`, { headers: { 'X-Api-Key': apiKey } });
       if (res.status === 401) { setUpdateError('API-Schlüssel ungültig'); setUpdateStatus('error'); return; }
       const data = await res.json() as UpdateInfo;
       setUpdateInfo(data);
@@ -158,11 +178,34 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     setUpdateStatus('updating');
     setUpdateError('');
     try {
-      await fetch('/api/update/apply', { method: 'POST', headers: { 'X-Api-Key': apiKey } });
+      await fetch(`${serverBase}/api/update/apply`, { method: 'POST', headers: { 'X-Api-Key': apiKey } });
       setUpdateStatus('done');
     } catch (e) {
       setUpdateError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setUpdateStatus('error');
+    }
+  };
+
+  // ── Admin-Bootstrap (#173 §3.3) ──
+  const [bootstrapUsername, setBootstrapUsername] = useState('');
+  const [bootstrapPassword, setBootstrapPassword] = useState('');
+  const [bootstrapStatus, setBootstrapStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [bootstrapError, setBootstrapError] = useState('');
+  const [bootstrapAdminExists, setBootstrapAdminExists] = useState(false);
+
+  const doBootstrap = async () => {
+    setBootstrapStatus('loading');
+    setBootstrapError('');
+    try {
+      await bootstrapAdmin(serverUrl, apiKey, bootstrapUsername, bootstrapPassword);
+      setBootstrapStatus('done');
+      setBootstrapPassword('');
+      onAuthChange();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Verbindungsfehler';
+      if (/existiert bereits/i.test(message)) setBootstrapAdminExists(true);
+      setBootstrapError(message);
+      setBootstrapStatus('error');
     }
   };
 
@@ -864,7 +907,11 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
         )}
       </section>
 
-      {aiEnabled && (
+      {/* role === null: role not yet known (offline / legacy pre-#173 server)
+          — keep exactly today's behavior. Once a role is known this section
+          moves wholesale to AdminPage (admin) or disappears (non-admin, whose
+          POST /api/ai/settings now 403s server-side anyway, see #173 §4.2). */}
+      {aiEnabled && role === null && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
 
@@ -1036,8 +1083,58 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       </section>
       )}
 
+      {/* Hidden once role === 'admin' — the API key's job is done (§3.3) and
+          this whole section, including "Update prüfen"/"Update installieren",
+          lives in AdminPage → "API-Schlüssel & Update" from then on. Stays
+          visible for role === 'user' (the bootstrap flow below needs it) and
+          role === null (offline / legacy pre-#173 server, unchanged behavior). */}
+      {role !== 'admin' && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Admin</h2>
+
+        {apiKey && bootstrapStatus !== 'done' && (
+          <div className={styles.loginBox}>
+            <p className={styles.fieldHelpText}>
+              Mit dem API-Schlüssel einmalig ein Admin-Konto einrichten — danach reicht die normale Anmeldung
+              oben, der API-Schlüssel wird hier nicht mehr benötigt.
+            </p>
+            {bootstrapAdminExists ? (
+              <div className={styles.warningBanner}>
+                Es existiert bereits ein Admin-Konto — bitte mit diesem Konto oben anmelden.
+              </div>
+            ) : (
+              <>
+                <label className={styles.field}>
+                  <span>Admin-Benutzername</span>
+                  <input value={bootstrapUsername} onChange={(e) => setBootstrapUsername(e.target.value)} autoComplete="username" />
+                </label>
+                <label className={styles.field}>
+                  <span>Admin-Passwort (min. 8 Zeichen)</span>
+                  <input
+                    type="password"
+                    value={bootstrapPassword}
+                    onChange={(e) => setBootstrapPassword(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </label>
+                {bootstrapStatus === 'error' && !bootstrapAdminExists && (
+                  <div className={styles.errorBanner}>{bootstrapError}</div>
+                )}
+                <button
+                  className={styles.saveBtn}
+                  onClick={() => void doBootstrap()}
+                  disabled={!bootstrapUsername || bootstrapPassword.length < 8 || bootstrapStatus === 'loading'}
+                >
+                  {bootstrapStatus === 'loading' ? 'Wird eingerichtet…' : 'In Admin-Konto umwandeln'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {bootstrapStatus === 'done' && (
+          <div className={styles.successBanner}>✓ Admin-Konto eingerichtet — angemeldet.</div>
+        )}
+
         <label className={styles.field}>
           <span>API-Schlüssel</span>
           <input
@@ -1093,6 +1190,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
           )}
         </div>
       </section>
+      )}
     </div>
   );
 }

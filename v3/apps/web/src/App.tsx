@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAppData } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
 import CollectionPage from './pages/CollectionPage';
@@ -7,12 +7,15 @@ import StickersPage from './pages/StickersPage';
 import DiaryPage from './pages/DiaryPage';
 import StatsPage from './pages/StatsPage';
 import SettingsPage from './pages/SettingsPage';
+import AdminPage from './pages/AdminPage';
 import { plural } from './utils/plural';
+import { fetchRole } from './utils/auth';
+import type { Role } from './utils/auth';
 import styles from './App.module.css';
 
-type Tab = 'collection' | 'cart' | 'stickers' | 'diary' | 'stats' | 'settings';
+type Tab = 'collection' | 'cart' | 'stickers' | 'diary' | 'stats' | 'settings' | 'admin';
 
-const NAV_ITEMS: { id: Tab; label: string }[] = [
+const BASE_NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: 'collection', label: '◈ Nagellack' },
   { id: 'stickers',   label: '◈ Sticker' },
   { id: 'diary',      label: '◈ Tagebuch' },
@@ -24,6 +27,28 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
   const appData = useAppData();
+
+  // Role isn't part of useAppData (that hook owns the collection, not
+  // identity) — App.tsx has no auth state at all otherwise, since login
+  // lives inside SettingsPage and only ever wrote to localStorage. Probed on
+  // mount and re-probed whenever authVersion changes (login/logout/bootstrap
+  // inside SettingsPage/AdminPage call refreshAuth()). A missing/failed probe
+  // resolves to null, so non-admins — and anyone on an older server that
+  // doesn't send `role` yet — never see the tab at all, not merely disabled.
+  const [role, setRole] = useState<Role | null>(null);
+  const [authVersion, setAuthVersion] = useState(0);
+  const refreshAuth = useCallback(() => setAuthVersion((v) => v + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    fetchRole(controller.signal).then((r) => { if (!cancelled) setRole(r); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [authVersion]);
+
+  const navItems = role === 'admin'
+    ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '◈ Admin' }]
+    : BASE_NAV_ITEMS;
 
   const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
   const ownedPolishes = polishes.filter((p) => p.status === 'ok');
@@ -41,7 +66,7 @@ export default function App() {
           </p>
         </div>
         <nav className={styles.navRow}>
-          {NAV_ITEMS.map(({ id, label }) => (
+          {navItems.map(({ id, label }) => (
             <button
               key={id}
               className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''} ${id === 'settings' ? styles.navBtnSettings : ''}`}
@@ -66,7 +91,8 @@ export default function App() {
         {tab === 'stickers'   && <StickersPage appData={appData} />}
         {tab === 'diary'      && <DiaryPage appData={appData} />}
         {tab === 'stats'      && <StatsPage appData={appData} />}
-        {tab === 'settings'   && <SettingsPage appData={appData} />}
+        {tab === 'settings'   && <SettingsPage appData={appData} role={role} onAuthChange={refreshAuth} />}
+        {tab === 'admin' && role === 'admin' && <AdminPage />}
       </main>
     </div>
     </SnackbarProvider>
