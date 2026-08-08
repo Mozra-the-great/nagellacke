@@ -430,3 +430,23 @@ export async function processAiJobQueue(): Promise<void> {
 export function isAiConfigured(config: AiConfig = getAiConfig()): boolean {
   return isConfigured(config);
 }
+
+// ── Admin test-connection (#173) ──────────────────────────────────────────────
+
+/**
+ * Minimal connectivity check for the admin panel's "Verbindung testen"
+ * button: one plain completion, web search off, so it costs at most one
+ * request against whichever provider is configured. Reuses callOpenRouter /
+ * callGemini rather than duplicating provider HTTP logic.
+ */
+export async function testAiConnection(provider: AiConfig['provider']): Promise<{ model: string }> {
+  const config = getAiConfig();
+  if (provider === 'gemini') {
+    if (!config.gemini.apiKey) throw new Error('Gemini-API-Schlüssel fehlt');
+    await callGemini(config.gemini, 'Antworte mit genau einem Wort.', 'Sag "ok".', false, config.webSearch);
+    return { model: config.gemini.model || 'gemini-flash-latest' };
+  }
+  if (!config.openrouter.apiKey) throw new Error('OpenRouter-API-Schlüssel fehlt');
+  await callOpenRouter(config.openrouter, 'Antworte mit genau einem Wort.', 'Sag "ok".', false, config.webSearch);
+  return { model: config.openrouter.model || 'openrouter/auto' };
+}

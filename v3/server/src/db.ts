@@ -109,12 +109,23 @@ export function migrateGlobalDataToFirstUser(): void {
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
+export type UserRole = 'admin' | 'user';
+
 interface User {
   username: string;
   password_hash: string;
   created_at: number;
   email?: string;
   token_version?: number;
+  /**
+   * Absent on every row written before #173 — treated as 'user' everywhere
+   * that reads it. Deliberately NOT carried in the JWT: tokenVersionValid()
+   * already does a getUser() lookup on every authenticated request (to check
+   * token_version), so role is read from that same lookup instead of adding a
+   * second source of truth. A promotion/demotion therefore takes effect on the
+   * very next request, not the next login.
+   */
+  role?: UserRole;
 }
 
 function readUsers(): User[] {
@@ -152,9 +163,9 @@ export function getFirstUsername(): string | undefined {
   return users.reduce((a, b) => (a.created_at <= b.created_at ? a : b)).username;
 }
 
-export function createUser(username: string, passwordHash: string): void {
+export function createUser(username: string, passwordHash: string, role?: UserRole): void {
   const users = readUsers();
-  users.push({ username, password_hash: passwordHash, created_at: Date.now() });
+  users.push({ username, password_hash: passwordHash, created_at: Date.now(), ...(role ? { role } : {}) });
   writeUsers(users);
 }
 
@@ -178,6 +189,161 @@ export function updateUserEmail(username: string, email: string): void {
     users[idx] = { ...users[idx], email };
     writeUsers(users);
   }
+}
+
+// ── Admin / roles (#173) ────────────────────────────────────────────────────
+
+export interface AdminUserView {
+  username: string;
+  email?: string;
+  role: UserRole;
+  createdAt: number;
+}
+
+function toAdminView(u: User): AdminUserView {
+  // Project explicitly — never spread a raw User, it carries password_hash.
+  return { username: u.username, email: u.email, role: u.role ?? 'user', createdAt: u.created_at };
+}
+
+export function isAdmin(username: string): boolean {
+  return getUser(username)?.role === 'admin';
+}
+
+export function countAdmins(): number {
+  return readUsers().filter((u) => u.role === 'admin').length;
+}
+
+export function listUsers(): AdminUserView[] {
+  return readUsers().map(toAdminView);
+}
+
+export function setUserRole(username: string, role: UserRole): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  users[idx] = { ...users[idx], role };
+  writeUsers(users);
+}
+
+/**
+ * Removes a user's login. The user's collection file is renamed (not
+ * deleted) — same "rename, never destroy" pattern as
+ * migrateGlobalDataToFirstUser() above — so it stays recoverable by hand.
+ * Does not touch schedule.json or ai_jobs.json; callers (index.ts) handle the
+ * schedule-orphan cleanup, since that also has to talk to the report
+ * scheduler's config shape.
+ */
+export function deleteUser(username: string): void {
+  const users = readUsers().filter((u) => u.username !== username);
+  writeUsers(users);
+  const dataFile = userDataFile(username);
+  if (fs.existsSync(dataFile)) {
+    fs.renameSync(dataFile, `${dataFile}.deleted-${Date.now()}`);
+  }
+}
+
+// ── Audit log (#173) ──────────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  ts: number;
+  actor: string;
+  action: string;
+  target?: string;
+  meta?: Record<string, unknown>;
+}
+
+const AUDIT_FILE = path.join(DATA_DIR, 'audit.json');
+const MAX_AUDIT_ENTRIES = 500;
+
+function readAudit(): AuditEntry[] {
+  try {
+    if (!fs.existsSync(AUDIT_FILE)) return [];
+    return JSON.parse(fs.readFileSync(AUDIT_FILE, 'utf-8')) as AuditEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function writeAudit(entries: AuditEntry[]): void {
+  const tmp = `${AUDIT_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(entries));
+  fs.renameSync(tmp, AUDIT_FILE);
+}
+
+/**
+ * Records one admin action. Never pass a secret value in `meta` — log that a
+ * field changed ("smtp.pass changed"), not what it changed to.
+ */
+export function logAdminAction(actor: string, action: string, target?: string, meta?: Record<string, unknown>): void {
+  const entries = readAudit();
+  entries.push({ ts: Date.now(), actor, action, target, meta });
+  writeAudit(entries.slice(-MAX_AUDIT_ENTRIES));
+}
+
+export function getAuditLog(): AuditEntry[] {
+  // Newest first.
+  return [...readAudit()].reverse();
+}
+
+/**
+ * One-time migration promoting the earliest-registered user to admin.
+ * Idempotent (no-op once any admin exists) and safe to call on every
+ * startup, in the same slot as migrateGlobalDataToFirstUser() — before any
+ * request is served.
+ *
+ * Covers the "existing install being upgraded" case from #173: an operator
+ * who never opens the panel gets exactly one admin (the account that
+ * bootstrapped the server) with zero action required. The "fresh install"
+ * case is a no-op here (no users yet) and handled instead at
+ * POST /api/auth/register, which promotes the very first registered user
+ * directly so there's no window where that user isn't yet admin.
+ */
+export function migrateFirstUserToAdmin(): void {
+  const users = readUsers();
+  if (users.length === 0) return;
+  if (users.some((u) => u.role === 'admin')) return;
+  const owner = users.reduce((a, b) => (a.created_at <= b.created_at ? a : b));
+  const idx = users.findIndex((u) => u.username === owner.username);
+  users[idx] = { ...users[idx], role: 'admin' };
+  writeUsers(users);
+  console.log(`[migration] "${owner.username}" (first-registered user) promoted to admin (#173).`);
+}
+
+// ── Server settings (registration / SMTP / app URL) (#173) ───────────────────
+//
+// PRECEDENCE RULE — the opposite of loadOrCreateSecret()'s env-then-file order
+// in index.ts: a value saved here WINS over the corresponding environment
+// variable when present; the env var is only the fallback for a field never
+// touched in the admin panel. loadOrCreateSecret() protects JWT_SECRET, which
+// must never silently change under an operator who deliberately pinned it via
+// env — there is no such constraint on SMTP/registration/appUrl, and the
+// issue's requirement ("every setting reachable through the web app") only
+// holds if a value saved in the panel actually takes effect over a stale env
+// var left set on the host.
+
+export interface ServerSettings {
+  /** Shadows ALLOW_REGISTRATION when set; env var is the fallback. */
+  allowRegistration?: boolean;
+  smtp?: { host: string; port: number; user: string; pass: string; from: string; secure?: boolean };
+  /** Shadows APP_URL when set; env var is the fallback. */
+  appUrl?: string;
+}
+
+const SERVER_SETTINGS_FILE = path.join(DATA_DIR, 'server_settings.json');
+
+export function getServerSettings(): ServerSettings {
+  try {
+    if (!fs.existsSync(SERVER_SETTINGS_FILE)) return {};
+    return JSON.parse(fs.readFileSync(SERVER_SETTINGS_FILE, 'utf-8')) as ServerSettings;
+  } catch {
+    return {};
+  }
+}
+
+export function setServerSettings(settings: ServerSettings): void {
+  const tmp = `${SERVER_SETTINGS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(settings), { mode: 0o600 });
+  fs.renameSync(tmp, SERVER_SETTINGS_FILE);
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────
