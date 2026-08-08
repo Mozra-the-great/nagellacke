@@ -16,6 +16,7 @@ import {
   bumpTokenVersion, migrateGlobalDataToFirstUser, getScheduleConfig, setScheduleConfig,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
+  recordTotpFailure, clearTotpFailures, totpLockedUntil,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob } from './db';
 import { processAiJobQueue, isAiConfigured } from './ai';
@@ -676,8 +677,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   //      brute-forcing the *same* challenge, since minting a fresh one needs
   //      the password again.
   // In-memory, scoped to this app instance: a restart (or, in tests, a fresh
-  // buildApp()) invalidates all in-flight challenges — the same tradeoff
-  // already accepted for the rate-limit plugin's in-memory store.
+  // buildApp()) invalidates all in-flight challenges and their attempt counts
+  // — the same tradeoff already accepted for the rate-limit plugin's
+  // in-memory store. This is backstopped by the account-scoped counter in
+  // db.ts (recordTotpFailure/totpLockedUntil), which IS persisted to
+  // users.json and therefore survives a restart — chosen over just
+  // documenting the gap since it was no extra work once item 3's counter
+  // existed anyway (hardening items 3+4, #174 security review).
   const MFA_MAX_ATTEMPTS = 5;
   const mfaAttempts = new Map<string, { count: number; mintedAt: number }>();
   // Opportunistic pruning so a long-running process doesn't accumulate dead
@@ -725,6 +731,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(401).send({ error: 'Challenge ungültig oder abgelaufen' });
     }
 
+    // Account-scoped lockout (hardening item 3, #174 security review):
+    // independent of source IP and of the per-jti cap above, both of which
+    // reset for an attacker who rotates IP or mints a fresh challenge (which
+    // only needs the password again — the case this guards against an
+    // attacker who already has).
+    const lockedUntil = totpLockedUntil(user.username);
+    if (lockedUntil) {
+      return reply.code(401).send({ error: 'Konto vorübergehend gesperrt — zu viele Fehlversuche' });
+    }
+
     const trimmedCode = code.trim();
     let ok = false;
     if (/^\d{6}$/.test(trimmedCode) && user.totp_secret) {
@@ -739,8 +755,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       ok = consumeRecoveryCode(user.username, trimmedCode);
     }
 
-    if (!ok) return reply.code(401).send({ error: 'Ungültiger Code' });
+    if (!ok) {
+      recordTotpFailure(user.username);
+      return reply.code(401).send({ error: 'Ungültiger Code' });
+    }
 
+    clearTotpFailures(user.username);
     mfaAttempts.delete(payload.jti);
     return issueTokens(user.username, user.token_version ?? 0);
   });
@@ -776,28 +796,44 @@ export async function buildApp(): Promise<FastifyInstance> {
   // codes get generated. On a wrong code, the pending secret is left in place
   // so the user can retry without re-scanning.
   //
+  // Requires re-entering the password (security review of #174 — BLOCKER 2):
+  // requireJwt alone means a stolen access token, without the password, was
+  // enough to turn 2FA on with a secret/recovery codes only the attacker
+  // holds — an unrecoverable lockout for the real owner, since this app has
+  // no password-reset flow. /disable and /recovery-codes/regenerate already
+  // required the password for the equivalent reason; /enable was the odd one
+  // out.
+  //
   // Also blocked while already enabled (same reasoning as /setup above): it
   // would otherwise regenerate recovery codes and reset the replay-guard
-  // counter on session alone, no password.
+  // counter on session alone.
+  //
+  // enableTotp() bumps token_version, which invalidates the very access token
+  // this request is authenticated with — a fresh pair is minted and returned
+  // in the same response so the caller isn't logged out mid-enrollment,
+  // mirroring what /disable already does.
   app.post('/api/auth/totp/enable', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { code } = request.body as { code?: string };
+    const { code, password } = request.body as { code?: string; password?: string };
     const user = getUser(username);
     if (user?.totp_enabled) {
       return reply.code(400).send({ error: '2FA ist bereits aktiviert' });
     }
-    if (!user?.totp_secret) {
+    if (!user || !password || !verifyPassword(password, user.password_hash)) {
+      return reply.code(401).send({ error: 'Passwort erforderlich' });
+    }
+    if (!user.totp_secret) {
       return reply.code(400).send({ error: 'Kein 2FA-Setup gestartet — zuerst /totp/setup aufrufen' });
     }
     if (!code || verifyTotpCode(user.totp_secret, code.trim(), username) === null) {
       return reply.code(401).send({ error: 'Ungültiger Code' });
     }
     const { codes, hashes } = generateRecoveryCodes();
-    enableTotp(username, hashes);
-    return { ok: true, recoveryCodes: codes };
+    const newTokenVersion = enableTotp(username, hashes);
+    return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion) };
   });
 
   // POST /api/auth/totp/disable — requires re-entering the password (not just

@@ -409,6 +409,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
   const [setupQrDataUrl, setSetupQrDataUrl] = useState('');
   const [setupError, setSetupError] = useState('');
   const [enableCode, setEnableCode] = useState('');
+  const [enablePassword, setEnablePassword] = useState('');
   const [enableStatus, setEnableStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [enableError, setEnableError] = useState('');
   const [revealedRecoveryCodes, setRevealedRecoveryCodes] = useState<string[] | null>(null);
@@ -546,6 +547,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
     setSetupQrDataUrl('');
     setSetupError('');
     setEnableCode('');
+    setEnablePassword('');
     setEnableError('');
     setEnableStatus('idle');
   };
@@ -557,13 +559,25 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       const res = await fetch(`${serverBase}/api/auth/totp/enable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
-        body: JSON.stringify({ code: enableCode.trim() }),
+        body: JSON.stringify({ code: enableCode.trim(), password: enablePassword }),
       });
-      const data = await res.json() as { ok?: boolean; recoveryCodes?: string[]; error?: string };
+      const data = await res.json() as { ok?: boolean; recoveryCodes?: string[]; token?: string; refreshToken?: string; error?: string };
       if (!res.ok || !data.ok || !data.recoveryCodes) {
         setEnableError(data.error ?? `Fehler ${res.status}`);
         setEnableStatus('error');
         return;
+      }
+      // /enable bumps token_version (it invalidates every session issued
+      // before enrollment, closing the "steal a refresh token, then watch the
+      // victim enable 2FA and think they're safe" hole) — which would also
+      // kill the very token this request is authenticated with. A fresh pair
+      // comes back in the same response so the session keeps working without
+      // a forced re-login.
+      if (data.token) {
+        const c: SyncConfig = { provider: 'server', serverUrl, serverToken: data.token, serverRefreshToken: data.refreshToken };
+        saveSyncConfig(c);
+        setConfig(c);
+        setServerToken(data.token);
       }
       setTotpEnabled(true);
       setRecoveryCodesRemaining(data.recoveryCodes.length);
@@ -573,6 +587,7 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
       setSetupOtpauthUri('');
       setSetupQrDataUrl('');
       setEnableCode('');
+      setEnablePassword('');
       setEnableStatus('idle');
     } catch (e) {
       setEnableError(e instanceof Error ? e.message : 'Verbindungsfehler');
@@ -1423,12 +1438,22 @@ export default function SettingsPage({ appData }: { appData: AppData }) {
                     onKeyDown={(e) => { if (e.key === 'Enter') void confirmTotpEnable(); }}
                   />
                 </label>
+                <label className={styles.field}>
+                  <span>Passwort zur Bestätigung</span>
+                  <input
+                    type="password"
+                    value={enablePassword}
+                    onChange={(e) => setEnablePassword(e.target.value)}
+                    autoComplete="current-password"
+                    onKeyDown={(e) => { if (e.key === 'Enter') void confirmTotpEnable(); }}
+                  />
+                </label>
                 {enableStatus === 'error' && <div className={styles.errorBanner}>{enableError}</div>}
                 <div className={styles.btnRow}>
                   <button
                     className={styles.saveBtn}
                     onClick={() => void confirmTotpEnable()}
-                    disabled={!enableCode.trim() || enableStatus === 'loading'}
+                    disabled={!enableCode.trim() || !enablePassword || enableStatus === 'loading'}
                   >
                     {enableStatus === 'loading' ? 'Prüfe…' : 'Bestätigen und aktivieren'}
                   </button>

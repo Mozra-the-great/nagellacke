@@ -53,24 +53,32 @@ function codeFor(secretBase32: string, timestamp: number = Date.now()): string {
   return totp.generate({ timestamp });
 }
 
-/** Registers a user, enables 2FA on it via the real setup/enable flow, and returns everything a test needs. */
-async function registerWithTotpEnabled(username: string): Promise<{ secret: string; recoveryCodes: string[] }> {
-  const { token } = await register(username);
+/**
+ * Registers a user, enables 2FA on it via the real setup/enable flow, and
+ * returns everything a test needs — including the fresh token pair /enable
+ * returns, since enableTotp() bumps token_version and invalidates the
+ * pre-enable `token` from register() (security review of #174, BLOCKER 1).
+ */
+async function registerWithTotpEnabled(
+  username: string,
+  password = 'correct-horse-battery',
+): Promise<{ secret: string; recoveryCodes: string[]; token: string; refreshToken: string }> {
+  const { token: preEnableToken } = await register(username, password);
   const setupRes = await app.inject({
     method: 'POST', url: '/api/auth/totp/setup',
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${preEnableToken}` },
   });
   expect(setupRes.statusCode).toBe(200);
   const { secret } = setupRes.json() as { secret: string };
 
   const enableRes = await app.inject({
     method: 'POST', url: '/api/auth/totp/enable',
-    headers: { authorization: `Bearer ${token}` },
-    payload: { code: codeFor(secret) },
+    headers: { authorization: `Bearer ${preEnableToken}` },
+    payload: { code: codeFor(secret), password },
   });
   expect(enableRes.statusCode).toBe(200);
-  const { recoveryCodes } = enableRes.json() as { recoveryCodes: string[] };
-  return { secret, recoveryCodes };
+  const { recoveryCodes, token, refreshToken } = enableRes.json() as { recoveryCodes: string[]; token: string; refreshToken: string };
+  return { secret, recoveryCodes, token, refreshToken };
 }
 
 describe('POST /api/auth/login — regression guard (no 2FA)', () => {
@@ -227,7 +235,7 @@ describe('POST /api/auth/totp/setup + /enable — verify-before-enable', () => {
     const enableRes = await app.inject({
       method: 'POST', url: '/api/auth/totp/enable',
       headers: { authorization: `Bearer ${token}` },
-      payload: { code: '000000' },
+      payload: { code: '000000', password: 'correct-horse-battery' },
     });
     expect(enableRes.statusCode).toBe(401);
 
@@ -290,16 +298,20 @@ describe('POST /api/auth/totp/setup and /enable are blocked while 2FA is already
       headers: { authorization: `Bearer ${token}` },
     });
     const { secret } = setupRes.json() as { secret: string };
-    await app.inject({
+    const firstEnable = await app.inject({
       method: 'POST', url: '/api/auth/totp/enable',
       headers: { authorization: `Bearer ${token}` },
-      payload: { code: codeFor(secret) },
+      payload: { code: codeFor(secret), password: 'correct-horse-battery' },
     });
+    expect(firstEnable.statusCode).toBe(200);
+    // enableTotp() bumps token_version, so the pre-enable `token` no longer
+    // authenticates — the second call must use the fresh token /enable returned.
+    const { token: freshToken } = firstEnable.json() as { token: string };
 
     const secondEnable = await app.inject({
       method: 'POST', url: '/api/auth/totp/enable',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { code: codeFor(secret) },
+      headers: { authorization: `Bearer ${freshToken}` },
+      payload: { code: codeFor(secret), password: 'correct-horse-battery' },
     });
     expect(secondEnable.statusCode).toBe(400);
   });
@@ -362,5 +374,152 @@ describe('POST /api/auth/totp/disable', () => {
     const finalBody = finalLogin.json();
     expect(typeof finalBody.token).toBe('string');
     expect(finalBody.mfaRequired).toBeUndefined();
+  });
+});
+
+// ── Security review of PR #215 — regression tests ──────────────────────────────
+
+describe('BLOCKER 1: enabling 2FA invalidates refresh tokens issued before enrollment', () => {
+  it('a refresh token obtained before /totp/enable is rejected after enable', async () => {
+    const username = freshUsername();
+    const { token: preEnableToken, refreshToken: preEnableRefresh } = await register(username);
+
+    // Sanity: the refresh token works before 2FA is enabled.
+    const preCheck = await app.inject({
+      method: 'POST', url: '/api/auth/refresh',
+      payload: { refreshToken: preEnableRefresh },
+    });
+    expect(preCheck.statusCode).toBe(200);
+
+    const setupRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/setup',
+      headers: { authorization: `Bearer ${preEnableToken}` },
+    });
+    const { secret } = setupRes.json() as { secret: string };
+    const enableRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/enable',
+      headers: { authorization: `Bearer ${preEnableToken}` },
+      payload: { code: codeFor(secret), password: 'correct-horse-battery' },
+    });
+    expect(enableRes.statusCode).toBe(200);
+
+    // The pre-enrollment refresh token — e.g. stolen by an attacker before
+    // the victim turned 2FA on — must no longer mint fresh tokens. Without
+    // the token_version bump in enableTotp(), this would still return 200,
+    // letting the attacker renew indefinitely without ever supplying a code.
+    const refreshRes = await app.inject({
+      method: 'POST', url: '/api/auth/refresh',
+      payload: { refreshToken: preEnableRefresh },
+    });
+    expect(refreshRes.statusCode).toBe(401);
+  });
+});
+
+describe('BLOCKER 2: POST /api/auth/totp/enable requires password confirmation', () => {
+  it('rejects without a password, leaving 2FA disabled', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    const setupRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/setup',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const { secret } = setupRes.json() as { secret: string };
+
+    const enableRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/enable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: codeFor(secret) },
+    });
+    expect(enableRes.statusCode).toBe(401);
+
+    const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
+    expect(meRes.json().totpEnabled).toBe(false);
+  });
+
+  it('rejects with a wrong password, leaving 2FA disabled', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    const setupRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/setup',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const { secret } = setupRes.json() as { secret: string };
+
+    const enableRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/enable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: codeFor(secret), password: 'definitely-wrong' },
+    });
+    expect(enableRes.statusCode).toBe(401);
+
+    const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
+    expect(meRes.json().totpEnabled).toBe(false);
+  });
+
+  it('accepts with the correct password, and the returned fresh token pair works on a protected route', async () => {
+    const username = freshUsername();
+    const { token: preEnableToken } = await register(username);
+    const setupRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/setup',
+      headers: { authorization: `Bearer ${preEnableToken}` },
+    });
+    const { secret } = setupRes.json() as { secret: string };
+
+    const enableRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/enable',
+      headers: { authorization: `Bearer ${preEnableToken}` },
+      payload: { code: codeFor(secret), password: 'correct-horse-battery' },
+    });
+    expect(enableRes.statusCode).toBe(200);
+    const { token, refreshToken } = enableRes.json() as { token: string; refreshToken: string };
+    expect(typeof token).toBe('string');
+    expect(typeof refreshToken).toBe('string');
+
+    const syncRes = await app.inject({ method: 'GET', url: '/api/sync', headers: { authorization: `Bearer ${token}` } });
+    expect(syncRes.statusCode).toBe(200);
+  });
+});
+
+describe('Hardening item 3: account-scoped TOTP lockout, independent of challenge and source IP', () => {
+  it('locks the account after repeated failures across different challenge tokens and simulated IPs', async () => {
+    const username = freshUsername();
+    const { secret } = await registerWithTotpEnabled(username);
+
+    // 10 failed attempts, each against a *fresh* challenge (fresh jti, so the
+    // per-jti cap of 5 never triggers) from a *different* simulated source IP
+    // (so the per-route rate limit of 10/15min per IP never triggers either).
+    // Only the account-scoped counter added in db.ts can be what stops this.
+    for (let i = 0; i < 10; i++) {
+      const ip = `10.0.0.${i + 1}`;
+      const loginRes = await app.inject({
+        method: 'POST', url: '/api/auth/login',
+        payload: { username, password: 'correct-horse-battery' },
+        remoteAddress: ip,
+      });
+      const { challengeToken } = loginRes.json() as { challengeToken: string };
+      const verifyRes = await app.inject({
+        method: 'POST', url: '/api/auth/login/verify',
+        payload: { challengeToken, code: '000000' },
+        remoteAddress: ip,
+      });
+      expect(verifyRes.statusCode).toBe(401);
+    }
+
+    // A brand-new challenge, from yet another IP, with the *correct* code is
+    // still rejected — the account itself is locked, not any single
+    // challenge or IP.
+    const finalLoginRes = await app.inject({
+      method: 'POST', url: '/api/auth/login',
+      payload: { username, password: 'correct-horse-battery' },
+      remoteAddress: '10.0.0.99',
+    });
+    const { challengeToken: finalChallenge } = finalLoginRes.json() as { challengeToken: string };
+    const finalVerifyRes = await app.inject({
+      method: 'POST', url: '/api/auth/login/verify',
+      payload: { challengeToken: finalChallenge, code: codeFor(secret) },
+      remoteAddress: '10.0.0.99',
+    });
+    expect(finalVerifyRes.statusCode).toBe(401);
+    expect(finalVerifyRes.json().error).toBe('Konto vorübergehend gesperrt — zu viele Fehlversuche');
   });
 });
