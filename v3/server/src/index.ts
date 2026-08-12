@@ -152,6 +152,30 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// ── Sync payload validation ───────────────────────────────────────────────────
+// mergeList() (@nagellacke/core) does `for (const item of list) map.set(item.id, item)`
+// with no runtime checks — a non-array (e.g. a string) gets iterated char-by-char,
+// and non-object items produce a garbage entry keyed by `undefined`. Either one
+// gets merged into the user's real collection and persisted to disk (#217).
+const APP_DATA_LIST_KEYS = ['polishes', 'customCats', 'manicures', 'stickers'] as const;
+function isValidAppDataList(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (item) =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).id === 'string' &&
+      typeof (item as Record<string, unknown>).updatedAt === 'number',
+  );
+}
+function isValidAppData(value: unknown): value is AppData {
+  if (value === null || typeof value !== 'object') return false;
+  return APP_DATA_LIST_KEYS.every((key) => {
+    const list = (value as Record<string, unknown>)[key];
+    return list === undefined || isValidAppDataList(list);
+  });
+}
+
 // ── GitHub version check helper ───────────────────────────────────────────────
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -937,8 +961,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { data: clientData } = request.body as { data?: AppData };
+    const { data: clientData } = request.body as { data?: unknown };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
+    if (!isValidAppData(clientData)) return reply.code(400).send({ error: 'data ungültig' });
     const merged = mergeData(getData(username), clientData);
     setData(username, merged);
     return { data: merged };
@@ -953,8 +978,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { data } = request.body as { data?: AppData };
+    const { data } = request.body as { data?: unknown };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
+    if (!isValidAppData(data)) return reply.code(400).send({ error: 'data ungültig' });
     // Merge rather than overwrite: AI jobs write to this user's collection in
     // the background, and a client push built from a stale snapshot would
     // otherwise silently drop those writes.
