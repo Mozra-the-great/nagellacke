@@ -523,3 +523,57 @@ describe('Hardening item 3: account-scoped TOTP lockout, independent of challeng
     expect(finalVerifyRes.json().error).toBe('Konto vorübergehend gesperrt — zu viele Fehlversuche');
   });
 });
+
+describe('#217: POST /api/sync and /api/sync/push validate the request body', () => {
+  it('/api/sync/push rejects a non-array list field instead of corrupting the collection', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: 'not-an-array', customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(400);
+
+    const getRes = await app.inject({
+      method: 'GET', url: '/api/sync',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(getRes.json().data.polishes).toEqual([]);
+  });
+
+  it('/api/sync rejects list items missing id/updatedAt instead of merging garbage entries', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [{ name: 'no id or updatedAt' }], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('/api/sync/push still accepts a well-formed payload', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const polish = {
+      id: 'p1', name: 'Test', brand: 'Brand', num: '001', color: '#ffffff',
+      finish: 'Classic', status: 'ok', createdAt: 1, updatedAt: 1,
+    };
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [polish], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const getRes = await app.inject({
+      method: 'GET', url: '/api/sync',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(getRes.json().data.polishes).toEqual([polish]);
+  });
+});
