@@ -177,7 +177,7 @@ internal fun resolveStickerRefs(entry: Manicure?, available: List<Sticker>): Lis
 /** Builds fresh polish refs from the current selection, mirroring what the web app sends on save. */
 internal fun buildPolishRefs(selectedIds: List<String>, available: List<Polish>): List<PolishRef> =
     selectedIds.mapNotNull { id -> available.find { it.id == id } }
-        .map { PolishRef(name = it.name, brand = it.brand, color = it.color) }
+        .map { PolishRef(id = it.id, name = it.name, brand = it.brand, color = it.color) }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
