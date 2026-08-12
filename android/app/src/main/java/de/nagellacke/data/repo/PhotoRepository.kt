@@ -40,6 +40,26 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
 
     fun delete(filename: String) { resolveSafe(filename).delete() }
 
+    /** Deletes any locally-cached photo not in [referencedFilenames] — run after a sync so photos
+     *  for permanently-purged tombstones (see [de.nagellacke.domain.purgeOldDeleted]) get reclaimed
+     *  instead of lingering on disk forever (#226). Soft-deleted-but-not-yet-purged items still
+     *  reference their photo, so this never touches a file an undo could still need.
+     *
+     *  Skips anything younger than [minAgeMs]: a photo just imported into an open add/edit form is
+     *  on disk but not yet referenced by any saved row, and a sync racing with that unsaved form
+     *  must not delete it out from under the user.
+     *
+     *  Deletes the File handles listFiles() hands back rather than routing their names through
+     *  delete(): those handles come from the directory itself, so there is no attacker-supplied
+     *  name to guard here, and re-deriving one only to re-resolve it would be a detour. The
+     *  traversal guard (#222) belongs on the entry points that take a filename from sync data. */
+    fun cleanup(referencedFilenames: Set<String>, minAgeMs: Long = 24L * 60 * 60 * 1000) {
+        val cutoff = System.currentTimeMillis() - minAgeMs
+        dir.listFiles()?.forEach { file ->
+            if (file.name !in referencedFilenames && file.lastModified() < cutoff) file.delete()
+        }
+    }
+
     fun readBytes(filename: String): ByteArray = resolveSafe(filename).readBytes()
 
     private fun resolveSafe(filename: String): File = resolveWithin(dir, filename)

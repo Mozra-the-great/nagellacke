@@ -13,8 +13,10 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.domain.collectPhotoFilenames
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.purgeOldDeleted
 import java.util.concurrent.TimeUnit
@@ -33,6 +35,7 @@ fun createAdapter(config: SyncConfig, configStore: SyncConfigStore? = null): Syn
 class SyncManager @Inject constructor(
     private val repository: NagellackeRepository,
     private val configStore: SyncConfigStore,
+    private val photoRepository: PhotoRepository,
     @ApplicationContext private val context: Context,
 ) {
     fun schedulePeriodicSync() {
@@ -61,6 +64,7 @@ class SyncManager @Inject constructor(
             val reconciled = if (latestLocal != local) mergeData(latestLocal, result.merged) else result.merged
             val purged = purgeOldDeleted(reconciled)
             repository.replaceAll(purged)
+            photoRepository.cleanup(collectPhotoFilenames(purged))
             return result.copy(merged = purged)
         }
         return result
