@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The server URL is arbitrary user input (self-hosted install, often a bare LAN IP with
+  no TLS termination in front of it) — see SettingsViewModel.httpWarning. There is no
+  fixed set of domains to allow-list ahead of time, so cleartext is permitted globally;
+  the Settings UI already warns the user when their configured server URL uses http://.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
