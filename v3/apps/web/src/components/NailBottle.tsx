@@ -12,15 +12,31 @@ interface Props {
 }
 
 export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
+  // `color` is typed as required, but a corrupted sync/import record can still
+  // land here without one at runtime (#218) - fall back to a neutral grey
+  // rather than crashing the whole render tree.
+  const safeColor = color || '#888888';
+
   // Used to build SVG element ids below (gId/sId/glId) and referenced back via
   // url(#...) in `fill`. Multi-word finishes like "Top Coat" or "Gel Look"
   // contain a raw space, which is not a valid id character — the resulting
   // url(#...) fails to resolve, silently falling back to the fill's initial
   // value (black) instead of the intended gradient (#191). Strip anything
   // that isn't alphanumeric from each finish before joining.
+  //
+  // Array.isArray, not just a length check: a record that predates the
+  // FinishType[] migration can still reach this component carrying a bare
+  // string, and .sort() on a string would throw (#218).
   const uid = useMemo(
-    () => `${color.replace('#', '')}_${finish && finish.length > 0 ? [...finish].sort().map((f) => f.replace(/[^a-zA-Z0-9]/g, '-')).join('-') : 'c'}`,
-    [color, finish],
+    () =>
+      `${safeColor.replace('#', '')}_${
+        Array.isArray(finish) && finish.length > 0
+          ? [...finish].sort().map((f) => String(f).replace(/[^a-zA-Z0-9]/g, '-')).join('-')
+          : typeof finish === 'string'
+            ? (finish as string).replace(/[^a-zA-Z0-9]/g, '-')
+            : 'c'
+      }`,
+    [safeColor, finish],
   );
 
   if (photoUrl) {
@@ -29,7 +45,7 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
       <div style={{
         width: 64, height: 130, borderRadius: '10px', overflow: 'hidden',
         opacity: faded ? 0.38 : status === 'wish' ? 0.62 : 1,
-        boxShadow: selected ? `0 0 14px ${color}bb` : '0 4px 10px rgba(0,0,0,0.55)',
+        boxShadow: selected ? `0 0 14px ${safeColor}bb` : '0 4px 10px rgba(0,0,0,0.55)',
         transition: 'box-shadow 0.3s, opacity 0.3s', flexShrink: 0,
       }}>
         <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -39,21 +55,24 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === 'empty' || status === 'gone';
   const isWish = status === 'wish';
-  const shimmer = (finish ?? ['Classic']).some((f) => SHIMMER_FINISHES.has(f));
+  // Same defence as uid above: a pre-migration record can still arrive with a bare
+  // string here, and .some() on a string throws (#218).
+  const shimmer = (Array.isArray(finish) ? finish : finish ? [finish as FinishType] : ['Classic'])
+    .some((f) => SHIMMER_FINISHES.has(f));
   const brandLabel = (brand ?? '').toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? '3' : '4';
 
   return (
     <svg width="64" height="130" viewBox="0 0 64 130" fill="none" aria-hidden="true"
       style={{
-        filter: selected ? `drop-shadow(0 0 14px ${color}bb)` : 'drop-shadow(0 4px 10px rgba(0,0,0,0.55))',
+        filter: selected ? `drop-shadow(0 0 14px ${safeColor}bb)` : 'drop-shadow(0 4px 10px rgba(0,0,0,0.55))',
         transition: 'filter 0.3s, opacity 0.3s',
         opacity: faded ? 0.38 : isWish ? 0.62 : 1,
       }}>
       <defs>
         <linearGradient id={gId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor={color} />
-          <stop offset="60%" stopColor={color} stopOpacity="0.85" />
+          <stop offset="0%" stopColor={safeColor} />
+          <stop offset="60%" stopColor={safeColor} stopOpacity="0.85" />
           <stop offset="100%" stopColor="#000" stopOpacity="0.3" />
         </linearGradient>
         <linearGradient id={sId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -64,9 +83,9 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
         {shimmer && (
           <linearGradient id={glId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="white" stopOpacity="0.55" />
-            <stop offset="25%" stopColor={color} />
+            <stop offset="25%" stopColor={safeColor} />
             <stop offset="50%" stopColor="white" stopOpacity="0.35" />
-            <stop offset="75%" stopColor={color} />
+            <stop offset="75%" stopColor={safeColor} />
             <stop offset="100%" stopColor="white" stopOpacity="0.5" />
           </linearGradient>
         )}
