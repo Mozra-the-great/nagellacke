@@ -40,6 +40,13 @@ internal sealed class RemoteFetchResult {
     data class Error(val message: String) : RemoteFetchResult()
 }
 
+/** Maps a photo MIME type to a filename extension, mirroring the server's logic (server/src/index.ts). */
+internal fun extensionForMimeType(mimeType: String): String = when (mimeType) {
+    "image/png" -> "png"
+    "image/webp" -> "webp"
+    else -> "jpg"
+}
+
 /** Response body of an OAuth2 `grant_type=refresh_token` token exchange. */
 @Serializable
 internal data class OAuthTokenRefreshResponse(

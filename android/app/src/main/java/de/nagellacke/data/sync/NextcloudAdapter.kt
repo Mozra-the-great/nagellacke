@@ -92,7 +92,7 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
 
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         ensureDir("nagellacke/photos")
-        val filename = "${UUID.randomUUID()}.jpg"
+        val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
         val url = "$davBase/nagellacke/photos/$filename"
         val putRes = client.newCall(
             Request.Builder().url(url).put(data.toRequestBody(mimeType.toMediaType()))
