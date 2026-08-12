@@ -156,11 +156,18 @@ fun PolishFormSheet(
             Text("Bewertung", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 (1..5).forEach { n ->
-                    Text(
-                        "★", style = MaterialTheme.typography.headlineMedium,
-                        color = if (n <= rating) Color(0xFFf59e0b) else MaterialTheme.colorScheme.outlineVariant,
-                        modifier = Modifier.clickable { rating = if (rating == n) 0 else n }.semantics { contentDescription = "$n Sterne" },
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp) // minimum touch target size (Material accessibility guideline)
+                            .clickable { rating = if (rating == n) 0 else n }
+                            .semantics { contentDescription = "$n Sterne" },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "★", style = MaterialTheme.typography.headlineMedium,
+                            color = if (n <= rating) Color(0xFFf59e0b) else MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
