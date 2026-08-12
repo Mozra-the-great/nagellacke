@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppData } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
+import ErrorBoundary from './components/ErrorBoundary';
 import CollectionPage from './pages/CollectionPage';
 import CartPage from './pages/CartPage';
 import StickersPage from './pages/StickersPage';
@@ -25,7 +26,11 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
   const appData = useAppData();
 
-  const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
+  // Guard against corrupted sync/import data replacing `polishes` with a
+  // non-array entirely (e.g. a malformed push) - see #218. A missing field on
+  // an otherwise-valid entry is handled by the per-tab ErrorBoundary below.
+  const polishesList = Array.isArray(appData.data.polishes) ? appData.data.polishes : [];
+  const polishes = polishesList.filter((p) => !p.deletedAt);
   const ownedPolishes = polishes.filter((p) => p.status === 'ok');
   const activeCount = ownedPolishes.length;
   const totalCount = ownedPolishes.reduce((a, p) => a + (p.count ?? 1), 0);
@@ -61,12 +66,17 @@ export default function App() {
       </header>
 
       <main className={styles.main}>
-        {tab === 'collection' && <CollectionPage appData={appData} />}
-        {tab === 'cart'       && <CartPage appData={appData} />}
-        {tab === 'stickers'   && <StickersPage appData={appData} />}
-        {tab === 'diary'      && <DiaryPage appData={appData} />}
-        {tab === 'stats'      && <StatsPage appData={appData} />}
-        {tab === 'settings'   && <SettingsPage appData={appData} />}
+        {/* Keyed by tab so switching away from a crashed page (nav above stays
+            usable, since it lives outside this boundary) remounts a clean
+            boundary instead of staying stuck on the failed render - see #218. */}
+        <ErrorBoundary key={tab}>
+          {tab === 'collection' && <CollectionPage appData={appData} />}
+          {tab === 'cart'       && <CartPage appData={appData} />}
+          {tab === 'stickers'   && <StickersPage appData={appData} />}
+          {tab === 'diary'      && <DiaryPage appData={appData} />}
+          {tab === 'stats'      && <StatsPage appData={appData} />}
+          {tab === 'settings'   && <SettingsPage appData={appData} />}
+        </ErrorBoundary>
       </main>
     </div>
     </SnackbarProvider>

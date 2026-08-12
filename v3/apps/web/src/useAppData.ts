@@ -13,7 +13,7 @@ async function deletePhotoFromServer(filename: string): Promise<void> {
   } catch { /* best-effort: local deletion still proceeds */ }
 }
 
-const STORAGE_KEY = 'nagellacke_v3_data';
+export const STORAGE_KEY = 'nagellacke_v3_data';
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 
 function loadLocal(): AppData {
