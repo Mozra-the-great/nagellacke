@@ -16,6 +16,7 @@ import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.data.sync.AiClient
 import de.nagellacke.data.sync.AiSettingsDto
 import de.nagellacke.data.sync.AuthRepository
+import de.nagellacke.data.sync.AuthResult
 import de.nagellacke.data.sync.ReportsClient
 import de.nagellacke.data.sync.SaveAiSettingsRequest
 import de.nagellacke.data.sync.SaveGeminiDto
@@ -125,8 +126,8 @@ class SettingsViewModel @Inject constructor(
         loadAiSettings()
     }
 
-    fun saveServerConfig(url: String, token: String) {
-        configStore.saveConfig(SyncConfig(provider = SyncProvider.Server, serverUrl = url, serverToken = token))
+    fun saveServerConfig(url: String, token: String, refreshToken: String = "") {
+        configStore.saveConfig(SyncConfig(provider = SyncProvider.Server, serverUrl = url, serverToken = token, serverRefreshToken = refreshToken))
         notifyConfigChanged()
     }
 
@@ -155,10 +156,10 @@ class SettingsViewModel @Inject constructor(
         _syncState.update { Triple(false, result.error, if (result.success) System.currentTimeMillis() else null) }
     }
 
-    suspend fun serverLogin(url: String, username: String, password: String): Result<String> =
+    suspend fun serverLogin(url: String, username: String, password: String): Result<AuthResult> =
         runCatching { AuthRepository(url).login(username, password) }
 
-    suspend fun serverRegister(url: String, username: String, password: String): Result<String> =
+    suspend fun serverRegister(url: String, username: String, password: String): Result<AuthResult> =
         runCatching { AuthRepository(url).register(username, password) }
 
     /**

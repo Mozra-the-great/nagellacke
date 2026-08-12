@@ -9,6 +9,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 @Serializable data class LoginRequest(val username: String, val password: String)
+@Serializable data class RefreshRequest(val refreshToken: String)
 
 // All fields are nullable/defaulted — as of server #174, an account with TOTP
 // 2FA enabled gets { mfaRequired: true, challengeToken } instead of { token,
@@ -35,6 +36,11 @@ interface ServerApi {
 
     @POST("api/auth/register")
     suspend fun register(@Body body: LoginRequest): LoginResponse
+
+    // Response shape matches LoginResponse's { token, refreshToken } pair (see server's
+    // issueTokens()) — mfaRequired/challengeToken are simply absent and default to false/null.
+    @POST("api/auth/refresh")
+    suspend fun refresh(@Body body: RefreshRequest): LoginResponse
 
     @GET("api/sync")
     suspend fun getSync(): SyncResponse

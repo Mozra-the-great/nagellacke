@@ -22,7 +22,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 fun createAdapter(config: SyncConfig, configStore: SyncConfigStore? = null): SyncAdapter = when (config.provider) {
-    SyncProvider.Server     -> ServerAdapter(config)
+    SyncProvider.Server     -> ServerAdapter(config, configStore)
     SyncProvider.Nextcloud  -> NextcloudAdapter(config)
     SyncProvider.GoogleDrive -> GoogleDriveAdapter(config, configStore)
     SyncProvider.OneDrive   -> OneDriveAdapter(config, configStore)
