@@ -30,13 +30,31 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
         return filename
     }
 
-    fun resolveUri(filename: String): Uri = Uri.fromFile(File(dir, filename))
+    fun resolveUri(filename: String): Uri = Uri.fromFile(resolveSafe(filename))
 
-    fun exists(filename: String): Boolean = File(dir, filename).exists()
+    // Called from a Compose `remember` block (see CommonUi.PhotoPickerField) on every
+    // form open — must fail closed (false) rather than throw, or a malicious synced
+    // filename would crash the UI instead of just falling back to the remote image.
+    fun exists(filename: String): Boolean =
+        runCatching { resolveSafe(filename).exists() }.getOrDefault(false)
 
-    fun delete(filename: String) { File(dir, filename).delete() }
+    fun delete(filename: String) { resolveSafe(filename).delete() }
 
-    fun readBytes(filename: String): ByteArray = File(dir, filename).readBytes()
+    fun readBytes(filename: String): ByteArray = resolveSafe(filename).readBytes()
+
+    /**
+     * Resolves [filename] against [dir] and asserts the result stays inside it,
+     * rejecting `..`/separators/symlink tricks that could escape the photos directory
+     * (filenames come from unvalidated sync data — see issue #222).
+     */
+    private fun resolveSafe(filename: String): File {
+        val photosRoot = dir.canonicalFile
+        val candidate = File(dir, filename).canonicalFile
+        if (candidate != photosRoot && !candidate.path.startsWith(photosRoot.path + File.separator)) {
+            throw SecurityException("Invalid photo filename: $filename")
+        }
+        return candidate
+    }
 
     private fun calculateSampleSize(context: Context, uri: Uri, maxW: Int, maxH: Int): Int {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
