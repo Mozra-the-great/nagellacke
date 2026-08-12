@@ -15,6 +15,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 data class PolishRef(
+    val id: String? = null,
     val name: String = "",
     val brand: String? = null,
     val color: String? = null,

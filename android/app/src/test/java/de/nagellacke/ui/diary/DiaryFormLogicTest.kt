@@ -59,7 +59,7 @@ class DiaryFormLogicTest {
     @Test fun `buildPolishRefs maps selected ids to current polish data`() {
         val available = listOf(polish("p1", "Rose Gold", "OPI", "#ffc0cb"), polish("p2", "Blau", "Essie", "#0000ff"))
         assertEquals(
-            listOf(PolishRef(name = "Rose Gold", brand = "OPI", color = "#ffc0cb")),
+            listOf(PolishRef(id = "p1", name = "Rose Gold", brand = "OPI", color = "#ffc0cb")),
             buildPolishRefs(listOf("p1"), available),
         )
     }
