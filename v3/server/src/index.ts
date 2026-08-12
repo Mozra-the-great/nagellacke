@@ -142,10 +142,9 @@ if (fs.existsSync(path.join(DATA_DIR, 'users.json'))) {
 }
 
 // Access tokens were 30d, so a token leaked out of localStorage stayed usable
-// for a month (#109). Shortened to 7d, with a long-lived refresh token the web
-// client trades in silently. 7d rather than minutes because the Android client
-// has no refresh logic yet and syncs every 6h — this keeps it working through
-// normal use while cutting the exposure window fourfold.
+// for a month (#109). Shortened to 7d, with a long-lived refresh token both
+// the web client and the Android app (see ServerAdapter.kt, #220) trade in
+// silently on a 401 — cutting the exposure window fourfold either way.
 const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
 const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
 

@@ -52,6 +52,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import de.nagellacke.data.sync.AuthResult
 import de.nagellacke.data.sync.SyncProvider
 import de.nagellacke.domain.ReportPeriod
 import kotlinx.coroutines.launch
@@ -555,7 +556,7 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             mode = loginMode,
             serverUrl = serverUrl,
             onDismiss = { showLogin = false },
-            onSuccess = { token -> serverToken = token; vm.saveServerConfig(serverUrl, token); showLogin = false },
+            onSuccess = { auth -> serverToken = auth.token; vm.saveServerConfig(serverUrl, auth.token, auth.refreshToken); showLogin = false },
             vm = vm,
         )
     }
@@ -593,7 +594,7 @@ internal fun isCleartextUrl(url: String): Boolean =
     url.trim().lowercase(Locale.ROOT).startsWith("http://")
 
 @Composable
-fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, onSuccess: (String) -> Unit, vm: SettingsViewModel) {
+fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, onSuccess: (AuthResult) -> Unit, vm: SettingsViewModel) {
     val scope = rememberCoroutineScope()
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
