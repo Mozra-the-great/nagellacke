@@ -154,13 +154,22 @@ fun PhotoPickerField(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
-                        .size(24.dp)
-                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .size(48.dp) // minimum touch target size (Material accessibility guideline)
                         .clickable { onPhotoChange(null) }
                         .semantics { contentDescription = "Foto entfernen" },
-                    contentAlignment = Alignment.Center,
+                    // TopEnd, not Center: the tap target grows inwards over the photo while the
+                    // visible circle stays exactly where it was, 4dp off the corner. Centering it
+                    // would shift the ✕ 12dp down and left - a visual change this fix doesn't want.
+                    contentAlignment = Alignment.TopEnd,
                 ) {
-                    Text("✕", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("✕", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         } else {
