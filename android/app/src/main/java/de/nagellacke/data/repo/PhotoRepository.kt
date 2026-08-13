@@ -42,19 +42,7 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
 
     fun readBytes(filename: String): ByteArray = resolveSafe(filename).readBytes()
 
-    /**
-     * Resolves [filename] against [dir] and asserts the result stays inside it,
-     * rejecting `..`/separators/symlink tricks that could escape the photos directory
-     * (filenames come from unvalidated sync data — see issue #222).
-     */
-    private fun resolveSafe(filename: String): File {
-        val photosRoot = dir.canonicalFile
-        val candidate = File(dir, filename).canonicalFile
-        if (candidate != photosRoot && !candidate.path.startsWith(photosRoot.path + File.separator)) {
-            throw SecurityException("Invalid photo filename: $filename")
-        }
-        return candidate
-    }
+    private fun resolveSafe(filename: String): File = resolveWithin(dir, filename)
 
     private fun calculateSampleSize(context: Context, uri: Uri, maxW: Int, maxH: Int): Int {
         val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
