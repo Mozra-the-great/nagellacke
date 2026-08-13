@@ -157,7 +157,10 @@ fun PhotoPickerField(
                         .size(48.dp) // minimum touch target size (Material accessibility guideline)
                         .clickable { onPhotoChange(null) }
                         .semantics { contentDescription = "Foto entfernen" },
-                    contentAlignment = Alignment.Center,
+                    // TopEnd, not Center: the tap target grows inwards over the photo while the
+                    // visible circle stays exactly where it was, 4dp off the corner. Centering it
+                    // would shift the ✕ 12dp down and left - a visual change this fix doesn't want.
+                    contentAlignment = Alignment.TopEnd,
                 ) {
                     Box(
                         modifier = Modifier

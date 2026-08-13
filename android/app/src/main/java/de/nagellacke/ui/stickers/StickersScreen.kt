@@ -197,7 +197,10 @@ fun StickerFormSheet(
                 STATUS_OPTIONS.forEach { s -> FilterChip(status == s, { status = s }, label = { Text(s.label) }) }
             }
             Text("Bewertung", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // No spacedBy here: each star now sits in its own 48dp target, which already
+            // separates the glyphs. Keeping the old 8dp gap on top would push the row to
+            // 272dp and risk clipping on a ~320dp-wide screen.
+            Row {
                 (1..5).forEach { n ->
                     Box(
                         modifier = Modifier
