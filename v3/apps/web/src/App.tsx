@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppData } from './useAppData';
+import { useAppData, shouldShowFinishMigrationNotice } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
+import FinishMigrationNotice from './components/FinishMigrationNotice';
 import CollectionPage from './pages/CollectionPage';
 import CartPage from './pages/CartPage';
 import StickersPage from './pages/StickersPage';
@@ -27,6 +28,13 @@ const BASE_NAV_ITEMS: { id: Tab; label: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
   const appData = useAppData();
+  // `useAppData()` above runs `loadLocal()` synchronously as part of its own
+  // `useState` initializer, which is what sets the migration-backup flag
+  // `shouldShowFinishMigrationNotice()` reads. Must be initialized after that
+  // call so the notice can already appear on the very first render post-
+  // upgrade, instead of only from the next app start (days later for an
+  // installed PWA).
+  const [showFinishMigrationNotice, setShowFinishMigrationNotice] = useState(shouldShowFinishMigrationNotice);
 
   // Role isn't part of useAppData (that hook owns the collection, not
   // identity) — App.tsx has no auth state at all otherwise, since login
@@ -94,6 +102,13 @@ export default function App() {
         {tab === 'settings'   && <SettingsPage appData={appData} role={role} onAuthChange={refreshAuth} />}
         {tab === 'admin' && role === 'admin' && <AdminPage />}
       </main>
+
+      {showFinishMigrationNotice && (
+        <FinishMigrationNotice
+          onRollback={appData.rollbackFinishMigration}
+          onClose={() => setShowFinishMigrationNotice(false)}
+        />
+      )}
     </div>
     </SnackbarProvider>
   );

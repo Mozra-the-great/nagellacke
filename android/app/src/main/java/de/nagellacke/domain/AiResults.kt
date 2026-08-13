@@ -10,18 +10,22 @@ import kotlinx.serialization.json.jsonPrimitive
  * Result of a finished autofill job. Both fields are independently optional: the AI (or the
  * job) may only have produced one of them, or a `finish` value that doesn't map to any
  * [FinishType] — callers should apply only the non-null fields and leave the rest untouched.
+ * [finish] is a single-element list (the server's autofill research still only ever detects one
+ * finish per polish) rather than a bare [FinishType]?, so it drops straight into a polish's
+ * `finish: List<FinishType>` field — matching how CartPage.tsx/CollectionPage.tsx wrap the AI's
+ * single string as `[result.finish]`.
  */
-data class AutofillResult(val color: String?, val finish: FinishType?)
+data class AutofillResult(val color: String?, val finish: List<FinishType>?)
 
 /** Extracts `{color?, finish?}` from a finished autofill job's result, matching finish by label
- *  the same way [de.nagellacke.data.local.PolishEntity]'s toDomain() mapper does. Returns null
- *  for a job that isn't done, has no result, or produced neither field. */
+ *  the same way [de.nagellacke.data.local.PolishEntity]'s toDomain() mapper used to. Returns
+ *  null for a job that isn't done, has no result, or produced neither field. */
 fun parseAutofillResult(job: AiJobDto): AutofillResult? {
     if (job.status != "done") return null
     val result = job.result as? JsonObject ?: return null
     val color = (result["color"] as? JsonPrimitive)?.takeIf { it.isString }?.content
     val finishRaw = (result["finish"] as? JsonPrimitive)?.takeIf { it.isString }?.content
-    val finish = finishRaw?.let { raw -> FinishType.entries.firstOrNull { it.label == raw } }
+    val finish = finishRaw?.let { raw -> FinishType.entries.firstOrNull { it.label == raw } }?.let { listOf(it) }
     if (color == null && finish == null) return null
     return AutofillResult(color, finish)
 }

@@ -81,13 +81,24 @@ export async function sendTestEmail(to: string, override?: Partial<SmtpConfig>):
     const pass = override.pass
       ? override.pass
       : (hostChanged || userChanged ? '' : base?.pass ?? '');
+    // The same reasoning applies to turning TLS *off*: with an unchanged
+    // host/user the stored password is reused, so honouring `secure: false`
+    // would put that credential on the wire in the clear against the real
+    // server. An explicit pass in the request is the caller confirming which
+    // credential they are exposing; without it, a downgrade keeps the stored
+    // setting. Raising security (secure: true) needs no such confirmation.
+    const usingStoredPass = !override.pass;
+    const downgradingTls = override.secure === false;
+    const secure = usingStoredPass && downgradingTls
+      ? (base?.secure ?? (override.port === 465))
+      : (override.secure ?? base?.secure ?? (override.port === 465));
     cfg = {
       host: override.host || base?.host || '',
       port: override.port || base?.port || 587,
       user: override.user || base?.user || '',
       pass,
       from: override.from || base?.from || override.user || base?.user || '',
-      secure: override.secure ?? base?.secure ?? (override.port === 465),
+      secure,
     };
   } else {
     cfg = base;

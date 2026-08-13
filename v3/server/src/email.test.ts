@@ -138,6 +138,49 @@ describe('sendTestEmail — credential/host binding (PR #216 review item 1)', ()
     const cfg = createTransport.mock.calls[0][0];
     expect(cfg.auth.pass).toBe(storedSmtp.pass);
   });
+});
+
+// Host/user binding above stops the credential being sent to *another* host.
+// This covers the remaining way to expose it: keep the real host, but turn TLS
+// off, so the stored password travels to the legitimate server in the clear.
+describe('sendTestEmail — TLS downgrade binding', () => {
+  const secureSmtp = { ...storedSmtp, port: 465, secure: true };
+
+  it('ignores secure:false when the stored password is being reused', async () => {
+    const { email, dir } = await freshEmail(secureSmtp);
+    tmpDirs.push(dir);
+    await email.sendTestEmail('x@ok.example', { secure: false });
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    const cfg = createTransport.mock.calls[0][0];
+    expect(cfg.secure).toBe(true);
+    expect(cfg.auth.pass).toBe(secureSmtp.pass);
+  });
+
+  it('honours secure:false once the caller supplies the password explicitly', async () => {
+    const { email, dir } = await freshEmail(secureSmtp);
+    tmpDirs.push(dir);
+    await email.sendTestEmail('x@ok.example', { secure: false, pass: 'typed-by-the-admin' });
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    const cfg = createTransport.mock.calls[0][0];
+    expect(cfg.secure).toBe(false);
+    expect(cfg.auth.pass).toBe('typed-by-the-admin');
+  });
+
+  it('an empty-string password does not unlock the downgrade either', async () => {
+    const { email, dir } = await freshEmail(secureSmtp);
+    tmpDirs.push(dir);
+    await email.sendTestEmail('x@ok.example', { secure: false, pass: '' });
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    expect(createTransport.mock.calls[0][0].secure).toBe(true);
+  });
+
+  it('still allows raising security without an explicit password', async () => {
+    const { email, dir } = await freshEmail(storedSmtp); // stored secure: false
+    tmpDirs.push(dir);
+    await email.sendTestEmail('x@ok.example', { secure: true });
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    expect(createTransport.mock.calls[0][0].secure).toBe(true);
+  });
 
   // The finding explicitly calls out that this must hold for an env-pinned
   // SMTP_PASS the operator deliberately never put in the admin panel, not

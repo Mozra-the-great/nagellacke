@@ -127,6 +127,79 @@ describe('POST /api/admin/bootstrap', () => {
     expect(db.isAdmin('existing-user')).toBe(true);
   });
 
+  // The API key proves filesystem-level ownership, which is enough to promote
+  // an account's role — but not to *become* that account when it is protected
+  // by a second factor. Without this, holding the key plus a username would
+  // mint a full admin session for a 2FA-protected account without ever
+  // touching its authenticator, while /api/auth/login for the same account
+  // correctly hands back only a challenge.
+  it('returns an MFA challenge instead of tokens when the promoted account has TOTP enabled', async () => {
+    const { app, dir, apiKey } = await createTestApp();
+    tmpDirs.push(dir);
+    await register(app, 'mfa-user', 'correct-password');
+    const db = await import('./db');
+    db.enableTotp('mfa-user', ['deadbeef']);
+    db.setUserRole('mfa-user', 'user');
+    expect(db.countAdmins()).toBe(0);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/bootstrap', headers: { 'x-api-key': apiKey },
+      payload: { username: 'mfa-user', password: 'correct-password' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { token?: string; refreshToken?: string; mfaRequired?: boolean; challengeToken?: string };
+    expect(body.mfaRequired).toBe(true);
+    expect(body.challengeToken).toBeTruthy();
+    expect(body.token).toBeUndefined();
+    expect(body.refreshToken).toBeUndefined();
+    // The role promotion itself is still allowed to have happened - it is the
+    // session, not the privilege bit, that the second factor gates.
+    expect(db.isAdmin('mfa-user')).toBe(true);
+  });
+
+  // An `mfa` token is minted *before* the second factor has been checked, so
+  // it must not open any admin route on its own — otherwise the challenge
+  // above would simply be a differently-shaped admin session. requireAdmin
+  // and its two siblings originally checked tokenVersionValid but not
+  // tokenTypeValid, which let exactly that through.
+  it('the challenge from bootstrap cannot itself reach an admin route', async () => {
+    const { app, dir, apiKey } = await createTestApp();
+    tmpDirs.push(dir);
+    await register(app, 'mfa-user2', 'correct-password');
+    const db = await import('./db');
+    db.enableTotp('mfa-user2', ['deadbeef']);
+    db.setUserRole('mfa-user2', 'user');
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/bootstrap', headers: { 'x-api-key': apiKey },
+      payload: { username: 'mfa-user2', password: 'correct-password' },
+    });
+    const { challengeToken } = res.json() as { challengeToken: string };
+
+    // requireAdmin
+    const users = await app.inject({
+      method: 'GET', url: '/api/admin/users',
+      headers: { authorization: `Bearer ${challengeToken}` },
+    });
+    expect(users.statusCode).toBe(401);
+
+    // requireApiKeyOrAdminJwt
+    const updateCheck = await app.inject({
+      method: 'GET', url: '/api/update/check',
+      headers: { authorization: `Bearer ${challengeToken}` },
+    });
+    expect(updateCheck.statusCode).toBe(401);
+
+    // requireApiKeyOrAdminReconfirm — guards the git pull + npm install path,
+    // so a pre-2FA token reaching it would be remote code execution.
+    const updateApply = await app.inject({
+      method: 'POST', url: '/api/update/apply',
+      headers: { authorization: `Bearer ${challengeToken}` },
+      payload: { password: 'correct-password' },
+    });
+    expect(updateApply.statusCode).toBe(401);
+  });
+
   it('succeeds once and issues tokens; a second call 409s', async () => {
     const { app, dir, apiKey } = await createTestApp();
     tmpDirs.push(dir);

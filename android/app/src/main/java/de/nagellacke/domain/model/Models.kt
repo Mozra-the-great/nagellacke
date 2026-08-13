@@ -3,6 +3,7 @@ package de.nagellacke.domain.model
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
@@ -89,6 +90,40 @@ enum class FinishType(val label: String, val icon: String) {
     @SerialName("Base Coat") BaseCoat("Base Coat", "△"),
 }
 
+// The web app now allows a polish to carry several finish tags at once (#192). This
+// serializer accepts both the legacy shape (a bare finish string) and the current shape (a
+// JSON array of finish strings) on the way in, always re-emitting a JSON array, so a polish
+// synced from an old server/client and one synced from a new one both deserialize cleanly.
+// Unknown/unrecognized entries are dropped rather than crashing; an input that ends up with no
+// valid entries (missing, blank, or entirely unrecognized) normalizes to `[Classic]` so a
+// polish is never left with zero finish tags. Shared by FlexibleFinishSerializer (network
+// JSON) and FinishListConverter (Room column) — mirrors [FlexiblePhotosSerializer] above.
+internal fun finishListFromJsonElement(element: JsonElement): List<FinishType> {
+    val decoded = when (element) {
+        is JsonArray -> element.mapNotNull(::decodeFinishOrNull)
+        is JsonPrimitive -> listOfNotNull(decodeFinishOrNull(element))
+        else -> emptyList()
+    }
+    val deduped = decoded.distinct()
+    return deduped.ifEmpty { listOf(FinishType.Classic) }
+}
+
+private fun decodeFinishOrNull(element: JsonElement): FinishType? =
+    (element as? JsonPrimitive)?.takeIf { it.isString }
+        ?.let { runCatching { Json.decodeFromJsonElement(FinishType.serializer(), it) }.getOrNull() }
+
+private object FlexibleFinishSerializer : KSerializer<List<FinishType>> {
+    private val delegate = ListSerializer(FinishType.serializer())
+    override val descriptor = delegate.descriptor
+
+    override fun deserialize(decoder: Decoder): List<FinishType> {
+        val jsonDecoder = decoder as? JsonDecoder ?: return delegate.deserialize(decoder)
+        return finishListFromJsonElement(jsonDecoder.decodeJsonElement())
+    }
+
+    override fun serialize(encoder: Encoder, value: List<FinishType>) = delegate.serialize(encoder, value)
+}
+
 @Serializable
 enum class PolishStatus(val label: String) {
     @SerialName("ok")   Ok("Vorhanden"),
@@ -124,7 +159,7 @@ data class Polish(
     val brand: String = "",
     val num: String = "",
     val color: String = "#ff6699",
-    val finish: FinishType = FinishType.Classic,
+    @Serializable(with = FlexibleFinishSerializer::class) val finish: List<FinishType> = listOf(FinishType.Classic),
     val status: PolishStatus = PolishStatus.Ok,
     val count: Int = 1,
     val categories: List<String> = emptyList(),

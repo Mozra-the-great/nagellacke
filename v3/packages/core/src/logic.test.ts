@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mergeData, filterPolishes, sortPolishes } from './logic';
+import { normalizeFinish } from './utils';
 import type { AppData, Polish } from './types';
 
 const emptyData = (): AppData => ({
@@ -8,7 +9,7 @@ const emptyData = (): AppData => ({
 
 const polish = (overrides: Partial<Polish> = {}): Polish => ({
   id: 'p1', name: 'Blue', brand: 'OPI', num: '001', color: '#0000ff',
-  finish: 'Classic', status: 'ok', createdAt: 1000, updatedAt: 1000,
+  finish: ['Classic'], status: 'ok', createdAt: 1000, updatedAt: 1000,
   ...overrides,
 });
 
@@ -41,17 +42,108 @@ describe('mergeData', () => {
   });
 });
 
+// mergeData is the choke point for every path that mixes in foreign data (web sync,
+// POST /api/sync and /api/sync/push, and the four file-based cloud adapters). A
+// pre-migration payload carrying a bare-string `finish` must never survive the merge,
+// or downstream consumers calling finish.map/finish.some crash on it.
+describe('mergeData finish normalization', () => {
+  // A payload from an un-migrated client/cloud file: `finish` is still a bare string.
+  const legacyPolish = (overrides: Partial<Polish> = {}) =>
+    ({ ...polish(), finish: 'Glitter', ...overrides }) as unknown as Polish;
+
+  it('normalizes a legacy bare-string finish arriving from remote', () => {
+    const local = { ...emptyData(), polishes: [polish({ updatedAt: 1000 })] };
+    const remote = { ...emptyData(), polishes: [legacyPolish({ updatedAt: 2000 })] };
+    const merged = mergeData(local, remote);
+    expect(merged.polishes[0].finish).toEqual(['Glitter']);
+  });
+
+  it('normalizes a legacy bare-string finish held locally', () => {
+    const local = { ...emptyData(), polishes: [legacyPolish({ updatedAt: 3000 })] };
+    const remote = { ...emptyData(), polishes: [polish({ updatedAt: 1000 })] };
+    const merged = mergeData(local, remote);
+    expect(merged.polishes[0].finish).toEqual(['Glitter']);
+  });
+
+  it('falls back to Classic for an unknown finish value', () => {
+    const remote = {
+      ...emptyData(),
+      polishes: [legacyPolish({ finish: 'Sparkleponies' } as unknown as Partial<Polish>)],
+    };
+    const merged = mergeData(emptyData(), remote);
+    expect(merged.polishes[0].finish).toEqual(['Classic']);
+  });
+
+  it('drops unknown entries from a mixed array but keeps the valid ones', () => {
+    const remote = {
+      ...emptyData(),
+      polishes: [legacyPolish({ finish: ['Top Coat', 'Nope', 'Glitter'] } as unknown as Partial<Polish>)],
+    };
+    const merged = mergeData(emptyData(), remote);
+    expect(merged.polishes[0].finish).toEqual(['Top Coat', 'Glitter']);
+  });
+
+  it('normalizes a missing finish field to Classic', () => {
+    const remote = {
+      ...emptyData(),
+      polishes: [legacyPolish({ finish: undefined } as unknown as Partial<Polish>)],
+    };
+    const merged = mergeData(emptyData(), remote);
+    expect(merged.polishes[0].finish).toEqual(['Classic']);
+  });
+
+  it('normalizes the losing side too, so every returned polish is array-shaped', () => {
+    const local = { ...emptyData(), polishes: [legacyPolish({ id: 'p1', updatedAt: 1000 })] };
+    const remote = { ...emptyData(), polishes: [legacyPolish({ id: 'p2', updatedAt: 2000 })] };
+    const merged = mergeData(local, remote);
+    expect(merged.polishes).toHaveLength(2);
+    for (const p of merged.polishes) expect(Array.isArray(p.finish)).toBe(true);
+  });
+
+  it('leaves an already-valid finish array untouched', () => {
+    const local = { ...emptyData(), polishes: [polish({ finish: ['Top Coat', 'Glitter'] })] };
+    const merged = mergeData(local, emptyData());
+    expect(merged.polishes[0].finish).toEqual(['Top Coat', 'Glitter']);
+  });
+
+  it('does not disturb last-write-wins or the non-polish lists', () => {
+    const local: AppData = {
+      polishes: [legacyPolish({ name: 'Local', updatedAt: 1000 })],
+      customCats: [{ id: 'c1', name: 'Sommer', updatedAt: 1000 }],
+      manicures: [], stickers: [],
+    };
+    const remote: AppData = {
+      polishes: [legacyPolish({ name: 'Remote', updatedAt: 2000 })],
+      customCats: [], manicures: [], stickers: [],
+    };
+    const merged = mergeData(local, remote);
+    expect(merged.polishes[0].name).toBe('Remote');
+    expect(merged.customCats).toHaveLength(1);
+    expect(merged.customCats[0].name).toBe('Sommer');
+  });
+
+  it('produces polishes that survive the consumers which crashed on bare strings', () => {
+    const remote = { ...emptyData(), polishes: [legacyPolish()] };
+    const merged = mergeData(emptyData(), remote);
+    expect(() => merged.polishes.map((p) => p.finish.map((f) => f.toLowerCase()))).not.toThrow();
+    expect(filterPolishes(merged.polishes, {
+      search: 'glit', finish: '' as const, category: '', status: '' as const, brand: '', sort: 'newest' as const,
+    })).toHaveLength(1);
+  });
+});
+
 describe('filterPolishes', () => {
   const polishes = [
-    polish({ id: 'p1', name: 'Blue Sky', brand: 'OPI', status: 'ok', finish: 'Classic' }),
-    polish({ id: 'p2', name: 'Red Rose', brand: 'Catrice', status: 'wish', finish: 'Shimmer' }),
-    polish({ id: 'p3', name: 'Green Leaf', brand: 'OPI', status: 'ok', finish: 'Classic', deletedAt: 1 }),
+    polish({ id: 'p1', name: 'Blue Sky', brand: 'OPI', status: 'ok', finish: ['Classic'] }),
+    polish({ id: 'p2', name: 'Red Rose', brand: 'Catrice', status: 'wish', finish: ['Shimmer'] }),
+    polish({ id: 'p3', name: 'Green Leaf', brand: 'OPI', status: 'ok', finish: ['Classic'], deletedAt: 1 }),
+    polish({ id: 'p4', name: 'Sparkle Top', brand: 'Essie', status: 'ok', finish: ['Top Coat', 'Glitter'] }),
   ];
   const base = { search: '', finish: '' as const, category: '', status: '' as const, brand: '', sort: 'newest' as const };
 
   it('excludes deleted items', () => {
     const result = filterPolishes(polishes, base);
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(3);
   });
 
   it('filters by search', () => {
@@ -64,6 +156,48 @@ describe('filterPolishes', () => {
     const result = filterPolishes(polishes, { ...base, status: 'wish' });
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('p2');
+  });
+
+  it('matches a polish by one of several finish values', () => {
+    const result = filterPolishes(polishes, { ...base, finish: 'Glitter' });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('p4');
+  });
+
+  it('matches search against any element of a multi-value finish array', () => {
+    const result = filterPolishes(polishes, { ...base, search: 'glitter' });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('p4');
+  });
+});
+
+describe('normalizeFinish', () => {
+  it('wraps a legacy bare string into a single-element array', () => {
+    expect(normalizeFinish('Shimmer')).toEqual(['Shimmer']);
+  });
+
+  it('passes through an array input, deduped', () => {
+    expect(normalizeFinish(['Glitter', 'Top Coat', 'Glitter'])).toEqual(['Glitter', 'Top Coat']);
+  });
+
+  it('falls back to Classic for an unrecognized string', () => {
+    expect(normalizeFinish('NotAFinish')).toEqual(['Classic']);
+  });
+
+  it('falls back to Classic for an empty array', () => {
+    expect(normalizeFinish([])).toEqual(['Classic']);
+  });
+
+  it('falls back to Classic for an array with only invalid values', () => {
+    expect(normalizeFinish(['NotAFinish', 42])).toEqual(['Classic']);
+  });
+
+  it('falls back to Classic for undefined', () => {
+    expect(normalizeFinish(undefined)).toEqual(['Classic']);
+  });
+
+  it('falls back to Classic for null', () => {
+    expect(normalizeFinish(null)).toEqual(['Classic']);
   });
 });
 

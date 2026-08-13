@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
-import { generateId, now, mergeData } from '@nagellacke/core';
+import { generateId, now, mergeData, normalizeFinish } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
@@ -16,16 +16,63 @@ async function deletePhotoFromServer(filename: string): Promise<void> {
 const STORAGE_KEY = 'nagellacke_v3_data';
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 
+const FINISH_MIGRATION_BACKUP_KEY = 'nagellacke_v3_backup_pre_finish_migration';
+const FINISH_MIGRATION_SEEN_KEY = 'nagellacke_v3_finish_migration_seen';
+
+function hasLegacyFinish(data: AppData): boolean {
+  return Array.isArray(data.polishes) && data.polishes.some((p) => !Array.isArray((p as { finish: unknown }).finish));
+}
+
+function migrateFinish(data: AppData): AppData {
+  return { ...data, polishes: data.polishes.map((p) => ({ ...p, finish: normalizeFinish(p.finish) })) };
+}
+
+// Pure merge step behind `importMerge()`, split out so it's testable without
+// mounting the hook. Runs the incoming payload through `migrateFinish` before
+// merging, since callers (e.g. SettingsPage's backup/ZIP import) only
+// validate that `polishes` is an array, not the shape of each polish's
+// `finish` — a backup exported before the finish migration can still contain
+// bare-string `finish` values.
+export function mergeImport(prev: AppData, imported: AppData): AppData {
+  return mergeData(prev, migrateFinish(imported));
+}
+
 function loadLocal(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppData;
+    if (raw) {
+      const parsed = JSON.parse(raw) as AppData;
+      if (hasLegacyFinish(parsed)) {
+        // Keep the very first pre-migration snapshot untouched, forever, until
+        // an explicit rollback consumes it — never overwritten by a later
+        // load, so nothing from before this change can ever be lost even if
+        // the migration itself turns out to be wrong.
+        if (!localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY)) {
+          localStorage.setItem(FINISH_MIGRATION_BACKUP_KEY, raw);
+          localStorage.removeItem(FINISH_MIGRATION_SEEN_KEY);
+        }
+        return migrateFinish(parsed);
+      }
+      return parsed;
+    }
   } catch { /* empty */ }
   return { polishes: [], customCats: [], manicures: [], stickers: [] };
 }
 
 function saveLocal(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export function hasFinishMigrationBackup(): boolean {
+  return localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY) !== null;
+}
+
+export function shouldShowFinishMigrationNotice(): boolean {
+  return hasFinishMigrationBackup() && localStorage.getItem(FINISH_MIGRATION_SEEN_KEY) !== 'true';
+}
+
+export function dismissFinishMigrationNotice(): void {
+  localStorage.setItem(FINISH_MIGRATION_SEEN_KEY, 'true');
 }
 
 const PHOTO_DEFAULT_KEY = 'nagellacke_v3_photo_default';
@@ -267,11 +314,61 @@ export function useAppData() {
     void sync();
   }, [commit, sync]);
 
-  // Direct import (merge imported JSON into local data)
+  // Direct import (merge imported JSON into local data). Goes through
+  // `mergeImport` rather than a bare `mergeData` since the imported payload
+  // (e.g. SettingsPage's backup/ZIP import) can still carry pre-migration
+  // bare-string `finish` values - see `mergeImport` above.
   const importMerge = useCallback((merged: AppData) => {
-    commit((prev) => mergeData(prev, merged));
+    commit((prev) => mergeImport(prev, merged));
     void sync();
   }, [commit, sync]);
+
+  // Restores the pre-migration snapshot and pushes it to the server directly,
+  // rather than going through the shared `sync()` — that one coalesces
+  // overlapping calls via syncingRef/syncPendingRef, so if a sync happens to
+  // already be in flight, calling it here could just mark a pending run and
+  // return immediately instead of actually awaiting *this* push, which the
+  // caller (FinishMigrationNotice) needs to know completed before it drops
+  // its "rolling back..." spinner.
+  //
+  // The restored snapshot is run back through `migrateFinish` before it ever
+  // reaches live state: every other component in the app (NailBottle,
+  // CollectionPage, StatsPage, ...) now assumes `finish` is an array, so
+  // putting the raw pre-migration (bare-string) shape into `commit` would
+  // crash on the very next render. This still restores the actual pre-
+  // migration field values byte-for-byte — only `finish`'s shape is
+  // normalized to match what the current code expects, which is exactly the
+  // form the automatic migration would have produced from that same data.
+  const rollbackFinishMigration = useCallback(async () => {
+    const backup = localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY);
+    if (!backup) return;
+    let restored: AppData;
+    try {
+      restored = migrateFinish(JSON.parse(backup) as AppData);
+    } catch {
+      return;
+    }
+    localStorage.removeItem(FINISH_MIGRATION_BACKUP_KEY);
+    commit(() => restored);
+    const config = loadSyncConfig();
+    if (!config) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const adapter = createAdapter(config, persistRefreshedTokens);
+      const result = await adapter.sync(restored);
+      if (result.success) {
+        commit((prev) => mergeData(prev, result.merged));
+        setLastSyncAt(result.lastSyncAt);
+      } else {
+        setSyncError(result.error ?? 'Sync fehlgeschlagen');
+      }
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
+    } finally {
+      setSyncing(false);
+    }
+  }, [commit]);
 
   // Auto-sync on load
   useEffect(() => { void sync(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -282,6 +379,7 @@ export function useAppData() {
     syncError,
     lastSyncAt,
     sync,
+    rollbackFinishMigration,
     importMerge,
     addPolish, updatePolish, deletePolish, restorePolish,
     addSticker, updateSticker, deleteSticker, restoreSticker,

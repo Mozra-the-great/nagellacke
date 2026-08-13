@@ -11,10 +11,30 @@
  *   - stickers: ensures UUID id, adds updatedAt
  *   - customCats: ensures UUID id, adds updatedAt
  *   - manicure.photos (v2 had single photo string) → photos array
+ *   - polish.finish (v2 had a single finish string) → non-empty finish array
  */
 
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+
+// Kept in sync with FINISH_OPTIONS in @nagellacke/core's constants.ts. This script is
+// standalone (plain node, no workspace build step), so the list is duplicated here
+// rather than imported.
+const FINISH_VALUES = new Set([
+  'Classic', 'Shimmer', 'Glitter', 'Metallic', 'Chrome', 'Matte', 'Satin', 'Duochrome',
+  'Holographic', 'Jelly', 'Neon', 'Magnetic', 'Gel Look', 'Top Coat', 'Base Coat',
+]);
+
+// Mirrors normalizeFinish() in @nagellacke/core: v2 stored a single finish string,
+// v3 stores a non-empty array of valid finishes.
+function normalizeFinish(value) {
+  if (Array.isArray(value)) {
+    const filtered = [...new Set(value.filter((v) => typeof v === 'string' && FINISH_VALUES.has(v)))];
+    return filtered.length > 0 ? filtered : ['Classic'];
+  }
+  if (typeof value === 'string' && FINISH_VALUES.has(value)) return [value];
+  return ['Classic'];
+}
 
 function uuid() {
   return crypto.randomUUID();
@@ -41,7 +61,7 @@ const v3 = {
     brand: p.brand ?? '',
     num: p.num ?? '',
     color: p.color ?? '#ff6699',
-    finish: p.finish ?? 'Classic',
+    finish: normalizeFinish(p.finish),
     status: p.status ?? 'ok',
     ...(p.count != null    ? { count: p.count }           : {}),
     ...(p.categories?.length ? { categories: p.categories } : {}),
