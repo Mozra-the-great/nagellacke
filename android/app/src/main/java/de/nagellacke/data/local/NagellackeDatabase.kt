@@ -1,6 +1,7 @@
 package de.nagellacke.data.local
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -99,6 +100,7 @@ abstract class NagellackeDatabase : RoomDatabase() {
             }
         }
 
+        private const val TAG = "NagellackeDatabase"
         private const val DB_NAME = "nagellacke.db"
         private const val PRE_MULTI_FINISH_BACKUP_SUFFIX = ".pre-multifinish.bak"
 
@@ -113,19 +115,46 @@ abstract class NagellackeDatabase : RoomDatabase() {
         // checkpointed back into the main file. If a crash happens right before the update, the
         // main file alone is an incomplete/stale snapshot, and the rollback would silently lose
         // data in exactly the scenario it exists to protect against.
+        // Each file is copied to a `.tmp` scratch name first and only then moved into its final
+        // name, so a crash mid-copy can never leave a half-written file under a name that looks
+        // like a finished backup. The sidecars are moved into place *before* the main `.db` file,
+        // because the "already backed up, skip" check above only tests the main file: making it
+        // the last one to appear means its presence always implies a complete set. A single
+        // atomic guarantee across all three files isn't achievable on a plain filesystem; this
+        // ordering plus the existence check gives the property that actually matters here.
         private fun backupDatabaseFileBeforeMultiFinishMigration(context: Context) {
             val dbFile = context.getDatabasePath(DB_NAME)
             if (!dbFile.exists()) return
             val backupFile = File(dbFile.path + PRE_MULTI_FINISH_BACKUP_SUFFIX)
             if (backupFile.exists()) return
+            val temporaries = mutableListOf<File>()
             runCatching {
-                dbFile.copyTo(backupFile)
+                val mainTemp = File(backupFile.path + ".tmp")
+                temporaries += mainTemp
+                dbFile.copyTo(mainTemp, overwrite = true)
+
                 for (suffix in arrayOf("-wal", "-shm")) {
                     val sidecar = File(dbFile.path + suffix)
-                    if (sidecar.exists()) {
-                        sidecar.copyTo(File(backupFile.path + suffix))
+                    if (!sidecar.exists()) continue
+                    val sidecarTemp = File(backupFile.path + suffix + ".tmp")
+                    temporaries += sidecarTemp
+                    sidecar.copyTo(sidecarTemp, overwrite = true)
+                    if (!sidecarTemp.renameTo(File(backupFile.path + suffix))) {
+                        error("Could not move backup sidecar $suffix into place")
                     }
+                    temporaries -= sidecarTemp
                 }
+
+                if (!mainTemp.renameTo(backupFile)) {
+                    error("Could not move database backup into place")
+                }
+                temporaries -= mainTemp
+            }.onFailure { throwable ->
+                // The migration still runs after this - the backup is a safety net, not a
+                // precondition - but a silent failure would leave nothing to roll back to, so
+                // make it visible instead of swallowing it.
+                Log.w(TAG, "Failed to back up database before multi-finish migration", throwable)
+                for (temp in temporaries) temp.delete()
             }
         }
 
