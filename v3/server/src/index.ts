@@ -13,19 +13,36 @@ import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
   getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
-  bumpTokenVersion, migrateGlobalDataToFirstUser, getScheduleConfig, setScheduleConfig,
+  bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin, getScheduleConfig, setScheduleConfig,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
+  isAdmin, setUserRole, listUsers, deleteUser, countAdmins,
+  getServerSettings, setServerSettings, logAdminAction, getAuditLog,
 } from './db';
-import type { ScheduleConfig, AiConfig, AiJob } from './db';
-import { processAiJobQueue, isAiConfigured } from './ai';
+import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
+import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
 import type { SearchBackend } from './websearch';
 import { generateReportHtml, getPeriodBounds } from './report';
-import { isEmailConfigured, sendHtmlEmail } from './email';
+import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
+
+// Shared by GET /api/ai/settings and GET /api/admin/settings (§4.2 embeds the
+// same shape under `ai`) — secrets are never sent back, only whether they're set.
+function aiSettingsView(config: AiConfig) {
+  return {
+    provider: config.provider,
+    openrouter: { model: config.openrouter.model, freeOnly: config.openrouter.freeOnly, hasApiKey: !!config.openrouter.apiKey },
+    gemini: { model: config.gemini.model, hasApiKey: !!config.gemini.apiKey },
+    webSearch: {
+      backend: config.webSearch.backend,
+      searxngUrl: config.webSearch.searxngUrl,
+      hasBraveApiKey: !!config.webSearch.braveApiKey,
+    },
+  };
+}
 
 const PORT         = Number(process.env.PORT ?? 3000);
 
@@ -68,7 +85,19 @@ function writeApiKey(key: string): void {
 }
 
 if (fs.existsSync(API_KEY_FILE)) {
-  API_KEY = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
+  const stored = fs.readFileSync(API_KEY_FILE, 'utf-8').trim();
+  // Fail closed, not open: safeEqual() below compares two zero-length
+  // buffers as equal, and an empty X-Api-Key header passes the `typeof
+  // === 'string'` check - so a zero-byte .api_key (truncated write, disk
+  // full, manual `> data/.api_key`) would otherwise silently accept an
+  // empty key and hand out the same de-facto root credential as
+  // /api/update/apply and now /api/admin/bootstrap to anyone (#216 review
+  // item 3). Refuse to start instead.
+  if (!stored) {
+    console.error(`[FATAL] ${API_KEY_FILE} exists but is empty. Refusing to start with an empty API key (that would authenticate an empty X-Api-Key header). Delete the file to generate a fresh key on next start, or restore a valid one.`);
+    process.exit(1);
+  }
+  API_KEY = stored;
 } else {
   API_KEY = crypto.randomBytes(24).toString('hex');
   writeApiKey(API_KEY);
@@ -176,8 +205,9 @@ function httpsGet(url: string): Promise<string> {
  * handles behind every test that calls this function.
  */
 export async function buildApp(): Promise<FastifyInstance> {
-  // Must run before any request is served (#87).
+  // Must run before any request is served (#87, #173).
   migrateGlobalDataToFirstUser();
+  migrateFirstUserToAdmin();
 
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
@@ -299,6 +329,103 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   }
 
+  // Self-contained (does not compose requireJwt) rather than relying on
+  // reply.sent after an awaited sibling preHandler — that behavior isn't
+  // guaranteed identical across Fastify majors, and this repo's package.json
+  // (^5) already disagrees with what CLAUDE.md documents (v4). Mirrors
+  // requireJwt's own body exactly, plus the role check (#173).
+  async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+    // tokenTypeValid matters more here than anywhere else: an `mfa` challenge
+    // is handed out *before* the second factor has been checked, so accepting
+    // one on an admin route would let a half-finished 2FA login administer the
+    // server. A `refresh` token must not reach these routes either.
+    if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
+      return reply.code(401).send({ error: 'Unauthorized' });
+    }
+    const { username } = request.user as { username: string };
+    if (!isAdmin(username)) {
+      return reply.code(403).send({ error: 'Nur für Admins' });
+    }
+  }
+
+  // Deprecation-period "or" for the four historically X-Api-Key-only admin
+  // endpoints (#173 §2.3) — additive only, X-Api-Key keeps working unchanged.
+  // Mirrors requireApiKeyOrJwt's key-present branch exactly (same truthiness
+  // check, same error message on an invalid key) so that behavior is
+  // byte-for-byte identical to today; only the no-credential/JWT branches are
+  // new. NOTE (documented, not "fixed" here): the no-credential 401 body text
+  // differs from plain requireApiKey ("Unauthorized" vs "Ungültiger
+  // API-Schlüssel") because the JWT branch has to run first to tell the two
+  // cases apart — the status code (401) and the client's status-only check
+  // (SettingsPage.tsx) are unaffected.
+  async function requireApiKeyOrAdminJwt(request: FastifyRequest, reply: FastifyReply) {
+    const key = request.headers['x-api-key'];
+    if (key) {
+      if (typeof key !== 'string' || !safeEqual(key, API_KEY)) {
+        return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      }
+      return;
+    }
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: 'API-Key oder Admin-Login erforderlich' });
+    }
+    if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
+      return reply.code(401).send({ error: 'API-Key oder Admin-Login erforderlich' });
+    }
+    const { username } = request.user as { username: string };
+    if (!isAdmin(username)) {
+      return reply.code(403).send({ error: 'Nur für Admins' });
+    }
+  }
+
+  // POST /api/update/apply keeps its extra bar even under the admin-JWT path
+  // (#173 §6): it is a documented RCE surface (git pull + npm install as this
+  // process's user). Precisely what the re-confirmation buys, and what it
+  // doesn't (PR #216 review item 5 — corrects an earlier, broader claim
+  // here): the password check re-verifies the *same* password that was
+  // already required to obtain the JWT via login, so it adds nothing against
+  // someone who already knows that password — they could just log in again.
+  // What it does guard against is a *stolen bearer token* held by someone who
+  // does NOT know the password (e.g. exfiltrated via XSS from localStorage,
+  // a copy-pasted Authorization header, a leaked log line): that token alone
+  // is no longer enough to trigger the RCE path, unlike every other
+  // admin-JWT-gated endpoint. X-Api-Key still works exactly as before with
+  // no extra step; the update/apply auth mechanism itself is a separate,
+  // pending decision — not changed here.
+  async function requireApiKeyOrAdminReconfirm(request: FastifyRequest, reply: FastifyReply) {
+    const key = request.headers['x-api-key'];
+    if (key) {
+      if (typeof key !== 'string' || !safeEqual(key, API_KEY)) {
+        return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+      }
+      return;
+    }
+    try {
+      await request.jwtVerify();
+    } catch {
+      return reply.code(401).send({ error: 'API-Key oder Admin-Login erforderlich' });
+    }
+    if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
+      return reply.code(401).send({ error: 'API-Key oder Admin-Login erforderlich' });
+    }
+    const { username } = request.user as { username: string };
+    if (!isAdmin(username)) {
+      return reply.code(403).send({ error: 'Nur für Admins' });
+    }
+    const { password } = (request.body ?? {}) as { password?: string };
+    const user = getUser(username);
+    if (!password || !user || !verifyPassword(password, user.password_hash)) {
+      return reply.code(401).send({ error: 'Passwort-Bestätigung erforderlich' });
+    }
+  }
+
   // ── Photo endpoints ────────────────────────────────────────────────────────────
 
   // POST /api/photos — Foto hochladen (base64 body)
@@ -345,7 +472,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // GET /api/update/check — prüft GitHub auf neue Version
   app.get('/api/update/check', {
-    preHandler: requireApiKey,
+    preHandler: requireApiKeyOrAdminJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async () => {
     const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
@@ -401,7 +528,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // (pinning to signed release tags) is a deliberate product decision, not
   // made here.
   app.post('/api/update/apply', {
-    preHandler: requireApiKey,
+    preHandler: requireApiKeyOrAdminReconfirm,
     config: { rateLimit: { max: 3, timeWindow: '5 minutes' } },
   }, async (request, reply) => {
     reply.send({ ok: true });
@@ -452,7 +579,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // invalidate a leaked copy without shell access to the box. Previously the
   // only rotation path was `rm data/.api_key` plus a restart (#108).
   app.post('/api/admin/api-key/rotate', {
-    preHandler: requireApiKey,
+    preHandler: requireApiKeyOrAdminJwt,
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
   }, async () => {
     const apiKey = rotateApiKey();
@@ -465,7 +592,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // GET /api/logs — systemd journal
   app.get('/api/logs', {
-    preHandler: requireApiKey,
+    preHandler: requireApiKeyOrAdminJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
     // parseInt returns NaN for junk like ?lines=abc, and Math.min(NaN, 500) is
@@ -487,6 +614,283 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { logs: r.stderr?.toString().trim() || 'journalctl nicht verfügbar', lines, error: true };
   });
 
+  // ── Admin panel (#173) ─────────────────────────────────────────────────────────
+
+  // POST /api/admin/bootstrap — exchange the root X-Api-Key for an admin
+  // session, once. Even though migrateFirstUserToAdmin()/first-user-at-register
+  // already cover the realistic upgrade/fresh-install paths without this, the
+  // issue explicitly asks for an explicit "use the key once" affordance. The
+  // idempotent guard below is what makes "used once" an enforced server-side
+  // fact, not just a UI convention.
+  app.post('/api/admin/bootstrap', {
+    preHandler: requireApiKey,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    if (countAdmins() > 0) {
+      return reply.code(409).send({ error: 'Admin-Konto existiert bereits' });
+    }
+    const { username, password } = request.body as { username?: string; password?: string };
+    if (!username || !password || password.length < 8) {
+      return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    }
+    // If the account already exists, promoting it to admin and handing back
+    // a session must not happen without proving knowledge of *that account's*
+    // real password - the length check above only validates a fresh
+    // password for the create-user branch, it says nothing about `existing`.
+    // (PR #216 review item 2 - currently unreachable in practice since it
+    // needs countAdmins() === 0 with an existing user, which
+    // migrateFirstUserToAdmin() already prevents at every startup, but this
+    // must not rely on that invariant alone.)
+    const existing = getUser(username);
+    if (existing) {
+      if (!verifyPassword(password, existing.password_hash)) {
+        return reply.code(401).send({ error: 'Passwort ungültig' });
+      }
+      setUserRole(username, 'admin');
+    } else {
+      createUser(username, hashPassword(password), 'admin');
+    }
+    logAdminAction(username, 'bootstrap.admin_created', username);
+    const user = getUser(username)!;
+    // Promoting the role is the root key holder's prerogative (they own the
+    // filesystem anyway), but handing back a *session* must not skip the second
+    // factor: an account with TOTP enabled gets the same mfaRequired challenge
+    // POST /api/auth/login returns, never real tokens. Without this, whoever
+    // holds the API key plus a username could mint an admin session for a
+    // 2FA-protected account without ever touching its authenticator (#174).
+    if (user.totp_enabled) {
+      return { mfaRequired: true, challengeToken: issueMfaChallenge(user.username, user.token_version ?? 0) };
+    }
+    return issueTokens(user.username, user.token_version ?? 0);
+  });
+
+  // GET /api/admin/users
+  app.get('/api/admin/users', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    return { users: listUsers() };
+  });
+
+  // POST /api/admin/users — admin-created accounts always bypass the
+  // allowRegistration gate (an admin adding a household member isn't "open
+  // registration"); reuses the same password-length rule as self-registration.
+  app.post('/api/admin/users', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const { username, password, role } = request.body as { username?: string; password?: string; role?: UserRole };
+    if (!username || !password || password.length < 8) {
+      return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    }
+    if (role !== undefined && role !== 'admin' && role !== 'user') {
+      return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
+    }
+    if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
+    createUser(username, hashPassword(password), role ?? 'user');
+    logAdminAction(actor, 'user.created', username, { role: role ?? 'user' });
+    return { ok: true };
+  });
+
+  // PATCH /api/admin/users/:username/role
+  app.patch('/api/admin/users/:username/role', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const { username } = request.params as { username: string };
+    const { role } = request.body as { role?: UserRole };
+    if (role !== 'admin' && role !== 'user') {
+      return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
+    }
+    const target = getUser(username);
+    if (!target) return reply.code(404).send({ error: 'Benutzer nicht gefunden' });
+    // Last-admin protection, enforced server-side — never trust a
+    // client-side disabled button alone (#173 §6).
+    if (role === 'user' && isAdmin(username) && countAdmins() <= 1) {
+      return reply.code(409).send({ error: 'Der letzte Admin kann nicht entfernt werden' });
+    }
+    setUserRole(username, role);
+    if (role === 'user') {
+      // Demotion is security-relevant: force re-login, same semantics as
+      // every other bumpTokenVersion() call in this file.
+      bumpTokenVersion(username);
+    }
+    logAdminAction(actor, 'user.role_changed', username, { role });
+    return { ok: true };
+  });
+
+  // DELETE /api/admin/users/:username
+  app.delete('/api/admin/users/:username', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const { username } = request.params as { username: string };
+    const target = getUser(username);
+    if (!target) return reply.code(404).send({ error: 'Benutzer nicht gefunden' });
+    if (username === actor) {
+      return reply.code(409).send({ error: 'Das eigene Konto kann nicht gelöscht werden' });
+    }
+    if (isAdmin(username) && countAdmins() <= 1) {
+      return reply.code(409).send({ error: 'Der letzte Admin kann nicht gelöscht werden' });
+    }
+    deleteUser(username);
+    // Orphan cleanup: a schedule still pointing at the deleted user would
+    // otherwise silently fall back to getFirstUsername() (see the scheduler
+    // below) and mail a *different* account's collection to the old toEmail.
+    const schedule = getScheduleConfig();
+    if (schedule?.username === username) {
+      setScheduleConfig({ ...schedule, enabled: false });
+    }
+    logAdminAction(actor, 'user.deleted', username);
+    return { ok: true };
+  });
+
+  // GET /api/admin/settings — read-only display values plus, for the hard
+  // env-only settings (§1), a trailing `env` block the UI badges as
+  // requiresRestart. Secrets are never returned — only booleans/`source` tags.
+  app.get('/api/admin/settings', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const settings = getServerSettings();
+    const envAllowRegistration = process.env.ALLOW_REGISTRATION === 'true';
+    const allowRegistrationSource = settings.allowRegistration !== undefined
+      ? 'panel' : (process.env.ALLOW_REGISTRATION !== undefined ? 'env' : 'default');
+    const smtp = settings.smtp;
+    const smtpPort = smtp?.port || Number.parseInt(process.env.SMTP_PORT ?? '587', 10);
+    return {
+      allowRegistration: settings.allowRegistration ?? envAllowRegistration,
+      allowRegistrationSource,
+      smtp: {
+        host: smtp?.host || process.env.SMTP_HOST || '',
+        port: smtpPort,
+        user: smtp?.user || process.env.SMTP_USER || '',
+        from: smtp?.from || process.env.SMTP_FROM || '',
+        secure: smtp?.secure ?? (smtpPort === 465),
+        hasPassword: !!(smtp?.pass || process.env.SMTP_PASS),
+        source: smtp ? 'panel' : (process.env.SMTP_HOST ? 'env' : 'default'),
+      },
+      // appUrl: stored for round-tripping through the panel, but the actual
+      // email-link generation below still reads process.env.APP_URL once at
+      // module load (APP_BASE_URL) — wiring a live read is deliberately
+      // deferred (see #173 plan §9 "PR5", out of scope here). requiresRestart
+      // reflects that honestly instead of implying an effect this PR doesn't have.
+      appUrl: settings.appUrl || process.env.APP_URL || '',
+      appUrlSource: settings.appUrl ? 'panel' : (process.env.APP_URL ? 'env' : 'default'),
+      appUrlRequiresRestart: true,
+      ai: aiSettingsView(getAiConfig()),
+      env: {
+        port: PORT,
+        allowedOrigin: ALLOWED_ORIGIN,
+        serviceName: SERVICE_NAME,
+        dataDir: DATA_DIR,
+        jwtAccessTtl: ACCESS_TOKEN_TTL,
+        jwtRefreshTtl: REFRESH_TOKEN_TTL,
+      },
+    };
+  });
+
+  // POST /api/admin/settings — `smtp.pass` omitted means "keep current value",
+  // the same "undefined means unchanged" convention POST /api/ai/settings
+  // already uses.
+  app.post('/api/admin/settings', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const body = request.body as Partial<{
+      allowRegistration: boolean;
+      smtp: Partial<{ host: string; port: number; user: string; pass: string; from: string; secure: boolean }>;
+      appUrl: string;
+    }>;
+    const current = getServerSettings();
+    const next: ServerSettings = { ...current };
+
+    if (body.allowRegistration !== undefined) next.allowRegistration = !!body.allowRegistration;
+
+    if (body.appUrl !== undefined) next.appUrl = body.appUrl.trim().replace(/\/$/, '');
+
+    if (body.smtp) {
+      const currentSmtp = current.smtp;
+      const port = body.smtp.port !== undefined ? Number(body.smtp.port) : (currentSmtp?.port ?? 587);
+      if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+        return reply.code(400).send({ error: 'smtp.port muss eine gültige Portnummer sein' });
+      }
+      next.smtp = {
+        host: body.smtp.host !== undefined ? body.smtp.host.trim() : (currentSmtp?.host ?? ''),
+        port,
+        user: body.smtp.user !== undefined ? body.smtp.user.trim() : (currentSmtp?.user ?? ''),
+        // Omitting pass keeps the stored value untouched.
+        pass: body.smtp.pass !== undefined ? body.smtp.pass : (currentSmtp?.pass ?? ''),
+        from: body.smtp.from !== undefined ? body.smtp.from.trim() : (currentSmtp?.from ?? ''),
+        secure: body.smtp.secure !== undefined ? !!body.smtp.secure : currentSmtp?.secure,
+      };
+    }
+
+    setServerSettings(next);
+    // Never log the actual values of secret fields — only that they changed.
+    logAdminAction(actor, 'server_settings.updated', undefined, {
+      allowRegistration: body.allowRegistration !== undefined,
+      appUrl: body.appUrl !== undefined,
+      smtp: body.smtp !== undefined ? Object.keys(body.smtp) : undefined,
+    });
+    return { ok: true };
+  });
+
+  // POST /api/admin/settings/smtp/test — accepts an inline config override so
+  // an admin can test before saving.
+  app.post('/api/admin/settings/smtp/test', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const body = request.body as {
+      toEmail?: string;
+      host?: string; port?: number; user?: string; pass?: string; from?: string; secure?: boolean;
+    };
+    const toEmail = (body.toEmail ?? '').trim();
+    if (!toEmail || !isValidEmail(toEmail)) {
+      return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
+    }
+    try {
+      await sendTestEmail(toEmail, {
+        host: body.host, port: body.port, user: body.user, pass: body.pass, from: body.from, secure: body.secure,
+      });
+    } catch (e: unknown) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'Test-E-Mail konnte nicht gesendet werden' });
+    }
+    logAdminAction(actor, 'smtp.test_sent', toEmail);
+    return { ok: true };
+  });
+
+  // POST /api/admin/settings/ai/test — minimal 1-request connectivity check.
+  app.post('/api/admin/settings/ai/test', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { provider } = request.body as { provider?: AiConfig['provider'] };
+    if (provider !== 'openrouter' && provider !== 'gemini') {
+      return reply.code(400).send({ error: 'provider muss "openrouter" oder "gemini" sein' });
+    }
+    try {
+      const result = await testAiConnection(provider);
+      return { ok: true, model: result.model };
+    } catch (e: unknown) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : 'KI-Verbindung fehlgeschlagen' });
+    }
+  });
+
+  // GET /api/admin/audit
+  app.get('/api/admin/audit', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    return { entries: getAuditLog() };
+  });
+
   // ── v3 Sync-Endpoints (JWT) ────────────────────────────────────────────────
 
   // ── User profile (JWT) ────────────────────────────────────────────────────────
@@ -504,6 +908,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       smtpConfigured: isEmailConfigured(),
       totpEnabled: !!user?.totp_enabled,
       recoveryCodesRemaining: user?.recovery_codes?.length ?? 0,
+      // An old server simply omits `role`; the client treats a missing role as
+      // non-admin and hides the Admin tab — no error, degrades gracefully (#173).
+      role: user?.role ?? 'user',
     };
   });
 
@@ -613,11 +1020,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // POST /api/auth/register
-  // Open only for the very first user (bootstrap) or when ALLOW_REGISTRATION=true.
+  // Open only for the very first user (bootstrap) or when allowRegistration is
+  // enabled — a panel value in server_settings.json wins over the env var
+  // when set, see the precedence-rule comment on ServerSettings in db.ts.
   app.post('/api/auth/register', {
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
-    const allowRegistration = process.env.ALLOW_REGISTRATION === 'true';
+    const allowRegistration = getServerSettings().allowRegistration ?? (process.env.ALLOW_REGISTRATION === 'true');
     const isFirstUser = getUserCount() === 0;
     if (!allowRegistration && !isFirstUser) {
       return reply.code(403).send({ error: 'Registrierung deaktiviert' });
@@ -627,8 +1036,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
-    createUser(username, hashPassword(password));
-    return issueTokens(username, 0);
+    // The very first registered user becomes admin immediately (#173) — rather
+    // than relying solely on migrateFirstUserToAdmin() at the next restart,
+    // which would leave a window where this session isn't yet admin.
+    createUser(username, hashPassword(password), isFirstUser ? 'admin' : undefined);
+    const user = getUser(username);
+    return issueTokens(username, user?.token_version ?? 0);
   });
 
   // POST /api/auth/login
@@ -970,22 +1383,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     preHandler: requireJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async () => {
-    const config = getAiConfig();
-    return {
-      provider: config.provider,
-      openrouter: { model: config.openrouter.model, freeOnly: config.openrouter.freeOnly, hasApiKey: !!config.openrouter.apiKey },
-      gemini: { model: config.gemini.model, hasApiKey: !!config.gemini.apiKey },
-      webSearch: {
-        backend: config.webSearch.backend,
-        searxngUrl: config.webSearch.searxngUrl,
-        hasBraveApiKey: !!config.webSearch.braveApiKey,
-      },
-    };
+    return aiSettingsView(getAiConfig());
   });
 
   // POST /api/ai/settings
+  // requireAdmin, not requireJwt (#173): previously any registered user could
+  // change the whole household's AI provider/keys — a latent bug fixed here as
+  // a deliberate behavior tightening, called out in CHANGELOG.md.
   app.post('/api/ai/settings', {
-    preHandler: requireJwt,
+    preHandler: requireAdmin,
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const body = request.body as Partial<{
@@ -1018,6 +1424,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     };
     setAiConfig(config);
+    const { username: actor } = request.user as { username: string };
+    logAdminAction(actor, 'ai_settings.updated', undefined, { provider: config.provider });
     return { ok: true };
   });
 
@@ -1186,9 +1594,10 @@ async function main() {
 }
 
 // Skipped under vitest (VITEST is set automatically by the test runner) so
-// importing this module for buildApp() in integration tests doesn't also
-// bind a port and start the background intervals.
-if (!process.env.VITEST) {
+// importing this module for buildApp() in integration tests doesn't also bind
+// a port and start the background intervals. NAGELLACKE_NO_AUTOSTART stays
+// supported as an explicit opt-out for callers outside the test runner (#173).
+if (!process.env.VITEST && process.env.NAGELLACKE_NO_AUTOSTART !== 'true') {
   main().catch((err) => {
     console.error(err);
     process.exit(1);

