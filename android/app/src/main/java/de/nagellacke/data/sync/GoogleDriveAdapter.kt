@@ -163,7 +163,7 @@ class GoogleDriveAdapter(
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val folderId = ensurePhotoFolder()
-        val filename = "${UUID.randomUUID()}.jpg"
+        val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
         val meta = """{"name":"$filename","parents":["$folderId"]}"""
         val multipart = MultipartBody.Builder("boundary")
             .setType(MultipartBody.FORM)
