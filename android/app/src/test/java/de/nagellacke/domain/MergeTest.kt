@@ -10,7 +10,7 @@ import org.junit.Test
 class MergeTest {
     private fun polish(id: String, name: String, updatedAt: Long, deletedAt: Long? = null) = Polish(
         id = id, name = name, brand = "", num = "", color = "#ff0000",
-        finish = FinishType.Classic, status = PolishStatus.Ok,
+        finish = listOf(FinishType.Classic), status = PolishStatus.Ok,
         createdAt = 1000L, updatedAt = updatedAt, deletedAt = deletedAt,
     )
 

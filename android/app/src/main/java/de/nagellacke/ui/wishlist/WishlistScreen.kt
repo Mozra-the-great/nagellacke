@@ -209,7 +209,11 @@ private fun WishlistDetailSheet(
                 Text("Nummer: ${polish.num}", style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(4.dp))
-            Text("${polish.finish.icon} ${polish.finish.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            Text(
+                polish.finish.joinToString(", ") { "${it.icon} ${it.label}" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
             if (polish.notes.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(polish.notes, style = MaterialTheme.typography.bodyMedium)

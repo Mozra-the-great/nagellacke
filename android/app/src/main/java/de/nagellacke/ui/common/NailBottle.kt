@@ -39,7 +39,7 @@ fun NailBottle(polish: Polish, modifier: Modifier = Modifier) {
         Color(android.graphics.Color.parseColor(polish.color))
     }.getOrElse { Color(0xFFff6699) }
 
-    val isShimmer    = SHIMMER_FINISHES.contains(polish.finish)
+    val isShimmer    = polish.finish.any { SHIMMER_FINISHES.contains(it) }
     val faded        = polish.status == PolishStatus.Empty || polish.status == PolishStatus.Gone
     val isWish       = polish.status == PolishStatus.Wish
     val overallAlpha = when {

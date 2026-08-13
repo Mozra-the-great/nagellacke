@@ -75,7 +75,7 @@ fun PolishFormSheet(
     var brand by remember(polish) { mutableStateOf(polish?.brand ?: "") }
     var num by remember(polish) { mutableStateOf(polish?.num ?: "") }
     var color by remember(polish) { mutableStateOf(polish?.color ?: "#ff6699") }
-    var finish by remember(polish) { mutableStateOf(polish?.finish ?: FinishType.Classic) }
+    var selectedFinishes by remember(polish) { mutableStateOf(polish?.finish ?: listOf(FinishType.Classic)) }
     var status by remember(polish) { mutableStateOf(polish?.status ?: initialStatus) }
     var notes by remember(polish) { mutableStateOf(polish?.notes ?: "") }
     var rating by remember(polish) { mutableStateOf(polish?.rating ?: 0) }
@@ -140,7 +140,17 @@ fun PolishFormSheet(
             Text(if (aiAutofill) "Finish (wird von der KI ermittelt)" else "Finish", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FINISH_OPTIONS.forEach { f ->
-                    FilterChip(selected = finish == f, onClick = { finish = f }, enabled = !aiAutofill, label = { Text("${f.icon} ${f.label}") })
+                    FilterChip(
+                        selected = selectedFinishes.contains(f),
+                        onClick = {
+                            // Never allow deselecting down to zero — a polish always has at
+                            // least one finish (mirrors PolishFormModal.tsx on the web app).
+                            val next = if (selectedFinishes.contains(f)) selectedFinishes - f else selectedFinishes + f
+                            if (next.isNotEmpty()) selectedFinishes = next
+                        },
+                        enabled = !aiAutofill,
+                        label = { Text("${f.icon} ${f.label}") },
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -192,7 +202,7 @@ fun PolishFormSheet(
                         val result = polish?.copy(
                             name = name.trim(), brand = brand.trim(), num = num.trim(),
                             color = resolvedColor,
-                            finish = finish, status = status, notes = notes.trim(),
+                            finish = selectedFinishes, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
                             photo = photo,
                             updatedAt = now,
@@ -200,7 +210,7 @@ fun PolishFormSheet(
                             id = generateId(),
                             name = name.trim(), brand = brand.trim(), num = num.trim(),
                             color = resolvedColor,
-                            finish = finish, status = status, notes = notes.trim(),
+                            finish = selectedFinishes, status = status, notes = notes.trim(),
                             rating = rating, categories = selectedCats,
                             photo = photo,
                             createdAt = now, updatedAt = now,

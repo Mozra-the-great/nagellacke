@@ -21,7 +21,7 @@ class ReportGeneratorTest {
 
     private fun polish(id: String, name: String, createdAt: Long, rating: Int = 0, brand: String = "OPI", deletedAt: Long? = null) = Polish(
         id = id, name = name, brand = brand, num = "", color = "#ff6699",
-        finish = FinishType.Classic, status = PolishStatus.Ok, rating = rating,
+        finish = listOf(FinishType.Classic), status = PolishStatus.Ok, rating = rating,
         createdAt = createdAt, updatedAt = createdAt, deletedAt = deletedAt,
     )
 

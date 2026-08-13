@@ -289,7 +289,7 @@ fun PolishCard(
                 )
             }
             Text(
-                polish.finish.label,
+                polish.finish.joinToString(", ") { it.label },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
