@@ -59,7 +59,7 @@ export default function FinishMigrationNotice({ onRollback, onClose }: FinishMig
             </p>
           )}
           {confirming && (
-            <p className={styles.warning}>
+            <p className={styles.warning} role="alert">
               Achtung: Ein Rückgängigmachen setzt dein lokales Gerät auf den
               Stand direkt vor der Umstellung zurück und synchronisiert das
               anschließend mit dem Server. Änderungen, die du seitdem nur auf
