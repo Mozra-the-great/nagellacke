@@ -4,7 +4,7 @@ import type { FinishType, PolishStatus } from '@nagellacke/core';
 
 interface Props {
   color: string;
-  finish?: FinishType;
+  finish?: FinishType[];
   selected?: boolean;
   status?: PolishStatus;
   brand?: string;
@@ -15,10 +15,13 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
   // Used to build SVG element ids below (gId/sId/glId) and referenced back via
   // url(#...) in `fill`. Multi-word finishes like "Top Coat" or "Gel Look"
   // contain a raw space, which is not a valid id character — the resulting
-  // url(#gff6699_Top Coat) fails to resolve, silently falling back to the
-  // fill's initial value (black) instead of the intended gradient. Strip
-  // anything that isn't alphanumeric so every finish produces a valid id.
-  const uid = useMemo(() => `${color.replace('#', '')}_${(finish ?? 'c').replace(/[^a-zA-Z0-9]/g, '-')}`, [color, finish]);
+  // url(#...) fails to resolve, silently falling back to the fill's initial
+  // value (black) instead of the intended gradient (#191). Strip anything
+  // that isn't alphanumeric from each finish before joining.
+  const uid = useMemo(
+    () => `${color.replace('#', '')}_${finish && finish.length > 0 ? [...finish].sort().map((f) => f.replace(/[^a-zA-Z0-9]/g, '-')).join('-') : 'c'}`,
+    [color, finish],
+  );
 
   if (photoUrl) {
     const faded = status === 'empty' || status === 'gone';
@@ -36,7 +39,7 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === 'empty' || status === 'gone';
   const isWish = status === 'wish';
-  const shimmer = SHIMMER_FINISHES.has(finish ?? 'Classic');
+  const shimmer = (finish ?? ['Classic']).some((f) => SHIMMER_FINISHES.has(f));
   const brandLabel = (brand ?? '').toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? '3' : '4';
 

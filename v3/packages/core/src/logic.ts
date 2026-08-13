@@ -1,11 +1,11 @@
 import type { Polish, Sticker, Manicure, Category, FilterState, AppData } from './types';
-import { hexToHue } from './utils';
+import { hexToHue, normalizeFinish } from './utils';
 
 export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
   return polishes.filter((p) => {
     if (p.deletedAt) return false;
     if (f.status && p.status !== f.status) return false;
-    if (f.finish && p.finish !== f.finish) return false;
+    if (f.finish && !p.finish.includes(f.finish)) return false;
     if (f.brand && p.brand !== f.brand) return false;
     if (f.category && !p.categories?.includes(f.category)) return false;
     if (f.search) {
@@ -14,7 +14,7 @@ export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
         p.name.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q) ||
         p.num.toLowerCase().includes(q) ||
-        p.finish.toLowerCase().includes(q) ||
+        p.finish.some((fn) => fn.toLowerCase().includes(q)) ||
         (p.notes ?? '').toLowerCase().includes(q)
       );
     }
@@ -58,9 +58,17 @@ export function activeCategories(cats: Category[]): Category[] {
 
 // Merge two AppData objects: last updatedAt wins per item.
 // Items with deletedAt are kept (soft-delete) so other devices can remove them.
+//
+// `finish` is normalized on the way out. mergeData is the single choke point every
+// path that mixes in foreign data goes through — the web sync flow, the server's
+// POST /api/sync and /api/sync/push (which merge a raw request body and persist the
+// result), and all four file-based cloud adapters (which merge a remote JSON that may
+// predate the FinishType -> FinishType[] migration and upload the result back). A
+// legacy bare-string `finish` winning last-write-wins would otherwise be persisted
+// and then crash consumers that call `finish.map`/`finish.some` on it.
 export function mergeData(local: AppData, remote: AppData): AppData {
   return {
-    polishes:    mergeList(local.polishes, remote.polishes),
+    polishes:    mergeList(local.polishes, remote.polishes).map((p) => ({ ...p, finish: normalizeFinish(p.finish) })),
     customCats:  mergeList(local.customCats, remote.customCats),
     manicures:   mergeList(local.manicures, remote.manicures),
     stickers:    mergeList(local.stickers, remote.stickers),

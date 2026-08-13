@@ -18,6 +18,10 @@ function isSaturated(hex: string): boolean {
   return Math.max(r, g, b) - Math.min(r, g, b) > 0.15;
 }
 
+function sameFinishSet(a: Polish['finish'], b: Polish['finish']): boolean {
+  return a.length === b.length && a.every((f) => b.includes(f));
+}
+
 export default function PolishFormModal({
   polish,
   categories,
@@ -63,7 +67,7 @@ export default function PolishFormModal({
       if (p.deletedAt) return false;
       if (!isSaturated(p.color)) return false;
       const diff = Math.abs(hexToHue(p.color) - hue);
-      return Math.min(diff, 360 - diff) <= 15 && p.finish === form.finish;
+      return Math.min(diff, 360 - diff) <= 15 && sameFinishSet(p.finish, form.finish);
     });
   }, [form.color, form.finish, polish, allPolishes]);
 
@@ -143,13 +147,27 @@ export default function PolishFormModal({
                   </div>
                 )}
               </div>
-              <label className={styles.field}>
-                <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
-                <select value={form.finish} onChange={(e) => set('finish', e.target.value as FormData['finish'])} disabled={aiAutofill}>
-                  {FINISH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.icon} {o.label}</option>)}
-                </select>
-              </label>
             </div>
+
+            <label className={styles.field}>
+              <span>Finish {aiAutofill && <span className={styles.fieldHint}>(wird von der KI ermittelt)</span>}</span>
+              <div className={styles.chips} role="group" aria-label="Finish">
+                {FINISH_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    disabled={aiAutofill}
+                    aria-pressed={form.finish.includes(o.value)}
+                    className={form.finish.includes(o.value) ? styles.chipOn : styles.chipOff}
+                    onClick={() => {
+                      const curr = form.finish;
+                      const next = curr.includes(o.value) ? curr.filter((x) => x !== o.value) : [...curr, o.value];
+                      if (next.length > 0) set('finish', next); // never allow deselecting down to zero — a polish always has at least one finish
+                    }}
+                  >{o.icon} {o.label}</button>
+                ))}
+              </div>
+            </label>
 
             <div className={styles.row}>
               <label className={styles.field}>
@@ -183,11 +201,12 @@ export default function PolishFormModal({
             {categories.length > 0 && (
               <label className={styles.field}>
                 <span>Kategorien</span>
-                <div className={styles.chips}>
+                <div className={styles.chips} role="group" aria-label="Kategorien">
                   {categories.map((c) => (
                     <button
                       key={c.id}
                       type="button"
+                      aria-pressed={(form.categories ?? []).includes(c.id)}
                       className={(form.categories ?? []).includes(c.id) ? styles.chipOn : styles.chipOff}
                       onClick={() => {
                         const curr = form.categories ?? [];

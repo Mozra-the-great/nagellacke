@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useAppData } from './useAppData';
+import { useAppData, shouldShowFinishMigrationNotice } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
+import FinishMigrationNotice from './components/FinishMigrationNotice';
 import CollectionPage from './pages/CollectionPage';
 import CartPage from './pages/CartPage';
 import StickersPage from './pages/StickersPage';
@@ -24,6 +25,13 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('collection');
   const appData = useAppData();
+  // `useAppData()` above runs `loadLocal()` synchronously as part of its own
+  // `useState` initializer, which is what sets the migration-backup flag
+  // `shouldShowFinishMigrationNotice()` reads. Must be initialized after that
+  // call so the notice can already appear on the very first render post-
+  // upgrade, instead of only from the next app start (days later for an
+  // installed PWA).
+  const [showFinishMigrationNotice, setShowFinishMigrationNotice] = useState(shouldShowFinishMigrationNotice);
 
   const polishes = appData.data.polishes.filter((p) => !p.deletedAt);
   const ownedPolishes = polishes.filter((p) => p.status === 'ok');
@@ -68,6 +76,13 @@ export default function App() {
         {tab === 'stats'      && <StatsPage appData={appData} />}
         {tab === 'settings'   && <SettingsPage appData={appData} />}
       </main>
+
+      {showFinishMigrationNotice && (
+        <FinishMigrationNotice
+          onRollback={appData.rollbackFinishMigration}
+          onClose={() => setShowFinishMigrationNotice(false)}
+        />
+      )}
     </div>
     </SnackbarProvider>
   );
