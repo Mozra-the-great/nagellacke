@@ -10,6 +10,8 @@ import retrofit2.http.Path
 
 @Serializable data class LoginRequest(val username: String, val password: String)
 @Serializable data class RefreshRequest(val refreshToken: String)
+/** Second step of a 2FA login: `code` takes either a 6-digit TOTP code or a recovery code. */
+@Serializable data class VerifyRequest(val challengeToken: String, val code: String)
 
 // All fields are nullable/defaulted — as of server #174, an account with TOTP
 // 2FA enabled gets { mfaRequired: true, challengeToken } instead of { token,
@@ -53,6 +55,9 @@ interface ServerApi {
 
     @POST("api/auth/register")
     suspend fun register(@Body body: LoginRequest): LoginResponse
+
+    @POST("api/auth/login/verify")
+    suspend fun loginVerify(@Body body: VerifyRequest): LoginResponse
 
     // Response shape matches LoginResponse's { token, refreshToken } pair (see server's
     // issueTokens()) — mfaRequired/challengeToken are simply absent and default to false/null.

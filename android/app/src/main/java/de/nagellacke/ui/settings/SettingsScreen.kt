@@ -53,6 +53,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import de.nagellacke.data.sync.AuthResult
+import de.nagellacke.data.sync.LoginOutcome
 import de.nagellacke.data.sync.SyncProvider
 import de.nagellacke.domain.ReportPeriod
 import kotlinx.coroutines.launch
@@ -598,6 +599,11 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
 internal fun isCleartextUrl(url: String): Boolean =
     url.trim().lowercase(Locale.ROOT).startsWith("http://")
 
+/**
+ * Server login. An account with 2FA enabled does not get tokens from the first step — the
+ * server answers with a short-lived challenge, and this dialog then switches to a second
+ * step asking for the code (#227). Before that the app simply refused such accounts.
+ */
 @Composable
 fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, onSuccess: (AuthResult) -> Unit, vm: SettingsViewModel) {
     val scope = rememberCoroutineScope()
@@ -606,14 +612,45 @@ fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, on
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
 
+    // Non-null once the server has asked for a second factor; also what switches the dialog
+    // to its second step. Never stored anywhere - it expires in five minutes and is useless
+    // on its own (the server rejects a `typ: mfa` token on every other route).
+    var challengeToken by remember { mutableStateOf<String?>(null) }
+    var code by remember { mutableStateOf("") }
+
+    val challenge = challengeToken
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (mode == "login") "Server-Login" else "Registrieren") },
+        title = {
+            Text(
+                when {
+                    challenge != null -> "Zwei-Faktor-Bestätigung"
+                    mode == "login" -> "Server-Login"
+                    else -> "Registrieren"
+                }
+            )
+        },
         text = {
             Column {
-                OutlinedTextField(username, { username = it }, label = { Text("Benutzername") }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(password, { password = it }, label = { Text("Passwort") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                if (challenge != null) {
+                    Text(
+                        "Gib den 6-stelligen Code aus deiner Authenticator-App ein. " +
+                            "Alternativ funktioniert einer deiner Recovery-Codes.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        code,
+                        { code = it },
+                        label = { Text("Code") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    OutlinedTextField(username, { username = it }, label = { Text("Benutzername") }, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(password, { password = it }, label = { Text("Passwort") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                }
                 if (error.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text(error, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -622,13 +659,39 @@ fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, on
                 onClick = {
                     scope.launch {
                         loading = true; error = ""
-                        val result = if (mode == "login") vm.serverLogin(serverUrl, username, password) else vm.serverRegister(serverUrl, username, password)
+                        if (challenge != null) {
+                            vm.serverVerifyMfa(serverUrl, challenge, code)
+                                .onSuccess { onSuccess(it) }
+                                // Stay on this step: a wrong code is worth retrying, and the
+                                // challenge is still valid until it expires.
+                                .onFailure { error = it.message ?: "Code ungültig" }
+                        } else if (mode == "login") {
+                            vm.serverLogin(serverUrl, username, password)
+                                .onSuccess { outcome ->
+                                    when (outcome) {
+                                        is LoginOutcome.Success -> onSuccess(outcome.auth)
+                                        is LoginOutcome.MfaRequired -> challengeToken = outcome.challengeToken
+                                    }
+                                }
+                                .onFailure { error = it.message ?: "Fehler" }
+                        } else {
+                            vm.serverRegister(serverUrl, username, password)
+                                .onSuccess { onSuccess(it) }
+                                .onFailure { error = it.message ?: "Fehler" }
+                        }
                         loading = false
-                        result.onSuccess { onSuccess(it) }.onFailure { error = it.message ?: "Fehler" }
                     }
                 },
-                enabled = !loading && username.isNotBlank() && password.isNotBlank(),
-            ) { Text(if (mode == "login") "Anmelden" else "Registrieren") }
+                enabled = !loading && if (challenge != null) code.isNotBlank() else username.isNotBlank() && password.isNotBlank(),
+            ) {
+                Text(
+                    when {
+                        challenge != null -> "Bestätigen"
+                        mode == "login" -> "Anmelden"
+                        else -> "Registrieren"
+                    }
+                )
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } },
     )
