@@ -9,6 +9,9 @@ on:
       # so a notes-only commit should not trigger a deploy. They still ship
       # with the next deploy that a real docs change causes.
       - '!docs/releases/**'
+      # Same for the setup guides (#213): they are Markdown read on GitHub,
+      # not part of the static site, so editing one is not a site change.
+      - '!docs/*.md'
   workflow_dispatch:
 
 permissions:
