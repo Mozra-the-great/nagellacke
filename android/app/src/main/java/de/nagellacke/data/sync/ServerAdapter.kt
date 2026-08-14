@@ -115,6 +115,17 @@ class ServerAdapter(
 /** Access/refresh token pair returned by a successful login or registration. */
 data class AuthResult(val token: String, val refreshToken: String)
 
+/**
+ * Outcome of a login attempt. An account with 2FA enabled does not get tokens from
+ * POST /api/auth/login — it gets a short-lived challenge that only
+ * POST /api/auth/login/verify accepts, so the caller has to ask for the code and finish
+ * the exchange rather than treating the response as a failure (#227).
+ */
+sealed interface LoginOutcome {
+    data class Success(val auth: AuthResult) : LoginOutcome
+    data class MfaRequired(val challengeToken: String) : LoginOutcome
+}
+
 class AuthRepository(private val baseUrl: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -127,20 +138,27 @@ class AuthRepository(private val baseUrl: String) {
             .create(ServerApi::class.java)
     }
 
-    // Two-factor accounts (server #174) return { mfaRequired: true,
-    // challengeToken } instead of a token here. There is no code-entry screen
-    // in this app yet, so surface a clear, actionable error instead of a null
-    // token reaching the caller — the alternative before the LoginResponse
-    // nullability fix was a hard crash on this exact response.
-    suspend fun login(username: String, password: String): AuthResult {
+    suspend fun login(username: String, password: String): LoginOutcome {
         val response = api.login(LoginRequest(username, password))
-        if (response.mfaRequired || response.token == null) {
-            throw IllegalStateException(
-                "Dieses Konto hat Zwei-Faktor-Authentifizierung (2FA) aktiviert. " +
-                    "Die Android-App unterstützt 2FA-Login noch nicht — bitte über die Web-Oberfläche anmelden."
-            )
+        if (response.mfaRequired) {
+            val challenge = response.challengeToken
+                ?: throw IllegalStateException("Server verlangt 2FA, hat aber keinen Challenge-Token geschickt.")
+            return LoginOutcome.MfaRequired(challenge)
         }
-        return AuthResult(response.token, response.refreshToken ?: "")
+        val token = response.token
+            ?: throw IllegalStateException("Anmeldung fehlgeschlagen: kein Token erhalten.")
+        return LoginOutcome.Success(AuthResult(token, response.refreshToken ?: ""))
+    }
+
+    /**
+     * Second step of a 2FA login. [code] is either the 6-digit code from the authenticator
+     * or one of the recovery codes — the server accepts both through the same field.
+     */
+    suspend fun verifyMfa(challengeToken: String, code: String): AuthResult {
+        val response = api.loginVerify(VerifyRequest(challengeToken, code.trim()))
+        val token = response.token
+            ?: throw IllegalStateException("Bestätigung fehlgeschlagen: kein Token erhalten.")
+        return AuthResult(token, response.refreshToken ?: "")
     }
 
     suspend fun register(username: String, password: String): AuthResult {

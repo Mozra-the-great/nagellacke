@@ -17,6 +17,7 @@ import de.nagellacke.data.sync.AiClient
 import de.nagellacke.data.sync.AiSettingsDto
 import de.nagellacke.data.sync.AuthRepository
 import de.nagellacke.data.sync.AuthResult
+import de.nagellacke.data.sync.LoginOutcome
 import de.nagellacke.data.sync.ReportsClient
 import de.nagellacke.data.sync.ServerAdapter
 import de.nagellacke.data.sync.SaveAiSettingsRequest
@@ -168,8 +169,12 @@ class SettingsViewModel @Inject constructor(
         _syncState.update { Triple(false, result.error, if (result.success) System.currentTimeMillis() else null) }
     }
 
-    suspend fun serverLogin(url: String, username: String, password: String): Result<AuthResult> =
+    suspend fun serverLogin(url: String, username: String, password: String): Result<LoginOutcome> =
         runCatching { AuthRepository(url).login(username, password) }
+
+    /** Finishes a 2FA login with a TOTP or recovery code (#227). */
+    suspend fun serverVerifyMfa(url: String, challengeToken: String, code: String): Result<AuthResult> =
+        runCatching { AuthRepository(url).verifyMfa(challengeToken, code) }
 
     suspend fun serverRegister(url: String, username: String, password: String): Result<AuthResult> =
         runCatching { AuthRepository(url).register(username, password) }
