@@ -235,7 +235,7 @@ disappears entirely (`role === 'user'`, whose `POST /api/ai/settings` now 403s s
 ## Web — Settings — Sicherheit (TOTP 2FA, #174/#215)
 
 - [ ] `WEB-SET-52` Section only offers the setup flow when server-sync is active; otherwise shows "2FA ist nur mit dem Eigenen-Server-Sync verfügbar" instead.
-- [ ] `WEB-SET-53` When 2FA is off, a warning banner recommends updating the Android app to the latest version *before* enabling 2FA, since older Android builds cannot complete a two-step login (#227 — Android has no 2FA login UI at all; see `AND-SET-*` platform-parity note).
+- [ ] `WEB-SET-53` When 2FA is off, a warning banner recommends updating the Android app to the latest version *before* enabling 2FA — Android builds before #227 cannot complete a two-step login. Current builds can (`AND-SET-38`..`40`), so the banner is about **older installs**, not a missing feature.
 - [ ] `WEB-SET-54` "2FA aktivieren" calls `POST /api/auth/totp/setup`, then shows a QR code (rendered client-side via the `qrcode` package from the returned `otpauthUri`) plus the raw secret and otpauth URI as manual-entry fallbacks.
 - [ ] `WEB-SET-55` Entering the 6-digit code from the authenticator app and a password, then "Bestätigen und aktivieren", calls `POST /api/auth/totp/enable`; a wrong code or password shows an inline error and does not enable 2FA.
 - [ ] `WEB-SET-56` A successful enable reveals a one-time "Wiederherstellungscodes" panel (10 codes in a 2-column monospace grid) with "Kopieren" (clipboard) and "Verstanden" (dismiss) — the codes are never shown again after dismissal.
@@ -409,7 +409,10 @@ its pre-#173 behavior.
 - [ ] `AND-SET-06` "Letzter Sync" timestamp shown after a successful sync.
 - [ ] `AND-SET-07` Provider chip row: Eigener Server / Nextcloud / Google Drive / OneDrive / Dropbox.
 - [ ] `AND-SET-08` "Eigener Server": URL + JWT-token fields; "Login"/"Registrieren" buttons open the login/register dialog; "Speichern" persists URL+token directly (for pasting an existing token without going through the dialog).
-- [ ] `AND-SET-09` Login/Register dialog: username+password fields, inline error on failure, disabled confirm until both fields are non-blank, loading state while in flight; success populates the token field and saves the server config automatically. Has no two-step/2FA code-entry state at all — logging into an account with TOTP 2FA enabled (#174/#215) simply fails here, since `/api/auth/login`'s `{ mfaRequired, challengeToken }` response isn't handled (known limitation, #227; see web's `WEB-SET-53`/`62`..`65` for the flow Android is missing).
+- [ ] `AND-SET-09` Login/Register dialog: username+password fields, inline error on failure, disabled confirm until both fields are non-blank, loading state while in flight; success populates the token field and saves the server config automatically.
+- [ ] `AND-SET-38` Logging into an account with TOTP 2FA enabled switches the same dialog to a second step (#227): title becomes "Zwei-Faktor-Bestätigung", a single "Code" field replaces username/password, and the hint says an authenticator code or a recovery code both work.
+- [ ] `AND-SET-39` "Bestätigen" posts the challenge token + code to `/api/auth/login/verify`; success completes the login exactly like a non-2FA one (tokens stored, server config saved). A recovery code is accepted through the same field as a 6-digit code.
+- [ ] `AND-SET-40` A wrong or expired code shows an inline error and **stays on the code step** rather than dropping back to username/password — the challenge is still valid until it expires, so re-entering beats starting over. "Abbrechen" closes the dialog without saving anything; the challenge token is never persisted.
 - [ ] `AND-SET-10` "Nextcloud": URL/Benutzername/Passwort fields; "Speichern" persists the config.
 - [ ] `AND-SET-11` Google Drive / OneDrive / Dropbox: informational text + a disabled "Mit … anmelden (in Kürze)" button — confirm these remain visibly disabled/non-functional (OAuth client IDs are placeholders in `OAuthHelper.kt`), i.e. this is intentionally not-yet-implemented, not a bug.
 - [ ] `AND-SET-12` "Jetzt syncen" button (shown once a provider is configured) triggers a manual sync, shows a spinner + "Synchronisiere…" while running, disabled during sync.
@@ -467,11 +470,11 @@ boundaries and as a backlog of intentional/unintentional gaps:
     equivalent at all; this is a server-operator feature tied to the self-hosted deploy, not
     meant for the phone app — an admin has to use the web app for user/server management even
     when everything else is done on Android.
-  - Two-Factor-Authentication (TOTP, #174/#215) — `WEB-SET-52`..`65`. Android has **no** 2FA
-    login UI whatsoever (#227): setup/enable/disable/recovery-codes and the two-step login
-    challenge all only exist on web. An account with 2FA enabled from the web app cannot log in
-    on Android at all until this gap is closed (`AND-SET-09`) — treat this as a known limitation
-    to confirm during QA, not investigate as a new bug.
+  - Two-Factor-Authentication (TOTP, #174/#215) — `WEB-SET-52`..`65`. Android can now *complete*
+    a two-step login (`AND-SET-38`..`40`, #227), so an account with 2FA enabled is usable there.
+    What Android still lacks is 2FA **management**: setup, enable/disable and regenerating
+    recovery codes exist on web only. Turning 2FA on or off therefore means visiting the web app
+    — a known limitation to confirm during QA, not a new bug.
   - Registration is reachable from the web app only indirectly (no "Registrieren" button — a user
     must be bootstrapped or `ALLOW_REGISTRATION=true`); the web Settings login form has no sign-up
     option at all, whereas Android does (see below), even though both hit the same
