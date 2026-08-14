@@ -25,12 +25,29 @@ import retrofit2.http.Path
     val mfaRequired: Boolean = false,
     val challengeToken: String? = null,
 )
+/**
+ * GET /api/auth/me. `role` is absent on a server predating #173, and every field is
+ * optional for the same reason LoginResponse's are: a missing non-optional field throws
+ * rather than degrading. A null role means "unknown", which callers must treat as
+ * "assume the old behaviour", not as "not an admin".
+ */
+@Serializable data class MeResponse(
+    val username: String? = null,
+    val email: String? = null,
+    val smtpConfigured: Boolean = false,
+    val totpEnabled: Boolean = false,
+    val role: String? = null,
+)
+
 @Serializable data class SyncRequest(val data: AppData, val clientTime: Long)
 @Serializable data class SyncResponse(val data: AppData)
 @Serializable data class PhotoRequest(val data: String, val mimeType: String)
 @Serializable data class PhotoResponse(val filename: String)
 
 interface ServerApi {
+    @GET("api/auth/me")
+    suspend fun me(): MeResponse
+
     @POST("api/auth/login")
     suspend fun login(@Body body: LoginRequest): LoginResponse
 

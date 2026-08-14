@@ -18,6 +18,7 @@ import de.nagellacke.data.sync.AiSettingsDto
 import de.nagellacke.data.sync.AuthRepository
 import de.nagellacke.data.sync.AuthResult
 import de.nagellacke.data.sync.ReportsClient
+import de.nagellacke.data.sync.ServerAdapter
 import de.nagellacke.data.sync.SaveAiSettingsRequest
 import de.nagellacke.data.sync.SaveGeminiDto
 import de.nagellacke.data.sync.SaveOpenRouterDto
@@ -50,6 +51,7 @@ private data class SettingsExtras(
     val reportSchedule: ReportScheduleState,
     val aiEnabled: Boolean,
     val aiSettings: AiSettingsDto?,
+    val role: String?,
 )
 
 data class SettingsUiState(
@@ -68,6 +70,11 @@ data class SettingsUiState(
     /** Local opt-in for the AI features UI (Autofill, Smart-Cart, this section) — independent of provider config. */
     val aiEnabled: Boolean = false,
     val aiSettings: AiSettingsDto? = null,
+    /**
+     * Role of the signed-in account, or null when unknown — offline, no server sync, or a
+     * server predating #173. Null must read as "unknown", never as "not an admin".
+     */
+    val role: String? = null,
 )
 
 @HiltViewModel
@@ -83,9 +90,10 @@ class SettingsViewModel @Inject constructor(
     private val _configVersion = MutableStateFlow(0)
     private val _reportSchedule = MutableStateFlow(ReportScheduleState())
     private val _aiSettings = MutableStateFlow<AiSettingsDto?>(null)
+    private val _role = MutableStateFlow<String?>(null)
 
-    private val extras = combine(_reportSchedule, displayPrefsStore.aiEnabled, _aiSettings) { rs, aiEnabled, aiSettings ->
-        SettingsExtras(rs, aiEnabled, aiSettings)
+    private val extras = combine(_reportSchedule, displayPrefsStore.aiEnabled, _aiSettings, _role) { rs, aiEnabled, aiSettings, role ->
+        SettingsExtras(rs, aiEnabled, aiSettings, role)
     }
 
     val uiState = combine(
@@ -110,20 +118,24 @@ class SettingsViewModel @Inject constructor(
             reportSchedule = ex.reportSchedule,
             aiEnabled     = ex.aiEnabled,
             aiSettings    = ex.aiSettings,
+            role          = ex.role,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
     init {
         loadReportSchedule()
         loadAiSettings()
+        loadRole()
     }
 
     private fun notifyConfigChanged() {
         _configVersion.update { it + 1 }
         _reportSchedule.value = ReportScheduleState()
         _aiSettings.value = null
+        _role.value = null
         loadReportSchedule()
         loadAiSettings()
+        loadRole()
     }
 
     fun saveServerConfig(url: String, token: String, refreshToken: String = "") {
@@ -217,6 +229,18 @@ class SettingsViewModel @Inject constructor(
         val cfg = configStore.getConfig() ?: return null
         if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
         return AiClient(cfg.serverUrl, cfg.serverToken)
+    }
+
+    /**
+     * Reads the account's role from GET /api/auth/me so the UI can hide what the server
+     * would refuse anyway (#243). Stays null on any failure — see SettingsUiState.role.
+     */
+    fun loadRole() {
+        val cfg = configStore.getConfig() ?: return
+        if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank() || cfg.serverToken.isBlank()) return
+        viewModelScope.launch {
+            _role.value = ServerAdapter(cfg, configStore).fetchRole()
+        }
     }
 
     fun loadAiSettings() {

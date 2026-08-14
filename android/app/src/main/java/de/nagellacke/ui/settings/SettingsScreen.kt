@@ -391,7 +391,12 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                 ) { Text(if (scheduleSaveStatus == "saving") "Speichere…" else if (scheduleSaveStatus == "saved") "✓ Gespeichert" else "Zeitplan speichern") }
             }
 
-            if (state.aiEnabled) {
+            // POST /api/ai/settings requires the admin role since #173, so showing this to a
+            // plain user is a dead end: the form fills in, and saving 403s. Mirrors the web
+            // app's `role === null` gate — an unknown role (offline, or a server without the
+            // role concept) keeps the section visible rather than hiding it from an admin
+            // whose /api/auth/me call happened to fail (#243).
+            if (state.aiEnabled && state.role != "user") {
                 HorizontalDivider(Modifier.padding(vertical = 16.dp))
 
                 // AI Assistant
