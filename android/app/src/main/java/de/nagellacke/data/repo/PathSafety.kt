@@ -17,6 +17,26 @@ import java.io.IOException
  * Lives outside PhotoRepository so it can be unit-tested without an Android Context —
  * the repository itself only reachable through `context.filesDir`.
  */
+/**
+ * Deletes every file directly in [root] that is neither listed in [referencedFilenames] nor
+ * younger than [minAgeMs]. Backs PhotoRepository.cleanup(); see the docs there for why both
+ * conditions are needed. Split out for the same reason as [resolveWithin]: PhotoRepository
+ * reaches its directory through `context.filesDir`, which no unit test here can provide.
+ */
+fun deleteUnreferencedFiles(
+    root: File,
+    referencedFilenames: Set<String>,
+    minAgeMs: Long,
+    now: Long = System.currentTimeMillis(),
+) {
+    val cutoff = now - minAgeMs
+    root.listFiles()?.forEach { file ->
+        if (file.isFile && file.name !in referencedFilenames && file.lastModified() < cutoff) {
+            file.delete()
+        }
+    }
+}
+
 fun resolveWithin(root: File, filename: String): File {
     // Canonicalization itself can fail — an IOException on a name the OS considers
     // malformed, or a filesystem error. Fail closed and report it as a rejection like

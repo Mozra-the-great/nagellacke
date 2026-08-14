@@ -53,12 +53,8 @@ class PhotoRepository @Inject constructor(@ApplicationContext private val contex
      *  delete(): those handles come from the directory itself, so there is no attacker-supplied
      *  name to guard here, and re-deriving one only to re-resolve it would be a detour. The
      *  traversal guard (#222) belongs on the entry points that take a filename from sync data. */
-    fun cleanup(referencedFilenames: Set<String>, minAgeMs: Long = 24L * 60 * 60 * 1000) {
-        val cutoff = System.currentTimeMillis() - minAgeMs
-        dir.listFiles()?.forEach { file ->
-            if (file.name !in referencedFilenames && file.lastModified() < cutoff) file.delete()
-        }
-    }
+    fun cleanup(referencedFilenames: Set<String>, minAgeMs: Long = 24L * 60 * 60 * 1000) =
+        deleteUnreferencedFiles(dir, referencedFilenames, minAgeMs)
 
     fun readBytes(filename: String): ByteArray = resolveSafe(filename).readBytes()
 

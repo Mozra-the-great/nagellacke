@@ -1,6 +1,7 @@
 package de.nagellacke.data.repo
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -103,5 +104,81 @@ class PathSafetyTest {
     fun `an empty filename resolves to the dir itself and is not an escape`() {
         val dir = photosDir()
         assertEquals(dir.canonicalFile, resolveWithin(dir, ""))
+    }
+
+    // --- deleteUnreferencedFiles (#226) ---
+    //
+    // Deleting a photo that is still referenced would be worse than the leak this fixes,
+    // so both conditions - unreferenced AND old enough - are load-bearing.
+
+    private val day = 24L * 60 * 60 * 1000
+
+    private fun photo(dir: File, name: String, ageMs: Long): File =
+        File(dir, name).apply {
+            writeText("x")
+            setLastModified(System.currentTimeMillis() - ageMs)
+        }
+
+    @Test
+    fun `an old unreferenced photo is deleted`() {
+        val dir = photosDir()
+        val orphan = photo(dir, "orphan.jpg", 2 * day)
+        deleteUnreferencedFiles(dir, emptySet(), day)
+        assertFalse(orphan.exists())
+    }
+
+    @Test
+    fun `an old photo that is still referenced is kept`() {
+        val dir = photosDir()
+        val kept = photo(dir, "kept.jpg", 2 * day)
+        deleteUnreferencedFiles(dir, setOf("kept.jpg"), day)
+        assertTrue(kept.exists())
+    }
+
+    // The race this guards: a photo imported into a form the user has not saved yet is on
+    // disk but referenced by nothing, and a sync must not delete it out from under them.
+    @Test
+    fun `a freshly imported photo is kept even though nothing references it yet`() {
+        val dir = photosDir()
+        val fresh = photo(dir, "just-imported.jpg", 60 * 1000)
+        deleteUnreferencedFiles(dir, emptySet(), day)
+        assertTrue(fresh.exists())
+    }
+
+    @Test
+    fun `a photo exactly at the age cutoff is kept`() {
+        val dir = photosDir()
+        val f = File(dir, "edge.jpg").apply { writeText("x") }
+        val now = System.currentTimeMillis()
+        f.setLastModified(now - day)
+        deleteUnreferencedFiles(dir, emptySet(), day, now)
+        assertTrue(f.exists())
+    }
+
+    @Test
+    fun `deleting one orphan leaves the other files untouched`() {
+        val dir = photosDir()
+        val orphan = photo(dir, "orphan.jpg", 2 * day)
+        val referenced = photo(dir, "referenced.jpg", 2 * day)
+        val fresh = photo(dir, "fresh.jpg", 60 * 1000)
+        deleteUnreferencedFiles(dir, setOf("referenced.jpg"), day)
+        assertFalse(orphan.exists())
+        assertTrue(referenced.exists())
+        assertTrue(fresh.exists())
+    }
+
+    @Test
+    fun `a subdirectory is never deleted`() {
+        val dir = photosDir()
+        val sub = File(dir, "sub").apply { mkdirs(); setLastModified(System.currentTimeMillis() - 2 * day) }
+        deleteUnreferencedFiles(dir, emptySet(), day)
+        assertTrue(sub.exists())
+    }
+
+    @Test
+    fun `a missing directory is handled without throwing`() {
+        val missing = File(tmp.root, "not-created-yet")
+        deleteUnreferencedFiles(missing, emptySet(), day)
+        assertFalse(missing.exists())
     }
 }
