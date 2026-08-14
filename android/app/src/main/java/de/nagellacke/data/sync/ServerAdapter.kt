@@ -22,10 +22,12 @@ class ServerAdapter(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    // Mutable so a successful refresh (see tryRefreshAccessToken) takes effect on the very next
+    // Mutable so a successful refresh (see exchangeRefreshToken) takes effect on the very next
     // request from this adapter instance without rebuilding the Retrofit client.
     @Volatile private var accessToken = config.serverToken
     @Volatile private var refreshToken = config.serverRefreshToken
+
+    private val authRetry = AuthRetry(tokenOf = { accessToken }, refresh = ::exchangeRefreshToken)
 
     private val api: ServerApi by lazy {
         val base = config.serverUrl.trimEnd('/') + "/"
@@ -52,8 +54,12 @@ class ServerAdapter(
             .create(ServerApi::class.java)
     }
 
-    /** Trades [refreshToken] for a fresh access token via POST /api/auth/refresh. Returns false if there's no refresh token to use or the exchange fails, so the caller can surface a re-auth prompt instead of retrying forever. */
-    private suspend fun tryRefreshAccessToken(): Boolean {
+    /**
+     * Trades [refreshToken] for a fresh access token via POST /api/auth/refresh. Returns false if
+     * there is no refresh token to use or the exchange fails, so the caller can surface a re-auth
+     * prompt instead of retrying forever. Concurrency is handled by [AuthRetry].
+     */
+    private suspend fun exchangeRefreshToken(): Boolean {
         val currentRefreshToken = refreshToken
         if (currentRefreshToken.isBlank()) return false
         return try {
@@ -68,12 +74,7 @@ class ServerAdapter(
         }
     }
 
-    /** Runs [block]; on a 401, attempts one token refresh and retries once before giving up. */
-    private suspend fun <T> withAuthRetry(block: suspend () -> T): T = try {
-        block()
-    } catch (e: HttpException) {
-        if (e.code() == 401 && tryRefreshAccessToken()) block() else throw e
-    }
+    private suspend fun <T> withAuthRetry(block: suspend () -> T): T = authRetry.run(block)
 
     override suspend fun sync(local: AppData): SyncResult = runCatching {
         // POST /api/sync merges + persists on the server and returns the merged data
