@@ -14,12 +14,14 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -38,11 +40,24 @@ import de.nagellacke.ui.theme.NagellackeTheme
 import de.nagellacke.ui.wishlist.WishlistScreen
 import javax.inject.Inject
 
-sealed class Screen(val route: String, val label: String) {
+/**
+ * Nav labels are kept short on purpose: six items leave about 64dp per column, which is
+ * not enough for "Wunschliste" or "Tagebuch" (#240). Each screen still shows its full
+ * name in its own top bar, so nothing is actually lost here.
+ */
+sealed class Screen(
+    val route: String,
+    /** Full name of the screen — used for the accessibility label, never truncated. */
+    val label: String,
+    /** What the bottom bar prints; defaults to [label] where that already fits in 64dp. */
+    navLabel: String? = null,
+) {
+    val navLabel: String = navLabel ?: label
+
     object Collection : Screen("collection", "Lacke")
-    object Wishlist   : Screen("wishlist", "Wunschliste")
+    object Wishlist   : Screen("wishlist", "Wunschliste", navLabel = "Wünsche")
     object Stickers   : Screen("stickers", "Sticker")
-    object Diary      : Screen("diary", "Tagebuch")
+    object Diary      : Screen("diary", "Tagebuch", navLabel = "Buch")
     object Stats      : Screen("stats", "Statistik")
     object Settings   : Screen("settings", "Mehr")
 }
@@ -82,7 +97,23 @@ fun NagellackeApp() {
                             }
                         },
                         icon = { Icon(icons[idx], contentDescription = screen.label) },
-                        label = { Text(screen.label) },
+                        // Six tabs across 1080px at density 450 leave about 64dp each. The
+                        // labels below are cut to fit that at labelSmall; maxLines then keeps
+                        // the failure mode an ellipsis rather than the mid-word break this
+                        // started as (#240) when the system font scale is turned up.
+                        //
+                        // alwaysShowLabel = false was the obvious alternative and does not
+                        // work here: the selected item is not granted extra width on this
+                        // layout, so "Tagebuch" stayed truncated while the other five lost
+                        // their labels for nothing.
+                        label = {
+                            Text(
+                                screen.navLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
                     )
                 }
             }
