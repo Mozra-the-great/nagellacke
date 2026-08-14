@@ -2,7 +2,7 @@
 
 Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Cloud-Sync und nativer Android-App.
 
-![Version](https://img.shields.io/badge/version-3.3.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
+![Version](https://img.shields.io/badge/version-3.3.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
 ### → **[Projektseite ansehen](https://mozra-the-great.github.io/nagellacke/)**
 
@@ -45,4 +45,4 @@ Debian/Ubuntu mit Node.js 20+, danach erreichbar unter `http://SERVER-IP:3000`.
 
 ## Lizenz
 
-MIT — siehe [LICENSE](LICENSE).
+GNU General Public License v3.0 — siehe [LICENSE](LICENSE).
