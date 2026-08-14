@@ -17,6 +17,9 @@ export default function PolishCard({
   const hasPhoto = !!polish.photo;
   const [showPhoto, setShowPhoto] = useState(hasPhoto && defaultShowPhoto);
   const count = polish.count ?? 1;
+  // `name` is typed as required, but a corrupted sync/import record can still
+  // land here without one at runtime (#218).
+  const name = polish.name || 'Unbenannt';
 
   return (
     <div
@@ -25,7 +28,7 @@ export default function PolishCard({
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onEdit()}
-      aria-label={`${polish.name} bearbeiten`}
+      aria-label={`${name} bearbeiten`}
     >
       {(count > 1 || polish.status === 'wish') && (
         <div className={styles.topBadges}>
@@ -57,7 +60,7 @@ export default function PolishCard({
       )}
 
       <div className={styles.info}>
-        <div className={styles.name} title={polish.name}>{polish.name}</div>
+        <div className={styles.name} title={name}>{name}</div>
         {polish.brand && <div className={styles.brand}>{polish.brand}</div>}
         {polish.rating ? <div className={styles.rating}>{'★'.repeat(polish.rating)}</div> : null}
       </div>
