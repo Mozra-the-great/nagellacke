@@ -113,7 +113,11 @@ fun DiaryScreen(vm: DiaryViewModel = hiltViewModel()) {
                 state.entries.isEmpty() -> EmptyScreen("Noch keine Maniküren.\nTippe + um den ersten Eintrag zu erstellen.", "📖")
                 else -> LazyColumn(Modifier.weight(1f)) {
                     items(state.entries, key = { it.id }) { entry ->
-                        val polishes = state.polishes.filter { entry.polishIds.contains(it.id) }
+                        // Via resolvePolishIds, not entry.polishIds directly: after a rename or
+                        // an import that renumbered ids on another device, the refs still point
+                        // at the right polish where the bare id list no longer does.
+                        val resolvedIds = resolvePolishIds(entry, state.polishes)
+                        val polishes = state.polishes.filter { resolvedIds.contains(it.id) }
                         val photoName = entry.photos.toFlatList().firstOrNull() ?: entry.photo
                         val photoModel = rememberPhotoModel(state.photoResolution, photoName)
                         val photoUnsupported = photoName != null && state.photoResolution is PhotoResolution.Unsupported
@@ -177,7 +181,31 @@ internal fun resolveStickerRefs(entry: Manicure?, available: List<Sticker>): Lis
 /** Builds fresh polish refs from the current selection, mirroring what the web app sends on save. */
 internal fun buildPolishRefs(selectedIds: List<String>, available: List<Polish>): List<PolishRef> =
     selectedIds.mapNotNull { id -> available.find { it.id == id } }
-        .map { PolishRef(name = it.name, brand = it.brand, color = it.color) }
+        .map { PolishRef(id = it.id, name = it.name, brand = it.brand, color = it.color) }
+
+/**
+ * Resolves the polish ids an entry points at, preferring `polishRefs` over the plain
+ * `polishIds` list. Mirrors resolvePolishIds() in the web app's DiaryPage.tsx.
+ *
+ * Writing the id (above) is only half the fix: a rename on another device leaves
+ * `polishIds` intact but `polishRefs` carrying a stale name, and a rebuild of the
+ * collection (import, restore) changes ids while the refs still describe the right
+ * polish. Matching on id first and falling back to name+brand covers both directions.
+ *
+ * The `used` set stops two refs that only differ by a renamed name - and therefore both
+ * fall back to the same name+brand - from collapsing onto one polish. Same caveat as the
+ * web app: two polishes sharing a name and brand are genuinely ambiguous in legacy data.
+ */
+internal fun resolvePolishIds(entry: Manicure?, available: List<Polish>): List<String> {
+    if (entry == null) return emptyList()
+    if (entry.polishRefs.isEmpty()) return entry.polishIds
+    val used = mutableSetOf<String>()
+    return entry.polishRefs.mapNotNull { ref ->
+        val match = ref.id?.let { id -> available.find { it.id == id } }
+            ?: available.find { it.name == ref.name && it.brand == ref.brand && it.id !in used }
+        match?.id?.also { used.add(it) }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -195,7 +223,7 @@ fun DiaryFormSheet(
 ) {
     val now = System.currentTimeMillis()
     var date by remember(entry) { mutableStateOf(entry?.date ?: todayIso()) }
-    var selectedIds by remember(entry) { mutableStateOf(entry?.polishIds ?: emptyList()) }
+    var selectedIds by remember(entry) { mutableStateOf(resolvePolishIds(entry, availablePolishes)) }
     var stickerRefs by remember(entry) { mutableStateOf(resolveStickerRefs(entry, availableStickers)) }
     var notes by remember(entry) { mutableStateOf(entry?.notes ?: "") }
     var photos by remember(entry) { mutableStateOf(entry?.photos ?: ManicurePhotos()) }
