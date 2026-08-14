@@ -15,6 +15,7 @@ data class SyncConfig(
     val provider: SyncProvider,
     val serverUrl: String = "",
     val serverToken: String = "",
+    val serverRefreshToken: String = "",
     val nextcloudUrl: String = "",
     val nextcloudUser: String = "",
     val nextcloudPassword: String = "",
@@ -47,6 +48,7 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
             provider       = provider,
             serverUrl      = prefs.getString("serverUrl", "") ?: "",
             serverToken    = prefs.getString("serverToken", "") ?: "",
+            serverRefreshToken = prefs.getString("serverRefreshToken", "") ?: "",
             nextcloudUrl   = prefs.getString("ncUrl", "") ?: "",
             nextcloudUser  = prefs.getString("ncUser", "") ?: "",
             nextcloudPassword = prefs.getString("ncPass", "") ?: "",
@@ -66,6 +68,7 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
                 putString("provider",     config.provider.name)
                 putString("serverUrl",    config.serverUrl)
                 putString("serverToken",  config.serverToken)
+                putString("serverRefreshToken", config.serverRefreshToken)
                 putString("ncUrl",        config.nextcloudUrl)
                 putString("ncUser",       config.nextcloudUser)
                 putString("ncPass",       config.nextcloudPassword)
@@ -85,6 +88,12 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
             refreshToken = refreshToken,
             tokenExpiry  = expiry,
         ))
+    }
+
+    /** Updates the Server-provider access/refresh token pair in place, e.g. after ServerAdapter refreshes an expired access token. */
+    fun saveServerTokens(accessToken: String, refreshToken: String) {
+        val existing = getConfig() ?: return
+        saveConfig(existing.copy(serverToken = accessToken, serverRefreshToken = refreshToken))
     }
 
     fun clearConfig() = saveConfig(null)
