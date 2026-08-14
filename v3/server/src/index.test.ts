@@ -555,7 +555,10 @@ describe('#217: POST /api/sync and /api/sync/push validate the request body', ()
     expect(res.statusCode).toBe(400);
   });
 
-  it('/api/sync/push still accepts a well-formed payload', async () => {
+  // The validation must not reject the legacy scalar `finish` an older client still
+  // sends: mergeData normalizes that to an array on the way through (#192/#197), and
+  // the guard deliberately leaves the field's type alone so the two do not disagree.
+  it('/api/sync/push still accepts a well-formed payload, including a legacy scalar finish', async () => {
     const username = freshUsername();
     const { token } = await register(username);
 
@@ -574,6 +577,86 @@ describe('#217: POST /api/sync and /api/sync/push validate the request body', ()
       method: 'GET', url: '/api/sync',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(getRes.json().data.polishes).toEqual([polish]);
+    const stored = getRes.json().data.polishes;
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: 'p1', name: 'Test', brand: 'Brand', color: '#ffffff' });
+    expect(stored[0].finish).toEqual(['Classic']);
+  });
+
+  it('rejects a data field that is not an object at all', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    for (const data of ['a string', 42, ['an', 'array']]) {
+      const res = await app.inject({
+        method: 'POST', url: '/api/sync/push',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { data },
+      });
+      expect(res.statusCode).toBe(400);
+    }
+  });
+
+  it('accepts a payload that omits list fields entirely', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [] } },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects a null entry inside an otherwise valid list', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [null], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // A string updatedAt would reach mergeList's `item.updatedAt > existing.updatedAt`
+  // and silently decide last-write-wins by string comparison.
+  it('rejects a numeric-looking string updatedAt', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        data: {
+          polishes: [{ id: 'p1', name: 'Test', updatedAt: '123' }],
+          customCats: [], manicures: [], stickers: [],
+        },
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // Deliberately still allowed: the guard checks id/updatedAt only, not every required
+  // field. An entry missing `color` therefore still gets through - which is exactly why
+  // #218 (the client-side error boundary) is a separate, non-redundant defence.
+  it('does not reject an entry that is missing other required fields', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        data: {
+          polishes: [{ id: 'p1', updatedAt: 1 }],
+          customCats: [], manicures: [], stickers: [],
+        },
+      },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

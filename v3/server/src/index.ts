@@ -198,7 +198,10 @@ function isValidAppDataList(value: unknown): boolean {
   );
 }
 function isValidAppData(value: unknown): value is AppData {
-  if (value === null || typeof value !== 'object') return false;
+  // Array.isArray first: an array passes `typeof x === 'object'`, and every list key
+  // reads back as undefined on it, so a bare `data: []` would sail through the loop
+  // below as a valid-but-empty AppData and overwrite nothing-shaped over the merge.
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   return APP_DATA_LIST_KEYS.every((key) => {
     const list = (value as Record<string, unknown>)[key];
     return list === undefined || isValidAppDataList(list);
