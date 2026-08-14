@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Keep in sync with data_extraction_rules.xml, which supersedes this file from API 31
+  onwards - divergent rules would make backup behaviour depend on the OS version.
+
+  Photos are excluded: Android Auto-Backup caps an app at 25 MB, and a photo library
+  blows past that, at which point the *whole* backup fails rather than just the photos.
+  They also usually still exist in the gallery they were imported from.
+
+  The collection database is deliberately NOT excluded. Using the app without any sync
+  provider is a supported setup, and for those users this backup is the only thing
+  standing between a new phone and a lost collection. Without photos the database is
+  plain text and stays well inside the size cap. The privacy trade-off (notes and
+  collection data in the user's own Google account) is the lesser cost - see #223.
+-->
 <full-backup-content>
     <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="photos/" />
 </full-backup-content>

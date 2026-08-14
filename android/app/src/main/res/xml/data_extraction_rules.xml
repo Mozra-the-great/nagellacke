@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Applies from API 31; backup_rules.xml covers older devices and must carry the same
+  rules, or backup behaviour starts depending on the OS version.
+
+  Photos are excluded from both cloud backup and device transfer: Auto-Backup caps an
+  app at 25 MB and fails as a whole once a photo library exceeds it. The originals
+  usually still exist in the gallery they were imported from.
+
+  The collection database stays included, in device-transfer above all: moving to a new
+  phone is exactly when a user without a sync provider would otherwise lose everything.
+  See the comment in backup_rules.xml and #223.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="photos/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="photos/" />
     </device-transfer>
 </data-extraction-rules>
