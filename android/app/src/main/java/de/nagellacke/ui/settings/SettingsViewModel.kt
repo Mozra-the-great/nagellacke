@@ -103,7 +103,7 @@ class SettingsViewModel @Inject constructor(
             syncing       = syncTriple.first,
             syncError     = syncTriple.second,
             lastSyncAt    = syncTriple.third,
-            httpWarning   = cfg?.serverUrl?.startsWith("http://") == true,
+            httpWarning   = isCleartextUrl(cfg?.serverUrl ?: ""),
             bottleStyle   = bottleStyle,
             photoResolution = cfg.photoResolution(),
             reportSchedule = ex.reportSchedule,

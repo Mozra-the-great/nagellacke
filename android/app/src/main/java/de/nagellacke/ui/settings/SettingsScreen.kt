@@ -85,6 +85,7 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
     var ncPass by remember { mutableStateOf(state.syncConfig?.nextcloudPassword ?: "") }
     var showLogin by remember { mutableStateOf(false) }
     var loginMode by remember { mutableStateOf("login") }
+    var showCleartextConfirm by remember { mutableStateOf(false) }
 
     var reportPeriod by remember { mutableStateOf(ReportPeriod.Week) }
     var reportDate by remember { mutableStateOf(LocalDate.now()) }
@@ -234,7 +235,17 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                         TextButton(onClick = { loginMode = "login"; showLogin = true }) { Text("Login") }
                         TextButton(onClick = { loginMode = "register"; showLogin = true }) { Text("Registrieren") }
                     }
-                    Button(onClick = { vm.saveServerConfig(serverUrl, serverToken) }, modifier = Modifier.fillMaxWidth()) { Text("Speichern") }
+                    Button(
+                        // Saving an http:// URL now works (see network_security_config.xml),
+                        // which means a typo like "http" for "https" would silently start
+                        // sending the password and the whole collection in the clear. Make
+                        // it a deliberate choice instead of a notice the user can skim past.
+                        onClick = {
+                            if (isCleartextUrl(serverUrl)) showCleartextConfirm = true
+                            else vm.saveServerConfig(serverUrl, serverToken)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Speichern") }
                 }
                 SyncProvider.Nextcloud -> {
                     OutlinedTextField(ncUrl, { ncUrl = it }, label = { Text("Nextcloud-URL") }, modifier = Modifier.fillMaxWidth())
@@ -548,7 +559,38 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             vm = vm,
         )
     }
+
+    if (showCleartextConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCleartextConfirm = false },
+            title = { Text("Unverschlüsselte Verbindung") },
+            text = {
+                Text(
+                    "Die Server-URL beginnt mit http:// statt https://. Passwort und Sammlung " +
+                        "werden dann im Klartext übertragen und können im Netzwerk mitgelesen " +
+                        "werden.\n\nNur in einem vertrauenswürdigen Heimnetz verwenden.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCleartextConfirm = false
+                    vm.saveServerConfig(serverUrl, serverToken)
+                }) { Text("Trotzdem speichern") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCleartextConfirm = false }) { Text("Abbrechen") }
+            },
+        )
+    }
 }
+
+/**
+ * True when [url] would be sent over plain HTTP. Deliberately trims and lowercases first:
+ * `startsWith("http://")` alone misses "HTTP://example" and a leading space, both of which
+ * connect perfectly well and would otherwise skip the warning and the confirmation.
+ */
+internal fun isCleartextUrl(url: String): Boolean =
+    url.trim().lowercase(Locale.ROOT).startsWith("http://")
 
 @Composable
 fun ServerLoginDialog(mode: String, serverUrl: String, onDismiss: () -> Unit, onSuccess: (String) -> Unit, vm: SettingsViewModel) {
