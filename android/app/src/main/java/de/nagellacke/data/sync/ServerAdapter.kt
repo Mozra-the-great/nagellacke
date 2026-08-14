@@ -102,6 +102,14 @@ class ServerAdapter(
 
     override fun photoUrl(filename: String): String =
         "${config.serverUrl.trimEnd('/')}/photos/${filename}"
+
+    /**
+     * The signed-in account's role, or null when it cannot be determined — an offline
+     * device, or a server predating #173 that has no role concept at all. Callers must
+     * treat null as "unknown", never as "not an admin": gating a screen off on a failed
+     * request would hide settings from the very admin who needs them (#243).
+     */
+    suspend fun fetchRole(): String? = runCatching { withAuthRetry { api.me() }.role }.getOrNull()
 }
 
 /** Access/refresh token pair returned by a successful login or registration. */
