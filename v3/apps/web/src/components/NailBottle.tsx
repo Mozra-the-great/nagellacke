@@ -11,33 +11,37 @@ interface Props {
   photoUrl?: string;
 }
 
-export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
-  // `color` is typed as required, but a corrupted sync/import record can still
-  // land here without one at runtime (#218) - fall back to a neutral grey
-  // rather than crashing the whole render tree.
-  const safeColor = color || '#888888';
+/**
+ * Normalizes whatever `finish` actually arrived into a non-empty array.
+ *
+ * The prop is typed `FinishType[]`, but a record that predates the array migration —
+ * or one that reached the client through a path that skipped normalization — can still
+ * carry a bare string at runtime, and calling `.some()`/`.sort()` on a string throws,
+ * taking the whole render tree down with it (#218).
+ */
+export function resolveFinishes(finish: FinishType[] | undefined): FinishType[] {
+  if (Array.isArray(finish)) return finish.length > 0 ? finish : ['Classic'];
+  if (typeof finish === 'string' && finish) return [finish as FinishType];
+  return ['Classic'];
+}
 
-  // Used to build SVG element ids below (gId/sId/glId) and referenced back via
-  // url(#...) in `fill`. Multi-word finishes like "Top Coat" or "Gel Look"
-  // contain a raw space, which is not a valid id character — the resulting
-  // url(#...) fails to resolve, silently falling back to the fill's initial
-  // value (black) instead of the intended gradient (#191). Strip anything
-  // that isn't alphanumeric from each finish before joining.
-  //
-  // Array.isArray, not just a length check: a record that predates the
-  // FinishType[] migration can still reach this component carrying a bare
-  // string, and .sort() on a string would throw (#218).
-  const uid = useMemo(
-    () =>
-      `${safeColor.replace('#', '')}_${
-        Array.isArray(finish) && finish.length > 0
-          ? [...finish].sort().map((f) => String(f).replace(/[^a-zA-Z0-9]/g, '-')).join('-')
-          : typeof finish === 'string'
-            ? (finish as string).replace(/[^a-zA-Z0-9]/g, '-')
-            : 'c'
-      }`,
-    [safeColor, finish],
-  );
+/**
+ * Builds the id used for this bottle's SVG gradients, referenced back via url(#...).
+ *
+ * Multi-word finishes like "Top Coat" contain a raw space, which is not a valid id
+ * character — the resulting url(#...) fails to resolve and the fill silently falls back
+ * to its initial value (black) instead of the intended gradient (#191). `color` is
+ * likewise typed as required but can be missing on a corrupted record (#218).
+ */
+export function buildGradientId(color: string, finish: FinishType[] | undefined): string {
+  const safeColor = color || '#888888';
+  const parts = [...resolveFinishes(finish)].sort().map((f) => String(f).replace(/[^a-zA-Z0-9]/g, '-'));
+  return `${safeColor.replace('#', '')}_${parts.join('-')}`;
+}
+
+export default function NailBottle({ color, finish, selected, status, brand, photoUrl }: Props) {
+  const safeColor = color || '#888888';
+  const uid = useMemo(() => buildGradientId(color, finish), [color, finish]);
 
   if (photoUrl) {
     const faded = status === 'empty' || status === 'gone';
@@ -55,10 +59,7 @@ export default function NailBottle({ color, finish, selected, status, brand, pho
   const gId = `g${uid}`, sId = `s${uid}`, glId = `gl${uid}`;
   const faded = status === 'empty' || status === 'gone';
   const isWish = status === 'wish';
-  // Same defence as uid above: a pre-migration record can still arrive with a bare
-  // string here, and .some() on a string throws (#218).
-  const shimmer = (Array.isArray(finish) ? finish : finish ? [finish as FinishType] : ['Classic'])
-    .some((f) => SHIMMER_FINISHES.has(f));
+  const shimmer = resolveFinishes(finish).some((f) => SHIMMER_FINISHES.has(f));
   const brandLabel = (brand ?? '').toUpperCase().slice(0, 9);
   const brandFs = brandLabel.length > 6 ? '3' : '4';
 
