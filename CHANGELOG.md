@@ -7,6 +7,10 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.3.0] – 2026-08-15
+
+Finale 3.3.0, promotet von rc.2. Gegenüber rc.2 keine funktionalen Änderungen — nur die Relizenzierung unter GNU GPL v3.0 und eine unter Versionskontrolle gestellte Feature-/QA-Checkliste (`docs/FEATURES.md`).
+
 ## [3.3.0-rc.2] – 2026-08-14
 
 Zweiter Release-Kandidat für 3.3.0. Enthält alles aus rc.1 plus das Admin-Panel, TOTP-2FA, mehrere Finish-Werte pro Lack auf allen Plattformen sowie die Aufarbeitung eines vollständigen Audit-Durchlaufs über Server, Web und Android.
