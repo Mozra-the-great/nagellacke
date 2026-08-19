@@ -96,6 +96,30 @@
   flex: 1;
 }
 
+.localDataErrorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 24px 0;
+  padding: 10px 14px;
+  background: rgba(179,38,30,0.12);
+  color: #ff8a80;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.localDataErrorDismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
 @media (max-width: 600px) {
   .header { padding: 0 12px; }
   .titleArea { padding: 12px 0 6px; }
@@ -110,4 +134,5 @@
   .navRow {
     justify-content: flex-start;
   }
+  .localDataErrorBanner { margin: 12px 12px 0; }
 }

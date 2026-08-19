@@ -98,6 +98,27 @@ export default function App() {
         </nav>
       </header>
 
+      {appData.localDataError && (
+        // The locally cached collection failed to load (malformed JSON, or a
+        // corrupted record `hasLegacyFinish` chokes on) and silently fell
+        // back to an empty collection - see #258. Without this, that reads
+        // exactly like "I have no polishes" instead of a fault condition.
+        <div className={styles.localDataErrorBanner} role="alert">
+          <span>
+            Lokale Daten konnten nicht geladen werden — möglicherweise beschädigt.
+            Es wurde vorübergehend mit einer leeren Sammlung gestartet.
+          </span>
+          <button
+            type="button"
+            className={styles.localDataErrorDismiss}
+            onClick={appData.dismissLocalDataError}
+            aria-label="Schließen"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <main className={styles.main}>
         {/* Keyed by tab so switching away from a crashed page (nav above stays
             usable, since it lives outside this boundary) remounts a clean

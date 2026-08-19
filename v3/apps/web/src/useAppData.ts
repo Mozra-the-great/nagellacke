@@ -37,6 +37,13 @@ export function mergeImport(prev: AppData, imported: AppData): AppData {
   return mergeData(prev, migrateFinish(imported));
 }
 
+// Set by `loadLocal()` on a malformed cache and consumed once by the first
+// `useAppData()` render (see `localDataError` state below) — `loadLocal` runs
+// synchronously as a `useState` initializer, so by the time that call returns
+// this is already up to date. Module-scoped rather than a return value because
+// `loadLocal` itself is also used as the initializer function directly.
+let localLoadFailed = false;
+
 function loadLocal(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -55,7 +62,15 @@ function loadLocal(): AppData {
       }
       return parsed;
     }
-  } catch { /* empty */ }
+  } catch (err) {
+    // A malformed cache (e.g. `hasLegacyFinish` throwing on a non-object
+    // array element) used to fall through to an empty collection with zero
+    // indication anything went wrong, indistinguishable from "no polishes
+    // yet" — see #258. Logged here for devtools, and flagged so the hook can
+    // surface a banner too, since this file has no React state of its own.
+    console.error('Lokale Daten konnten nicht geladen werden:', err);
+    localLoadFailed = true;
+  }
   return { polishes: [], customCats: [], manicures: [], stickers: [] };
 }
 
@@ -131,6 +146,15 @@ export function persistRefreshedTokens(token: string, refreshToken: string): voi
 
 export function useAppData() {
   const [data, setDataState] = useState<AppData>(loadLocal);
+  // Seeded from the module-level flag `loadLocal()` (just called above, as
+  // this state's own sibling initializer) may have set — consumed once and
+  // reset so a later, unrelated re-render can't re-trigger the banner.
+  const [localDataError, setLocalDataError] = useState<boolean>(() => {
+    const failed = localLoadFailed;
+    localLoadFailed = false;
+    return failed;
+  });
+  const dismissLocalDataError = useCallback(() => setLocalDataError(false), []);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
@@ -185,6 +209,7 @@ export function useAppData() {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');
       }
     } catch (err) {
+      console.error('Sync fehlgeschlagen:', err);
       setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
     } finally {
       syncingRef.current = false;
@@ -345,7 +370,9 @@ export function useAppData() {
     let restored: AppData;
     try {
       restored = migrateFinish(JSON.parse(backup) as AppData);
-    } catch {
+    } catch (err) {
+      console.error('Rückgängigmachen der Finish-Migration fehlgeschlagen:', err);
+      setSyncError(err instanceof Error ? err.message : 'Rückgängigmachen fehlgeschlagen');
       return;
     }
     localStorage.removeItem(FINISH_MIGRATION_BACKUP_KEY);
@@ -364,6 +391,7 @@ export function useAppData() {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');
       }
     } catch (err) {
+      console.error('Sync nach Rückgängigmachen fehlgeschlagen:', err);
       setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
     } finally {
       setSyncing(false);
@@ -378,6 +406,8 @@ export function useAppData() {
     syncing,
     syncError,
     lastSyncAt,
+    localDataError,
+    dismissLocalDataError,
     sync,
     rollbackFinishMigration,
     importMerge,
