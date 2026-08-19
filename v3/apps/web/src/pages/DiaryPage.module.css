@@ -20,10 +20,17 @@
 
 .entry {
   background: var(--md-surface-variant); border-radius: var(--radius-md);
-  padding: 14px 16px; cursor: pointer; position: relative;
+  position: relative;
   transition: transform 0.1s;
 }
 .entry:hover { transform: translateX(2px); }
+
+.entryOpen {
+  display: block; width: 100%; box-sizing: border-box;
+  padding: 14px 16px; margin: 0; border: none; background: none;
+  color: inherit; font: inherit; text-align: left;
+  cursor: pointer;
+}
 
 .entryTop { display: flex; gap: 12px; align-items: flex-start; }
 

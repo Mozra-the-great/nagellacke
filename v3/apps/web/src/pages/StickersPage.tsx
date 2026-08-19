@@ -94,37 +94,36 @@ export default function StickersPage({ appData }: { appData: AppData }) {
           </div>
         )}
         {visible.map((s) => (
-          <div
-            key={s.id}
-            className={styles.item}
-            onClick={() => setViewing(s)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setViewing(s)}
-            aria-label={`${s.name} ansehen`}
-          >
-            {s.photo
-              ? <img src={`/photos/${s.photo}`} alt={s.name} className={styles.itemThumb} />
-              : (
-                <div className={styles.itemColors}>
-                  {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
-                    <div key={i} className={styles.colorDot} style={{ background: c }} />
-                  ))}
+          <div key={s.id} className={styles.item}>
+            <button
+              type="button"
+              className={styles.itemOpen}
+              onClick={() => setViewing(s)}
+              aria-label={`${s.name} ansehen`}
+            >
+              {s.photo
+                ? <img src={`/photos/${s.photo}`} alt={s.name} className={styles.itemThumb} />
+                : (
+                  <div className={styles.itemColors}>
+                    {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
+                      <div key={i} className={styles.colorDot} style={{ background: c }} />
+                    ))}
+                  </div>
+                )
+              }
+              <div className={styles.itemInfo}>
+                <div className={styles.itemName}>{s.name}</div>
+                <div className={styles.itemMeta}>
+                  {s.brand && <span>{s.brand}</span>}
+                  <span className={styles.typeChip}>{STICKER_TYPE_OPTIONS.find((o) => o.value === s.type)?.label ?? s.type}</span>
+                  {s.rating ? <span>{'★'.repeat(s.rating)}</span> : null}
                 </div>
-              )
-            }
-            <div className={styles.itemInfo}>
-              <div className={styles.itemName}>{s.name}</div>
-              <div className={styles.itemMeta}>
-                {s.brand && <span>{s.brand}</span>}
-                <span className={styles.typeChip}>{STICKER_TYPE_OPTIONS.find((o) => o.value === s.type)?.label ?? s.type}</span>
-                {s.rating ? <span>{'★'.repeat(s.rating)}</span> : null}
               </div>
-            </div>
+            </button>
             <button
               className={styles.deleteBtn}
-              onClick={(e) => {
-                e.stopPropagation();
+              aria-label="Löschen"
+              onClick={() => {
                 const cleanup = appData.deleteSticker(s.id);
                 showSnackbar(`„${s.name}" gelöscht`, () => appData.restoreSticker(s.id), cleanup);
               }}
