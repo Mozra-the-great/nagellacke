@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import styles from './ColorFromPhoto.module.css';
 
 interface Props {
@@ -11,6 +12,8 @@ export default function ColorFromPhoto({ onColorPicked, onClose }: Props) {
   const [pickedColor, setPickedColor] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(containerRef, true);
 
   useEffect(() => {
     return () => { if (imgUrl) URL.revokeObjectURL(imgUrl); };
@@ -65,14 +68,25 @@ export default function ColorFromPhoto({ onColorPicked, onClose }: Props) {
       onClick={onClose}
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
-      <div className={styles.container} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={containerRef}
+        className={styles.container}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="color-from-photo-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.topBar}>
-          <span className={styles.topTitle}>Farbe aus Foto</span>
+          <span id="color-from-photo-title" className={styles.topTitle}>Farbe aus Foto</span>
           <button className={styles.closeBtn} onClick={onClose} aria-label="Schließen">✕</button>
         </div>
 
         {!imgUrl ? (
-          <div className={styles.selectArea} onClick={() => fileInputRef.current?.click()}>
+          <button
+            type="button"
+            className={styles.selectArea}
+            onClick={() => fileInputRef.current?.click()}
+          >
             <span className={styles.selectIcon}>📷</span>
             <span className={styles.selectText}>Foto auswählen oder Kamera öffnen</span>
             <input
@@ -82,7 +96,7 @@ export default function ColorFromPhoto({ onColorPicked, onClose }: Props) {
               onChange={handleFileChange}
               style={{ display: 'none' }}
             />
-          </div>
+          </button>
         ) : (
           <canvas
             ref={canvasRef}
