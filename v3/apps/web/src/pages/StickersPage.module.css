@@ -138,6 +138,11 @@
   background: var(--md-primary); color: var(--md-on-primary);
   font-size: 15px; font-weight: 600;
 }
+.saveBtn:disabled {
+  background: var(--md-surface-variant);
+  color: var(--md-on-surface-variant);
+  opacity: 0.6;
+}
 
 .detailPhoto {
   width: 100%; max-height: 220px; object-fit: cover;
