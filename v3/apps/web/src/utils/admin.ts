@@ -53,14 +53,17 @@ function serverBase(): string {
   return config?.provider === 'server' ? (config.serverUrl ?? '').replace(/\/$/, '') : '';
 }
 
-function bearerHeaders(): Record<string, string> {
+function bearerHeaders(hasBody: boolean): Record<string, string> {
   const config = loadSyncConfig();
   const token = config?.provider === 'server' ? config.serverToken : undefined;
-  return token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' };
+  return {
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${serverBase()}${path}`, { ...init, headers: { ...bearerHeaders(), ...(init?.headers ?? {}) } });
+  const res = await fetch(`${serverBase()}${path}`, { ...init, headers: { ...bearerHeaders(init?.body != null), ...(init?.headers ?? {}) } });
   const data = await res.json().catch(() => ({})) as T & { error?: string };
   if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
   return data;
