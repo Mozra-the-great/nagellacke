@@ -389,7 +389,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren, ${filenameMap.size} Foto(s).`,
           });
         }
-      } catch {
+      } catch (e) {
+        console.error('ZIP-Import fehlgeschlagen:', e);
         setImportMessage({ type: 'error', text: 'Ungültige ZIP-Datei' });
       }
       return;
@@ -409,7 +410,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         const merged = mergeData(appData.data, valid);
         appData.importMerge(merged);
         setImportMessage({ type: 'success', text: `Import erfolgreich: ${valid.polishes.length} Lacke, ${valid.stickers.length} Sticker, ${valid.manicures.length} Maniküren.` });
-      } catch {
+      } catch (e) {
+        console.error('JSON-Import fehlgeschlagen:', e);
         setImportMessage({ type: 'error', text: 'Ungültige JSON-Datei' });
       }
     };

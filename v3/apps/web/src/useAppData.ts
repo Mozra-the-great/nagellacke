@@ -37,26 +37,39 @@ export function mergeImport(prev: AppData, imported: AppData): AppData {
   return mergeData(prev, migrateFinish(imported));
 }
 
-function loadLocal(): AppData {
+const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stickers: [] };
+
+/**
+ * `corrupted` is only ever true when `raw` existed but couldn't be turned
+ * into usable data (bad JSON, or a `polishes` entry so malformed that
+ * `hasLegacyFinish`/`migrateFinish` themselves throw, e.g. a non-object
+ * array element — see #258). A missing key entirely (first-ever launch) is
+ * not an error and returns `corrupted: false`, same as a clean parse.
+ */
+export function loadLocal(): { data: AppData; corrupted: boolean } {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return { data: EMPTY_DATA, corrupted: false };
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as AppData;
-      if (hasLegacyFinish(parsed)) {
-        // Keep the very first pre-migration snapshot untouched, forever, until
-        // an explicit rollback consumes it — never overwritten by a later
-        // load, so nothing from before this change can ever be lost even if
-        // the migration itself turns out to be wrong.
-        if (!localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY)) {
-          localStorage.setItem(FINISH_MIGRATION_BACKUP_KEY, raw);
-          localStorage.removeItem(FINISH_MIGRATION_SEEN_KEY);
-        }
-        return migrateFinish(parsed);
+    const parsed = JSON.parse(raw) as AppData;
+    if (hasLegacyFinish(parsed)) {
+      // Keep the very first pre-migration snapshot untouched, forever, until
+      // an explicit rollback consumes it — never overwritten by a later
+      // load, so nothing from before this change can ever be lost even if
+      // the migration itself turns out to be wrong.
+      if (!localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY)) {
+        localStorage.setItem(FINISH_MIGRATION_BACKUP_KEY, raw);
+        localStorage.removeItem(FINISH_MIGRATION_SEEN_KEY);
       }
-      return parsed;
+      return { data: migrateFinish(parsed), corrupted: false };
     }
-  } catch { /* empty */ }
-  return { polishes: [], customCats: [], manicures: [], stickers: [] };
+    return { data: parsed, corrupted: false };
+  } catch (e) {
+    // Previously swallowed silently, resetting the in-memory collection to
+    // empty with no signal at all that anything went wrong (#258) — this is
+    // the difference between "I have no polishes" and "something broke".
+    console.error('loadLocal(): stored collection data is corrupted, resetting to empty', e);
+    return { data: EMPTY_DATA, corrupted: true };
+  }
 }
 
 function saveLocal(data: AppData): void {
@@ -130,7 +143,14 @@ export function persistRefreshedTokens(token: string, refreshToken: string): voi
 }
 
 export function useAppData() {
-  const [data, setDataState] = useState<AppData>(loadLocal);
+  // Lazy-initialized once and reused for both useState initializers below, so
+  // loadLocal() (which has localStorage side effects — the migration-backup
+  // write) only runs a single time per mount instead of once per initializer.
+  const initialLoadRef = useRef<{ data: AppData; corrupted: boolean } | null>(null);
+  if (initialLoadRef.current === null) initialLoadRef.current = loadLocal();
+
+  const [data, setDataState] = useState<AppData>(initialLoadRef.current.data);
+  const [localLoadError] = useState<boolean>(initialLoadRef.current.corrupted);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
@@ -185,6 +205,7 @@ export function useAppData() {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');
       }
     } catch (err) {
+      console.error('sync(): failed to merge server data into local collection', err);
       setSyncError(err instanceof Error ? err.message : 'Unbekannter Fehler');
     } finally {
       syncingRef.current = false;
@@ -345,7 +366,12 @@ export function useAppData() {
     let restored: AppData;
     try {
       restored = migrateFinish(JSON.parse(backup) as AppData);
-    } catch {
+    } catch (e) {
+      // Previously returned silently, leaving the user staring at a "rolling
+      // back..." spinner (or nothing at all) with no indication the restore
+      // never happened (#258) — the backup snapshot itself is corrupted.
+      console.error('rollbackFinishMigration(): pre-migration backup is corrupted, restore aborted', e);
+      setSyncError('Wiederherstellung fehlgeschlagen — Sicherung beschädigt');
       return;
     }
     localStorage.removeItem(FINISH_MIGRATION_BACKUP_KEY);
@@ -375,6 +401,7 @@ export function useAppData() {
 
   return {
     data,
+    localLoadError,
     syncing,
     syncError,
     lastSyncAt,
