@@ -17,6 +17,7 @@ import {
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
+  recordLoginFailure, clearLoginFailures, loginLockedUntil,
   isAdmin, setUserRole, listUsers, deleteUser, countAdmins,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
 } from './db';
@@ -962,6 +963,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   function isValidEmail(s: string): boolean {
     if (!s || s.length > 254) return false;
+    // Reject CR/LF and other control characters outright — a defense-in-depth
+    // guard against SMTP header injection if an address ever ends up written
+    // into a raw email header (see #259; nodemailer's own addressparser
+    // likely already neutralizes this, but this makes it explicit).
+    // eslint-disable-next-line no-control-regex
+    if (/[\x00-\x1f\x7f]/.test(s)) return false;
     const at = s.lastIndexOf('@');
     if (at <= 0 || at >= s.length - 1) return false;
     const domain = s.slice(at + 1);
@@ -1083,7 +1090,21 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username, password } = request.body as { username?: string; password?: string };
     const user = username ? getUser(username) : undefined;
     if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
-    if (!verifyPassword(password, user.password_hash)) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+
+    // Account-scoped brute-force lockout (#259 hardening pass) — independent
+    // of the route's per-IP rate limit above, which alone doesn't stop an
+    // attacker distributing guesses across many source IPs against one known
+    // username. Mirrors the equivalent guard already in place for 2FA's
+    // login/verify.
+    if (loginLockedUntil(user.username)) {
+      return reply.code(401).send({ error: 'Konto vorübergehend gesperrt — zu viele Fehlversuche' });
+    }
+
+    if (!verifyPassword(password, user.password_hash)) {
+      recordLoginFailure(user.username);
+      return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    }
+    clearLoginFailures(user.username);
     if (user.totp_enabled) {
       return { mfaRequired: true, challengeToken: issueMfaChallenge(user.username, user.token_version ?? 0) };
     }

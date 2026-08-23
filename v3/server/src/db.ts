@@ -62,7 +62,7 @@ function readDataFile(file: string): AppData {
 function writeDataFile(file: string, data: AppData): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data));
+  fs.writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
   fs.renameSync(tmp, file);
 }
 
@@ -149,6 +149,12 @@ export interface User {
   // to totp_last_counter with the same persistence story.
   totp_fail_count?: number;
   totp_locked_until?: number;    // epoch ms; login/verify rejects while in the future
+  // Account-scoped brute-force lockout for plain (non-2FA) /api/auth/login
+  // (#259 hardening pass) — same shape and reasoning as totp_fail_count /
+  // totp_locked_until above, kept as separate fields since a wrong password
+  // and a wrong TOTP code are different failure modes with independent budgets.
+  login_fail_count?: number;
+  login_locked_until?: number;
   // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
   // single fixed RP ID across this app's self-hosted deployment topologies).
   // webauthn_credentials?: WebAuthnCredential[];
@@ -396,6 +402,61 @@ export function totpLockedUntil(username: string): number {
   return user.totp_locked_until > Date.now() ? user.totp_locked_until : 0;
 }
 
+// Account-scoped brute-force lockout for plain (non-2FA) /api/auth/login
+// (#259 hardening pass). The route already has a per-IP rate limit (10
+// req/15min), but that alone doesn't stop an attacker distributing password
+// guesses for one known username across many source IPs — 2FA's login/verify
+// already had this account-scoped backstop, plain login didn't. Mirrors
+// recordTotpFailure/clearTotpFailures/totpLockedUntil above exactly, just
+// keyed on a separate pair of fields.
+const LOGIN_MAX_FAILURES = 10;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+
+/**
+ * Records one failed password check against `username`. On the Nth
+ * consecutive failure, locks the account for LOGIN_LOCKOUT_MS. Returns the
+ * lockout expiry (epoch ms) if the account is now locked, or 0 otherwise.
+ */
+export function recordLoginFailure(username: string): number {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return 0;
+  const now = Date.now();
+  const user = users[idx];
+  if (user.login_locked_until && user.login_locked_until > now) {
+    return user.login_locked_until;
+  }
+  const count = (user.login_fail_count ?? 0) + 1;
+  if (count >= LOGIN_MAX_FAILURES) {
+    const lockedUntil = now + LOGIN_LOCKOUT_MS;
+    users[idx] = { ...user, login_fail_count: 0, login_locked_until: lockedUntil };
+    writeUsers(users);
+    return lockedUntil;
+  }
+  users[idx] = { ...user, login_fail_count: count };
+  writeUsers(users);
+  return 0;
+}
+
+/** Resets the failure counter after a successful login. */
+export function clearLoginFailures(username: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  if (!users[idx].login_fail_count && !users[idx].login_locked_until) return;
+  const { login_fail_count, login_locked_until, ...rest } = users[idx];
+  void login_fail_count; void login_locked_until;
+  users[idx] = rest;
+  writeUsers(users);
+}
+
+/** Returns the lockout expiry (epoch ms) if `username` is currently locked out, or 0 otherwise. */
+export function loginLockedUntil(username: string): number {
+  const user = getUser(username);
+  if (!user?.login_locked_until) return 0;
+  return user.login_locked_until > Date.now() ? user.login_locked_until : 0;
+}
+
 // ── Admin / roles (#173) ────────────────────────────────────────────────────
 
 export interface AdminUserView {
@@ -471,7 +532,7 @@ function readAudit(): AuditEntry[] {
 
 function writeAudit(entries: AuditEntry[]): void {
   const tmp = `${AUDIT_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(entries));
+  fs.writeFileSync(tmp, JSON.stringify(entries), { mode: 0o600 });
   fs.renameSync(tmp, AUDIT_FILE);
 }
 
@@ -582,7 +643,7 @@ export function getScheduleConfig(): ScheduleConfig | null {
 
 export function setScheduleConfig(config: ScheduleConfig): void {
   const tmp = `${SCHEDULE_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(config));
+  fs.writeFileSync(tmp, JSON.stringify(config), { mode: 0o600 });
   fs.renameSync(tmp, SCHEDULE_FILE);
 }
 
