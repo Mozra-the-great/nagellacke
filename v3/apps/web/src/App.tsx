@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppData, shouldShowFinishMigrationNotice } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
+import LocalLoadErrorNotice from './components/LocalLoadErrorNotice';
 import FinishMigrationNotice from './components/FinishMigrationNotice';
 import ErrorBoundary from './components/ErrorBoundary';
 import CollectionPage from './pages/CollectionPage';
@@ -70,6 +71,7 @@ export default function App() {
 
   return (
     <SnackbarProvider>
+    <LocalLoadErrorNotice show={appData.localLoadError} />
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.titleArea}>
