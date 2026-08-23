@@ -176,55 +176,57 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
           const swatches = resolveSwatches(m, appData.data.polishes);
           const thumb = firstPhoto(m);
           return (
-            <div
-              key={m.id}
-              className={styles.entry}
-              onClick={() => setViewing(m)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setViewing(m)}
-              aria-label={`Eintrag vom ${formatDate(m.date)} ansehen`}
-            >
-              <div className={styles.entryTop}>
-                {thumb && (
-                  <img
-                    src={`/photos/${thumb}`}
-                    alt={`Maniküre ${formatDate(m.date)}`}
-                    className={styles.entryThumb}
-                  />
-                )}
-                <div className={styles.entryInfo}>
-                  <div className={styles.entryDate}>{formatDate(m.date)}</div>
-                  {swatches.length > 0 && (
-                    <div className={styles.entrySwatches}>
-                      {swatches.slice(0, 6).map((color, i) => (
-                        <div
-                          key={i}
-                          className={styles.swatch}
-                          style={{ background: color }}
-                          title={m.polishRefs?.[i]?.name ?? color}
-                        />
-                      ))}
-                    </div>
+            // Plain container - a role="button" here wrapping the real
+            // delete <button> below would be invalid ARIA (WCAG 4.1.2,
+            // #255). The "open details" affordance is its own <button>;
+            // deleteBtn stays a sibling, not a descendant of it.
+            <div key={m.id} className={styles.entry}>
+              <button
+                type="button"
+                className={styles.openBtn}
+                onClick={() => setViewing(m)}
+                aria-label={`Eintrag vom ${formatDate(m.date)} ansehen`}
+              >
+                <div className={styles.entryTop}>
+                  {thumb && (
+                    <img
+                      src={`/photos/${thumb}`}
+                      alt={`Maniküre ${formatDate(m.date)}`}
+                      className={styles.entryThumb}
+                    />
                   )}
-                  {(m.stickerRefs?.length ?? 0) > 0 && (
-                    <div className={styles.entryStickerRow}>
-                      {m.stickerRefs!.map((sr) => (
-                        <span key={sr.id} className={styles.entryStickerChip}>
-                          {sr.colors?.[0] && <span className={styles.stickerDot} style={{ background: sr.colors[0] }} />}
-                          {sr.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {m.notes && <div className={styles.entryNotes}>{m.notes}</div>}
+                  <div className={styles.entryInfo}>
+                    <div className={styles.entryDate}>{formatDate(m.date)}</div>
+                    {swatches.length > 0 && (
+                      <div className={styles.entrySwatches}>
+                        {swatches.slice(0, 6).map((color, i) => (
+                          <div
+                            key={i}
+                            className={styles.swatch}
+                            style={{ background: color }}
+                            title={m.polishRefs?.[i]?.name ?? color}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {(m.stickerRefs?.length ?? 0) > 0 && (
+                      <div className={styles.entryStickerRow}>
+                        {m.stickerRefs!.map((sr) => (
+                          <span key={sr.id} className={styles.entryStickerChip}>
+                            {sr.colors?.[0] && <span className={styles.stickerDot} style={{ background: sr.colors[0] }} />}
+                            {sr.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {m.notes && <div className={styles.entryNotes}>{m.notes}</div>}
+                  </div>
                 </div>
-              </div>
+              </button>
               <button
                 className={styles.deleteBtn}
                 aria-label="Eintrag löschen"
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={() => {
                   const cleanup = appData.deleteManicure(m.id);
                   showSnackbar(`Eintrag vom ${formatDate(m.date)} gelöscht`, () => appData.restoreManicure(m.id), cleanup);
                 }}

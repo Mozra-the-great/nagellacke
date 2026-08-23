@@ -49,11 +49,25 @@
   padding: 14px 16px;
   background: var(--md-surface-variant);
   border-radius: var(--radius-md);
-  cursor: pointer; position: relative;
+  position: relative;
   transition: transform 0.1s;
 }
 
 .item:hover { transform: translateX(2px); }
+
+.openBtn {
+  display: flex; align-items: center; gap: 12px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 
 .itemColors { display: flex; gap: 4px; align-items: center; }
 .colorDot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); flex-shrink: 0; }
