@@ -22,14 +22,11 @@ export default function PolishCard({
   const name = polish.name || 'Unbenannt';
 
   return (
-    <div
-      className={styles.card}
-      onClick={onEdit}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onEdit()}
-      aria-label={`${name} bearbeiten`}
-    >
+    // Plain, non-interactive container - a `role="button"` here containing
+    // the real <button>s below (open/toggle/delete) would be invalid ARIA
+    // (WCAG 4.1.2, #255). The "open details" affordance is its own <button>
+    // below instead; viewToggle/deleteBtn stay siblings, not descendants of it.
+    <div className={styles.card}>
       {(count > 1 || polish.status === 'wish') && (
         <div className={styles.topBadges}>
           {polish.status === 'wish' && (
@@ -39,35 +36,37 @@ export default function PolishCard({
         </div>
       )}
 
-      <div className={styles.bottle}>
-        <NailBottle
-          color={polish.color}
-          finish={polish.finish}
-          status={polish.status}
-          brand={polish.brand}
-          photoUrl={hasPhoto && showPhoto ? `/photos/${polish.photo}` : undefined}
-        />
-      </div>
+      <button type="button" className={styles.openBtn} onClick={onEdit} aria-label={`${name} bearbeiten`}>
+        <div className={styles.bottle}>
+          <NailBottle
+            color={polish.color}
+            finish={polish.finish}
+            status={polish.status}
+            brand={polish.brand}
+            photoUrl={hasPhoto && showPhoto ? `/photos/${polish.photo}` : undefined}
+          />
+        </div>
+
+        <div className={styles.info}>
+          <div className={styles.name} title={name}>{name}</div>
+          {polish.brand && <div className={styles.brand}>{polish.brand}</div>}
+          {polish.rating ? <div className={styles.rating}>{'★'.repeat(polish.rating)}</div> : null}
+        </div>
+      </button>
 
       {hasPhoto && (
         <button
           className={styles.viewToggle}
-          onClick={(e) => { e.stopPropagation(); setShowPhoto((v) => !v); }}
+          onClick={() => setShowPhoto((v) => !v)}
           aria-label={showPhoto ? 'Flasche anzeigen' : 'Foto anzeigen'}
         >
           {showPhoto ? '◎' : '📷'}
         </button>
       )}
 
-      <div className={styles.info}>
-        <div className={styles.name} title={name}>{name}</div>
-        {polish.brand && <div className={styles.brand}>{polish.brand}</div>}
-        {polish.rating ? <div className={styles.rating}>{'★'.repeat(polish.rating)}</div> : null}
-      </div>
-
       <button
         className={styles.deleteBtn}
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        onClick={onDelete}
         aria-label="Löschen"
       >✕</button>
     </div>
