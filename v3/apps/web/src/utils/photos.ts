@@ -1,5 +1,20 @@
 import { loadSyncConfig, persistRefreshedTokens } from '../useAppData';
 
+/**
+ * Thrown when a token-authenticated request still comes back 401 after
+ * authedFetch()'s transparent refresh-and-retry — i.e. the refresh token
+ * itself is also expired/missing, not a transient network hiccup. Callers
+ * (PhotoField.tsx) show `.message` directly instead of a bare status code
+ * (#252) — previously "Upload fehlgeschlagen (401)" gave no indication the
+ * fix is just to log in again.
+ */
+export class AuthExpiredError extends Error {
+  constructor() {
+    super('Sitzung abgelaufen — bitte in den Einstellungen neu anmelden');
+    this.name = 'AuthExpiredError';
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const apiKey = localStorage.getItem('nagellacke_v3_apikey');
   if (apiKey) return { 'X-Api-Key': apiKey };
@@ -73,7 +88,15 @@ export async function uploadPhoto(file: File): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, mimeType: file.type }),
   });
-  if (!res.ok) throw new Error(`Upload fehlgeschlagen (${res.status})`);
+  if (!res.ok) {
+    // A 401 that's *not* using an API key (which never expires) means
+    // authedFetch already tried refreshing and it still failed - the
+    // session itself is dead, not just this one request.
+    if (res.status === 401 && !localStorage.getItem('nagellacke_v3_apikey')) {
+      throw new AuthExpiredError();
+    }
+    throw new Error(`Upload fehlgeschlagen (${res.status})`);
+  }
   const json = await res.json() as { filename: string };
   return json.filename;
 }
