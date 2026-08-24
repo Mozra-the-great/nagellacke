@@ -171,6 +171,13 @@ function verifyPassword(password: string, stored: string): boolean {
   const candidate = crypto.scryptSync(password, salt, 64).toString('hex');
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
 }
+// Fixed dummy hash used to burn a scryptSync-equivalent amount of CPU time on
+// a login attempt against a non-existent username, so that branch takes about
+// as long as a wrong-password attempt against a real account. Without this,
+// the "user not found" branch returns near-instantly while a wrong password
+// for a real user pays the scrypt cost first — a remotely measurable timing
+// side channel that lets an attacker enumerate valid usernames (#268).
+const DUMMY_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString('hex'));
 
 // Constant-time string comparison (avoids leaking the API key via response-time
 // side channel - crypto.timingSafeEqual itself requires equal-length buffers).
@@ -1088,8 +1095,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const { username, password } = request.body as { username?: string; password?: string };
+    if (!password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
     const user = username ? getUser(username) : undefined;
-    if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (!user) {
+      // Burn a scrypt-equivalent amount of time even though there's no real
+      // hash to check against, so this branch isn't distinguishable by
+      // latency from a wrong-password rejection below (#268).
+      verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    }
 
     // Account-scoped brute-force lockout (#259 hardening pass) — independent
     // of the route's per-IP rate limit above, which alone doesn't stop an
