@@ -268,6 +268,20 @@ export async function buildApp(): Promise<FastifyInstance> {
       return err;
     },
   });
+  // TRUST BOUNDARY (documented, not "fixed" here — see #269): unlike every
+  // other /api/* route, /photos/* has no preHandler at all - no bearer
+  // token, no X-Api-Key, no rate limiting. Anyone who obtains a filename can
+  // fetch that photo, indefinitely, anonymously, with no revocation path.
+  // This is deliberate, not an oversight: scheduled report emails
+  // (report.ts's photoImg()) and the web app's own <img src="/photos/...">
+  // tags (PolishCard.tsx, PhotoField.tsx, CollectionPage.tsx, CartPage.tsx,
+  // DiaryPage.tsx, StickersPage.tsx) all load images with no way to attach
+  // an Authorization header - an email client in particular will never send
+  // one. Filenames are random uuidv4()s (~122 bits), so this trades
+  // "unguessable" for "revocable" the same way #108's API-key-as-bearer-
+  // token trade-off does. Closing this properly (signed, expiring photo
+  // URLs) would need every one of the call sites above reworked in lockstep
+  // - a deliberate follow-up, not bundled into this comment.
   await app.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
 
   // Rate-limit errors (and any other thrown error) are reshaped to the app's
