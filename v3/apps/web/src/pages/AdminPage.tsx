@@ -71,6 +71,7 @@ export default function AdminPage() {
       loadUsers();
     } catch (e) {
       setUsersError(e instanceof Error ? e.message : 'Fehler');
+      setUsersStatus('error');
     }
   };
 
@@ -214,6 +215,7 @@ export default function AdminPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [rotatedKey, setRotatedKey] = useState<string | null>(null);
   const [rotateStatus, setRotateStatus] = useState<Status>('idle');
+  const [rotateError, setRotateError] = useState('');
 
   const doCheckUpdate = async () => {
     setUpdateStatus('checking');
@@ -242,11 +244,13 @@ export default function AdminPage() {
 
   const doRotateApiKey = async () => {
     setRotateStatus('loading');
+    setRotateError('');
     try {
       const result = await rotateApiKey();
       setRotatedKey(result.apiKey);
       setRotateStatus('saved');
-    } catch {
+    } catch (e) {
+      setRotateError(e instanceof Error ? e.message : 'Fehler');
       setRotateStatus('error');
     }
   };
@@ -516,6 +520,7 @@ export default function AdminPage() {
             Neuer Schlüssel (nur jetzt sichtbar): <code>{rotatedKey}</code>
           </div>
         )}
+        {rotateStatus === 'error' && <div className={styles.errorBanner}>{rotateError}</div>}
         <div className={styles.btnRow}>
           <button className={styles.syncBtn} onClick={() => void doRotateApiKey()} disabled={rotateStatus === 'loading'}>
             {rotateStatus === 'loading' ? 'Rotiere…' : 'Schlüssel rotieren'}

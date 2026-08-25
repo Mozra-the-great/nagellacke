@@ -608,9 +608,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.post('/api/admin/api-key/rotate', {
     preHandler: requireApiKeyOrAdminJwt,
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
-  }, async () => {
+  }, async (request) => {
     const apiKey = rotateApiKey();
     console.warn('[SECURITY] Admin API key rotated — every previously issued key is now invalid.');
+    // request.user is only set on the admin-JWT path; requireApiKeyOrAdminJwt
+    // returns early for a valid X-Api-Key without populating it.
+    const actor = (request.user as { username?: string } | undefined)?.username ?? 'api-key';
+    logAdminAction(actor, 'api_key.rotated');
     // Returned once, in the response to the authenticated rotation request
     // itself: the caller needs it to keep working, and it is never recoverable
     // from this endpoint again (only from data/.api_key on the host).
