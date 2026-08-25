@@ -221,7 +221,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
             </div>
             <div className={styles.modalFooter}>
               <button className={styles.cancelBtn} onClick={() => setShowForm(false)}>Abbrechen</button>
-              <button className={styles.saveBtn} onClick={save}>Speichern</button>
+              <button className={styles.saveBtn} onClick={save} disabled={!form.name.trim()}>Speichern</button>
             </div>
           </div>
         </div>
