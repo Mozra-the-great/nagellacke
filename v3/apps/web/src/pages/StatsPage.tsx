@@ -51,16 +51,20 @@ export default function StatsPage({ appData }: { appData: AppDataHook }) {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Farbpalette</h2>
-        <div className={styles.palette}>
-          {colorPalette.map((p) => (
-            <div
-              key={p.id}
-              className={styles.paletteDot}
-              style={{ background: p.color }}
-              title={`${p.name} – ${p.brand}`}
-            />
-          ))}
-        </div>
+        {colorPalette.length === 0 ? (
+          <div className={styles.empty}>Keine Daten</div>
+        ) : (
+          <div className={styles.palette}>
+            {colorPalette.map((p) => (
+              <div
+                key={p.id}
+                className={styles.paletteDot}
+                style={{ background: p.color }}
+                title={`${p.name} – ${p.brand}`}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className={styles.section}>
