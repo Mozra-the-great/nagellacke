@@ -3,6 +3,7 @@ package de.nagellacke.ui.settings
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import de.nagellacke.BuildConfig
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
@@ -23,11 +24,13 @@ object OAuthEndpoints {
     )
 }
 
+// Sourced from BuildConfig, which falls back to placeholders when the corresponding env var
+// (GOOGLE_OAUTH_CLIENT_ID / MICROSOFT_OAUTH_CLIENT_ID / DROPBOX_OAUTH_APP_KEY) isn't set at
+// build time — see android/app/build.gradle.kts and CLAUDE.md.
 object OAuthClientIds {
-    // Replace with your actual client IDs registered in each developer console
-    const val Google   = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-    const val Microsoft = "YOUR_MICROSOFT_CLIENT_ID"
-    const val Dropbox  = "YOUR_DROPBOX_APP_KEY"
+    val Google: String = BuildConfig.GOOGLE_OAUTH_CLIENT_ID
+    val Microsoft: String = BuildConfig.MICROSOFT_OAUTH_CLIENT_ID
+    val Dropbox: String = BuildConfig.DROPBOX_OAUTH_APP_KEY
     const val Redirect = "nagellacke://oauth"
 }
 

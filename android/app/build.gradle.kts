@@ -25,6 +25,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         manifestPlaceholders["appAuthRedirectScheme"] = "nagellacke"
+
+        // Set GOOGLE_OAUTH_CLIENT_ID / MICROSOFT_OAUTH_CLIENT_ID / DROPBOX_OAUTH_APP_KEY to the
+        // IDs registered in each provider's developer console to enable that sync provider.
+        // Without them the placeholder ships, which the OAuth server rejects (see OAuthClientIds).
+        buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"${System.getenv("GOOGLE_OAUTH_CLIENT_ID") ?: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"}\"")
+        buildConfigField("String", "MICROSOFT_OAUTH_CLIENT_ID", "\"${System.getenv("MICROSOFT_OAUTH_CLIENT_ID") ?: "YOUR_MICROSOFT_CLIENT_ID"}\"")
+        buildConfigField("String", "DROPBOX_OAUTH_APP_KEY", "\"${System.getenv("DROPBOX_OAUTH_APP_KEY") ?: "YOUR_DROPBOX_APP_KEY"}\"")
     }
 
     signingConfigs {
