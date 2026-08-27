@@ -76,7 +76,7 @@ export default function App() {
       <header className={styles.header}>
         <div className={styles.titleArea}>
           <h1 className={styles.appTitle}>Nail Lacquer</h1>
-          <p className={styles.appSubtitle}>
+          <p className={styles.appSubtitle} title="Zählt nur Lacke im Besitz, ohne Wunschliste, leere oder aussortierte">
             {activeCount} vorhanden · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
           </p>
         </div>
