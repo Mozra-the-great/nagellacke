@@ -77,6 +77,11 @@ const API_KEY_FILE = path.join(DATA_DIR, '.api_key');
 // the only way in for admin endpoints, so expiring it automatically would lock
 // the operator out of a self-hosted box with no recovery path.
 const API_KEY_MAX_AGE_DAYS = 180;
+// The username is embedded in every issued JWT, which rides in the
+// Authorization header of every authenticated request. An unbounded username
+// (e.g. 100k chars) produces a token that exceeds Node's default HTTP header
+// size limit, so the account can never log in or sync again (#275).
+const MAX_USERNAME_LENGTH = 64;
 
 let API_KEY: string;
 let API_KEY_IS_NEW = false;
@@ -661,8 +666,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(409).send({ error: 'Admin-Konto existiert bereits' });
     }
     const { username, password } = request.body as { username?: string; password?: string };
-    if (!username || !password || password.length < 8) {
-      return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    if (!username || !password || password.length < 8 || username.length > MAX_USERNAME_LENGTH) {
+      return reply.code(400).send({ error: `username (max ${MAX_USERNAME_LENGTH} Zeichen) und password (min 8 Zeichen) erforderlich` });
     }
     // If the account already exists, promoting it to admin and handing back
     // a session must not happen without proving knowledge of *that account's*
@@ -712,8 +717,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   }, async (request, reply) => {
     const { username: actor } = request.user as { username: string };
     const { username, password, role } = request.body as { username?: string; password?: string; role?: UserRole };
-    if (!username || !password || password.length < 8) {
-      return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    if (!username || !password || password.length < 8 || username.length > MAX_USERNAME_LENGTH) {
+      return reply.code(400).send({ error: `username (max ${MAX_USERNAME_LENGTH} Zeichen) und password (min 8 Zeichen) erforderlich` });
     }
     if (role !== undefined && role !== 'admin' && role !== 'user') {
       return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
@@ -1069,8 +1074,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(403).send({ error: 'Registrierung deaktiviert' });
     }
     const { username, password } = request.body as { username?: string; password?: string };
-    if (!username || !password || password.length < 8) {
-      return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
+    if (!username || !password || password.length < 8 || username.length > MAX_USERNAME_LENGTH) {
+      return reply.code(400).send({ error: `username (max ${MAX_USERNAME_LENGTH} Zeichen) und password (min 8 Zeichen) erforderlich` });
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     // The very first registered user becomes admin immediately (#173) — rather
