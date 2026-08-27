@@ -65,6 +65,8 @@
   padding: 0 24px 12px;
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
 }
 
 .filters::-webkit-scrollbar { display: none; }
