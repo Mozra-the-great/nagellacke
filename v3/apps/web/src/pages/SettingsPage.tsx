@@ -257,10 +257,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setBootstrapStatus('loading');
     setBootstrapError('');
     try {
-      await bootstrapAdmin(serverUrl, apiKey, bootstrapUsername, bootstrapPassword);
+      const { token, refreshToken } = await bootstrapAdmin(serverUrl, apiKey, bootstrapUsername, bootstrapPassword);
+      applyLoginTokens(token, refreshToken);
       setBootstrapStatus('done');
       setBootstrapPassword('');
-      onAuthChange();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Verbindungsfehler';
       if (/existiert bereits/i.test(message)) setBootstrapAdminExists(true);

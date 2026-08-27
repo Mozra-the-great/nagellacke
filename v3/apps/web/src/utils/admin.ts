@@ -1,4 +1,4 @@
-import { loadSyncConfig, saveSyncConfig } from '../useAppData';
+import { loadSyncConfig } from '../useAppData';
 
 export type Role = 'admin' | 'user';
 
@@ -143,13 +143,15 @@ const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
 /**
  * Exchanges the root X-Api-Key for an admin session, once (#173 §3.3). On
- * success stores the returned JWTs via the same sync-config machinery the
- * regular login flow uses, and clears the stored API key from localStorage —
- * its job in the browser is done. Throws (with the server's 409 message) if
- * an admin account already exists, so the caller can fall back to "please log
+ * success clears the stored API key from localStorage — its job in the
+ * browser is done — and returns the JWTs so the caller can feed them through
+ * the same sync-config/React-state path the regular login flow uses (rather
+ * than persisting them here directly, which left callers' in-memory state
+ * stale until a reload, #277). Throws (with the server's 409 message) if an
+ * admin account already exists, so the caller can fall back to "please log
  * in with your admin account".
  */
-export async function bootstrapAdmin(serverUrl: string, apiKey: string, username: string, password: string): Promise<void> {
+export async function bootstrapAdmin(serverUrl: string, apiKey: string, username: string, password: string): Promise<{ token: string; refreshToken?: string }> {
   const base = serverUrl.replace(/\/$/, '');
   const res = await fetch(`${base}/api/admin/bootstrap`, {
     method: 'POST',
@@ -158,6 +160,6 @@ export async function bootstrapAdmin(serverUrl: string, apiKey: string, username
   });
   const data = await res.json().catch(() => ({})) as { token?: string; refreshToken?: string; error?: string };
   if (!res.ok || !data.token) throw new Error(data.error ?? `Fehler ${res.status}`);
-  saveSyncConfig({ provider: 'server', serverUrl, serverToken: data.token, serverRefreshToken: data.refreshToken });
   localStorage.removeItem(APIKEY_STORAGE);
+  return { token: data.token, refreshToken: data.refreshToken };
 }
