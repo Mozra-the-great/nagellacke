@@ -5,6 +5,8 @@ import de.nagellacke.BuildConfig
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,29 +70,31 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         }
     }
 
-    override suspend fun sync(local: AppData): SyncResult = try {
-        ensureDir("nagellacke")
-        when (val fetch = fetchRemote()) {
-            is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
-            else -> {
-                val remote = (fetch as? RemoteFetchResult.Found)?.data
-                val merged = if (remote != null) mergeData(local, remote) else local
-                val body = json.encodeToString(merged).toRequestBody("application/json".toMediaType())
-                val putRes = client.newCall(
-                    Request.Builder().url(dataUrl).put(body).header("Authorization", authHeader).build()
-                ).execute()
-                val ok = putRes.isSuccessful
-                val code = putRes.code
-                putRes.close()
-                if (!ok) SyncResult(success = false, merged = local, error = "Schreibfehler (HTTP $code)")
-                else SyncResult(success = true, merged = merged)
+    override suspend fun sync(local: AppData): SyncResult = withContext(Dispatchers.IO) {
+        try {
+            ensureDir("nagellacke")
+            when (val fetch = fetchRemote()) {
+                is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
+                else -> {
+                    val remote = (fetch as? RemoteFetchResult.Found)?.data
+                    val merged = if (remote != null) mergeData(local, remote) else local
+                    val body = json.encodeToString(merged).toRequestBody("application/json".toMediaType())
+                    val putRes = client.newCall(
+                        Request.Builder().url(dataUrl).put(body).header("Authorization", authHeader).build()
+                    ).execute()
+                    val ok = putRes.isSuccessful
+                    val code = putRes.code
+                    putRes.close()
+                    if (!ok) SyncResult(success = false, merged = local, error = "Schreibfehler (HTTP $code)")
+                    else SyncResult(success = true, merged = merged)
+                }
             }
+        } catch (e: Exception) {
+            SyncResult(success = false, merged = local, error = e.message)
         }
-    } catch (e: Exception) {
-        SyncResult(success = false, merged = local, error = e.message)
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult = withContext(Dispatchers.IO) {
         ensureDir("nagellacke/photos")
         val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
         val url = "$davBase/nagellacke/photos/$filename"
@@ -102,10 +106,10 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         val code = putRes.code
         putRes.close()
         if (!ok) error("Foto-Upload fehlgeschlagen (HTTP $code)")
-        return PhotoUploadResult(filename, url)
+        PhotoUploadResult(filename, url)
     }
 
-    override suspend fun deletePhoto(filename: String) {
+    override suspend fun deletePhoto(filename: String) = withContext(Dispatchers.IO) {
         client.newCall(
             Request.Builder().url("$davBase/nagellacke/photos/$filename")
                 .delete().header("Authorization", authHeader).build()

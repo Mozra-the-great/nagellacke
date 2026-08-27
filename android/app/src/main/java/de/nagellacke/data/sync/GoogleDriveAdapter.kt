@@ -6,6 +6,8 @@ import de.nagellacke.ui.settings.OAuthClientIds
 import kotlinx.serialization.encodeToString
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -133,19 +135,19 @@ class GoogleDriveAdapter(
         return id
     }
 
-    override suspend fun sync(local: AppData): SyncResult {
+    override suspend fun sync(local: AppData): SyncResult = withContext(Dispatchers.IO) {
         if (!ensureFreshAccessToken()) {
-            return SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
+            return@withContext SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
         }
-        return try {
+        try {
             val findResult = findFile(dataFilename)
             if (findResult is FindFileResult.Error) {
-                return SyncResult(success = false, merged = local, error = findResult.message)
+                return@withContext SyncResult(success = false, merged = local, error = findResult.message)
             }
             val fileId = (findResult as? FindFileResult.Found)?.id
             val remoteFetch = if (fileId != null) downloadJson(fileId) else RemoteFetchResult.NotFound
             if (remoteFetch is RemoteFetchResult.Error) {
-                return SyncResult(success = false, merged = local, error = remoteFetch.message)
+                return@withContext SyncResult(success = false, merged = local, error = remoteFetch.message)
             }
             val remote = (remoteFetch as? RemoteFetchResult.Found)?.data
             val merged = if (remote != null) mergeData(local, remote) else local
@@ -160,7 +162,7 @@ class GoogleDriveAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult = withContext(Dispatchers.IO) {
         if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val folderId = ensurePhotoFolder()
         val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
@@ -178,11 +180,11 @@ class GoogleDriveAdapter(
         val id = runCatching { json.decodeFromString<DriveFile>(res.body?.string() ?: "").id }.getOrElse { "" }
         res.close()
         if (!ok || id.isBlank()) error("Foto-Upload fehlgeschlagen (HTTP $code)")
-        return PhotoUploadResult(filename, "$driveApi/files/$id?alt=media")
+        PhotoUploadResult(filename, "$driveApi/files/$id?alt=media")
     }
 
-    override suspend fun deletePhoto(filename: String) {
-        val found = findFile(filename) as? FindFileResult.Found ?: return
+    override suspend fun deletePhoto(filename: String) = withContext(Dispatchers.IO) {
+        val found = findFile(filename) as? FindFileResult.Found ?: return@withContext
         client.newCall(Request.Builder().url("$driveApi/files/${found.id}").delete().build()).execute().close()
     }
 

@@ -6,6 +6,8 @@ import de.nagellacke.ui.settings.OAuthClientIds
 import kotlinx.serialization.encodeToString
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -70,11 +72,11 @@ class OneDriveAdapter(
         }
     }
 
-    override suspend fun sync(local: AppData): SyncResult {
+    override suspend fun sync(local: AppData): SyncResult = withContext(Dispatchers.IO) {
         if (!ensureFreshAccessToken()) {
-            return SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
+            return@withContext SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
         }
-        return try {
+        try {
             when (val fetch = fetchRemote()) {
                 is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
                 else -> {
@@ -96,7 +98,7 @@ class OneDriveAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult = withContext(Dispatchers.IO) {
         if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
         val path = "nagellacke/photos/$filename"
@@ -108,10 +110,10 @@ class OneDriveAdapter(
         val code = res.code
         res.close()
         if (!ok) error("Foto-Upload fehlgeschlagen (HTTP $code)")
-        return PhotoUploadResult(filename, "$graph/root:/$path:/content")
+        PhotoUploadResult(filename, "$graph/root:/$path:/content")
     }
 
-    override suspend fun deletePhoto(filename: String) {
+    override suspend fun deletePhoto(filename: String) = withContext(Dispatchers.IO) {
         client.newCall(
             Request.Builder().url("$graph/root:/nagellacke/photos/$filename").delete().build()
         ).execute().close()
