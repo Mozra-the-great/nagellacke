@@ -737,7 +737,7 @@ function readAiJobs(): AiJob[] {
 
 function writeAiJobs(jobs: AiJob[]): void {
   const tmp = `${AI_JOBS_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(jobs));
+  fs.writeFileSync(tmp, JSON.stringify(jobs), { mode: 0o600 });
   fs.renameSync(tmp, AI_JOBS_FILE);
 }
 
