@@ -375,6 +375,23 @@ describe('POST /api/auth/totp/disable', () => {
     expect(typeof finalBody.token).toBe('string');
     expect(finalBody.mfaRequired).toBeUndefined();
   });
+
+  it('rejects when 2FA was never enabled, without bumping token_version', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const disableRes = await app.inject({
+      method: 'POST', url: '/api/auth/totp/disable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'correct-horse-battery' },
+    });
+    expect(disableRes.statusCode).toBe(400);
+
+    // token_version must not have been bumped — the original token (and any
+    // other active session) should still authenticate.
+    const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
+    expect(meRes.statusCode).toBe(200);
+  });
 });
 
 // ── Security review of PR #215 — regression tests ──────────────────────────────
