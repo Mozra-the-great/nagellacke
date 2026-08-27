@@ -660,3 +660,37 @@ describe('#217: POST /api/sync and /api/sync/push validate the request body', ()
     expect(res.statusCode).toBe(200);
   });
 });
+
+describe('#273: a literal JSON `null` body is normalized instead of crashing', () => {
+  it('POST /api/auth/register with a `null` body returns 400, not 500', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      headers: { 'content-type': 'application/json' },
+      payload: 'null',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // login rejects missing credentials with 401 (not 400) even on a normal
+  // request — the fix here is only that this no longer 500s.
+  it('POST /api/auth/login with a `null` body returns 401, not 500', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/login',
+      headers: { 'content-type': 'application/json' },
+      payload: 'null',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('POST /api/sync with a `null` body returns 400, not 500', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: 'null',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
