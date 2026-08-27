@@ -103,6 +103,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [loginPass, setLoginPass] = useState('');
   const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [loginError, setLoginError] = useState('');
+  // Self-service registration (#278) — shares the username/password fields
+  // and status/error state with login below, since only one form is ever
+  // shown at a time (mirrors the Android register screen's approach).
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   // ── Two-step login (TOTP 2FA, #174) ──
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
@@ -154,6 +158,29 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         setLoginStatus('idle');
         return;
       }
+      if (!res.ok || !data.token) {
+        setLoginError(data.error ?? `Fehler ${res.status}`);
+        setLoginStatus('error');
+        return;
+      }
+      applyLoginTokens(data.token, data.refreshToken);
+    } catch (e) {
+      setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setLoginStatus('error');
+    }
+  };
+
+  const register = async () => {
+    setLoginStatus('loading');
+    setLoginError('');
+    const base = serverUrl.replace(/\/$/, '');
+    try {
+      const res = await fetch(`${base}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass }),
+      });
+      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
       if (!res.ok || !data.token) {
         setLoginError(data.error ?? `Fehler ${res.status}`);
         setLoginStatus('error');
@@ -856,30 +883,44 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               </div>
             ) : (
               <div className={styles.loginBox}>
+                <div className={styles.segmented} style={{ marginBottom: 4 }}>
+                  <button
+                    type="button"
+                    className={`${styles.segBtn} ${authMode === 'login' ? styles.segBtnActive : ''}`}
+                    onClick={() => { setAuthMode('login'); setLoginStatus('idle'); setLoginError(''); }}
+                  >Anmelden</button>
+                  <button
+                    type="button"
+                    className={`${styles.segBtn} ${authMode === 'register' ? styles.segBtnActive : ''}`}
+                    onClick={() => { setAuthMode('register'); setLoginStatus('idle'); setLoginError(''); }}
+                  >Registrieren</button>
+                </div>
                 <label className={styles.field}>
                   <span>Benutzername</span>
                   <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
                 </label>
                 <label className={styles.field}>
-                  <span>Passwort</span>
+                  <span>Passwort {authMode === 'register' && <span className={styles.fieldHint}>(min. 8 Zeichen)</span>}</span>
                   <input
                     type="password"
                     value={loginPass}
                     onChange={(e) => setLoginPass(e.target.value)}
-                    autoComplete="current-password"
-                    onKeyDown={(e) => { if (e.key === 'Enter') void login(); }}
+                    autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void (authMode === 'register' ? register() : login()); }}
                   />
                 </label>
                 <div role="status" aria-live="polite" aria-atomic="true">
-                  {loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
+                  {loginStatus === 'loading' && <span className={styles.infoText}>{authMode === 'register' ? 'Registriere…' : 'Anmelden…'}</span>}
                   {loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
                 </div>
                 <button
                   className={styles.saveBtn}
-                  onClick={login}
+                  onClick={() => void (authMode === 'register' ? register() : login())}
                   disabled={!loginUser || !loginPass || loginStatus === 'loading'}
                 >
-                  {loginStatus === 'loading' ? 'Anmelden…' : 'Anmelden'}
+                  {loginStatus === 'loading'
+                    ? (authMode === 'register' ? 'Registriere…' : 'Anmelden…')
+                    : (authMode === 'register' ? 'Registrieren' : 'Anmelden')}
                 </button>
               </div>
             )}
