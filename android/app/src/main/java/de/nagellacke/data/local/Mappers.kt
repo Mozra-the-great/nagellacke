@@ -28,7 +28,7 @@ fun Polish.toEntity() = PolishEntity(
 
 fun StickerEntity.toDomain() = Sticker(
     id = id, name = name, brand = brand, style = style,
-    type = StickerType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) } ?: StickerType.Accent,
+    type = StickerType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) } ?: StickerType.Full,
     colors = colors,
     status = PolishStatus.entries.firstOrNull { it.name.equals(status, ignoreCase = true) } ?: PolishStatus.Ok,
     rating = rating, notes = notes, photo = photo,
