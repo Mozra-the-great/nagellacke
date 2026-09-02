@@ -257,10 +257,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setBootstrapStatus('loading');
     setBootstrapError('');
     try {
-      await bootstrapAdmin(serverUrl, apiKey, bootstrapUsername, bootstrapPassword);
+      const { token, refreshToken } = await bootstrapAdmin(serverUrl, apiKey, bootstrapUsername, bootstrapPassword);
+      // Same "just logged in" bookkeeping as a regular login (#277) — without
+      // this the sync box kept showing the empty login form until a reload,
+      // even though the Admin tab already appeared.
+      applyLoginTokens(token, refreshToken);
       setBootstrapStatus('done');
       setBootstrapPassword('');
-      onAuthChange();
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Verbindungsfehler';
       if (/existiert bereits/i.test(message)) setBootstrapAdminExists(true);
@@ -769,7 +772,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Statistik</h2>
         <div className={styles.statsGrid}>
-          <div className={styles.stat}><div className={styles.statNum}>{stats.polishes}</div><div className={styles.statLabel}>Lacke</div></div>
+          <div className={styles.stat}><div className={styles.statNum}>{stats.polishes}</div><div className={styles.statLabel}>Lacke gesamt (inkl. Wunschliste)</div></div>
           <div className={styles.stat}><div className={styles.statNum}>{stats.stickers}</div><div className={styles.statLabel}>Sticker</div></div>
           <div className={styles.stat}><div className={styles.statNum}>{stats.manicures}</div><div className={styles.statLabel}>Maniküren</div></div>
         </div>
