@@ -178,7 +178,12 @@ data class Sticker(
     val name: String = "",
     val brand: String = "",
     val style: String = "",
-    val type: StickerType = StickerType.Full,
+    // Accent, not Full: every other place that has to pick a StickerType without one
+    // already uses Accent - the sticker form's initial value (StickersScreen), the
+    // corrupted-data fallback when reading from Room (Mappers.toDomain), Android's own
+    // DEFAULT_STICKER (domain/Constants.kt) and the web app's DEFAULT_STICKER
+    // (packages/core/src/constants.ts). This default was the sole outlier (#272).
+    val type: StickerType = StickerType.Accent,
     val colors: List<String> = listOf("#ff6699"),
     val status: PolishStatus = PolishStatus.Ok,
     val rating: Int = 0,

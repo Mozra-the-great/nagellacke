@@ -169,6 +169,45 @@ describe('filterPolishes', () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('p4');
   });
+
+  // #284: `name`/`brand`/`num` are typed as required but can be missing at runtime
+  // on an imported or corrupted record. The `||` chain short-circuits, so a query
+  // that matched the name never reached `num` — searching for a *number* did, and
+  // threw a TypeError that took the whole collection view down.
+  describe('records with fields missing at runtime (#284)', () => {
+    // Deliberately cast: the point is a record that violates the declared type,
+    // which is exactly what reaches this function from a v2 import or a bad sync.
+    const broken = {
+      id: 'x1', color: '#ff0000', finish: ['Classic'], status: 'ok',
+      createdAt: 1, updatedAt: 1,
+    } as unknown as Polish;
+
+    it('does not throw when searching for a number against a record with no num', () => {
+      expect(() => filterPolishes([broken], { ...base, search: '16' })).not.toThrow();
+      expect(filterPolishes([broken], { ...base, search: '16' })).toHaveLength(0);
+    });
+
+    it('still matches intact records in the same list', () => {
+      const list = [broken, polish({ id: 'ok1', num: '16', name: 'Rot' })];
+      expect(filterPolishes(list, { ...base, search: '16' }).map((p) => p.id)).toEqual(['ok1']);
+    });
+
+    it('does not throw when the finish array itself is missing', () => {
+      const noFinish = {
+        id: 'x2', name: 'Foo', brand: 'Bar', num: '1', color: '#ff0000',
+        status: 'ok', createdAt: 1, updatedAt: 1,
+      } as unknown as Polish;
+      expect(() => filterPolishes([noFinish], { ...base, search: 'zzz' })).not.toThrow();
+      expect(() => filterPolishes([noFinish], { ...base, finish: 'Classic' })).not.toThrow();
+    });
+
+    it('sorts by name/brand without throwing on a record missing them', () => {
+      const list = [broken, polish({ id: 'ok1', name: 'Aaa', brand: 'Aaa' })];
+      expect(() => sortPolishes(list, 'name')).not.toThrow();
+      expect(() => sortPolishes(list, 'brand')).not.toThrow();
+      expect(sortPolishes(list, 'name')).toHaveLength(2);
+    });
+  });
 });
 
 describe('normalizeFinish', () => {

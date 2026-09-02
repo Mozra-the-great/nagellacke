@@ -141,175 +141,15 @@
   }
 
   // =======================================================================
-  // Roving focus helper, shared by the studio's palette/finish groups.
-  // Arrow keys move focus within the group; tabindex toggles 0/-1.
+  // 3. Shelf — the demo shelf: preset chips, a detail readout, and whatever
+  // the visitor added in earlier visits (localStorage).
   // =======================================================================
-  function initRovingFocus(container, buttons) {
-    if (!container || !buttons.length) return;
-
-    var activeIdx = 0;
-    for (var i = 0; i < buttons.length; i++) {
-      if (buttons[i].getAttribute('aria-pressed') === 'true') {
-        activeIdx = i;
-        break;
-      }
-    }
-    buttons.forEach(function (btn, idx) {
-      btn.setAttribute('tabindex', idx === activeIdx ? '0' : '-1');
-    });
-
-    function focusIndex(idx) {
-      var len = buttons.length;
-      var next = ((idx % len) + len) % len;
-      buttons.forEach(function (btn, i) {
-        btn.setAttribute('tabindex', i === next ? '0' : '-1');
-      });
-      buttons[next].focus();
-    }
-
-    container.addEventListener('keydown', function (ev) {
-      var idx = buttons.indexOf(document.activeElement);
-      if (idx === -1) return;
-      if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') {
-        ev.preventDefault();
-        focusIndex(idx + 1);
-      } else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') {
-        ev.preventDefault();
-        focusIndex(idx - 1);
-      }
-    });
-
-    return function markActive(btn) {
-      var idx = buttons.indexOf(btn);
-      if (idx === -1) return;
-      buttons.forEach(function (b, i) {
-        b.setAttribute('tabindex', i === idx ? '0' : '-1');
-      });
-    };
-  }
-
-  // =======================================================================
-  // 3. Studio — color + finish picking, readout, roving focus.
-  // Returns a small accessor used by the shelf module for "Aufs Regal
-  // stellen", or null if the studio isn't present on the page.
-  // =======================================================================
-  function initStudio() {
-    var hand = qs('#studioHand');
-    var studioRoot = qs('#studio');
-    var palette = qs('.palette');
-    var finishesGroup = qs('.finishes');
-    var ownColor = qs('#ownColor');
-    var swatches = qsa('.swatch', palette || document);
-    var finishButtons = qsa('.finish', finishesGroup || document);
-    var swName = qs('#swName');
-    var swHex = qs('#swHex');
-    var swFinish = qs('#swFinish');
-    var swMood = qs('#swMood');
-
-    var current = {
-      color: '#b3122e',
-      name: 'Kirschkern',
-      finish: 'classic',
-      finishLabel: FINISH_LABELS.classic
-    };
-
-    function updateReadout() {
-      if (swName) swName.textContent = current.name;
-      if (swHex) swHex.textContent = current.color.toUpperCase();
-      if (swFinish) swFinish.textContent = current.finishLabel;
-      if (swMood) swMood.textContent = MOODS[current.color.toLowerCase()] || GENERIC_MOOD;
-    }
-
-    var markActiveSwatch = initRovingFocus(palette, swatches);
-    var markActiveFinish = initRovingFocus(finishesGroup, finishButtons);
-
-    function applyColor(hex, name, sourceBtn) {
-      if (!isValidHex(hex)) return;
-      current.color = hex;
-      current.name = name || 'Eigenmischung';
-      // Set on a shared ancestor of the hand and the finish-tile previews
-      // (they live in sibling branches of the DOM), plus directly on the
-      // hand so it keeps working even if the markup around it changes.
-      setProp(studioRoot, '--polish', hex);
-      setProp(hand, '--polish', hex);
-
-      swatches.forEach(function (btn) {
-        btn.setAttribute('aria-pressed', btn === sourceBtn ? 'true' : 'false');
-      });
-      if (sourceBtn && markActiveSwatch) markActiveSwatch(sourceBtn);
-
-      updateReadout();
-    }
-
-    function applyFinish(finish, sourceBtn) {
-      if (!finish) return;
-      current.finish = finish;
-      current.finishLabel = FINISH_LABELS[finish] || finish;
-      if (hand) hand.setAttribute('data-finish', finish);
-
-      finishButtons.forEach(function (btn) {
-        var isActive = sourceBtn ? btn === sourceBtn : btn.getAttribute('data-finish') === finish;
-        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (sourceBtn && markActiveFinish) markActiveFinish(sourceBtn);
-
-      updateReadout();
-    }
-
-    swatches.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var hex = btn.getAttribute('data-color');
-        var name = btn.getAttribute('data-name');
-        if (!isValidHex(hex)) return;
-        applyColor(hex, name, btn);
-        if (ownColor) {
-          try {
-            ownColor.value = hex;
-          } catch (e) {
-            /* ignore */
-          }
-        }
-      });
-    });
-
-    finishButtons.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        applyFinish(btn.getAttribute('data-finish'), btn);
-      });
-    });
-
-    if (ownColor) {
-      ownColor.addEventListener('input', function () {
-        var hex = ownColor.value;
-        if (!isValidHex(hex)) return;
-        applyColor(hex, 'Eigenmischung', null);
-      });
-    }
-
-    // Sync the readout to the hand's documented default state on load.
-    updateReadout();
-
-    return {
-      getCurrent: function () {
-        return {
-          color: current.color,
-          name: current.name,
-          finish: current.finish
-        };
-      }
-    };
-  }
-
-  // =======================================================================
-  // 5+6. Regal: filters, detail card, add-to-shelf + persistence.
-  // =======================================================================
-  function initShelf(studio) {
+  function initShelf() {
     var shelf = qs('#shelf');
     if (!shelf) return;
 
     var chips = qsa('.chip');
     var detail = qs('#shelfDetail');
-    var addBtn = qs('#addToShelf');
     var clearBtn = qs('#clearShelf');
     var emptyMsg = qs('.shelf-empty') || qs('#shelfEmpty');
 
@@ -502,29 +342,6 @@
     updateClearVisibility();
     refreshVisibility();
 
-    if (addBtn && studio) {
-      addBtn.addEventListener('click', function () {
-        var sel = studio.getCurrent();
-        var entry = {
-          status: 'ok',
-          name: sel.name,
-          brand: 'Eigenmischung',
-          finish: sel.finish,
-          color: sel.color,
-          worn: 0,
-          note: 'frisch im Studio gemischt'
-        };
-
-        var el = addEntry(entry, { animate: true });
-
-        var stored = loadStored();
-        stored.push(entry);
-        saveStored(stored);
-        updateClearVisibility();
-
-        if (el) el.focus();
-      });
-    }
 
     if (clearBtn) {
       clearBtn.addEventListener('click', function () {
@@ -666,8 +483,7 @@
   // =======================================================================
   function init() {
     initReveal();
-    var studio = initStudio();
-    initShelf(studio);
+    initShelf();
     initDiaryFlip();
     initAppTabs();
     initBars();

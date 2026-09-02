@@ -48,14 +48,34 @@ function colorDots(colors: string[] | undefined): string {
   return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${safeColor(c)};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
 }
 
-function photoImg(filename: string | undefined | null, alt: string, baseUrl: string, style = ''): string {
+/** Builds the `src` for one photo. See generateReportHtml's `signPhoto` param. */
+type PhotoSrc = (filename: string) => string;
+
+function photoImg(filename: string | undefined | null, alt: string, photoSrc: PhotoSrc, style = ''): string {
   if (!filename) return '';
-  const src = `${baseUrl}/photos/${encodeURIComponent(filename)}`;
-  return `<img src="${src}" alt="${escHtml(alt)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}">`;
+  return `<img src="${escHtml(photoSrc(filename))}" alt="${escHtml(alt)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}">`;
 }
 
-export function generateReportHtml(data: AppData, period: 'week' | 'month', ref: Date, baseUrl: string): string {
+/**
+ * @param signPhoto Mints the `?t=` access token for one photo filename. Since #269
+ *   `/photos/*` rejects unauthenticated requests, so a report whose images have to
+ *   render in a mail client needs a signed, expiring token per photo. Optional only
+ *   so a caller that renders no photos (or a test) can skip it - a report generated
+ *   without it produces plain URLs that the server will reject with 401.
+ */
+export function generateReportHtml(
+  data: AppData,
+  period: 'week' | 'month',
+  ref: Date,
+  baseUrl: string,
+  signPhoto?: (filename: string) => string,
+): string {
   const { start, end, label } = getPeriodBounds(period, ref);
+  const photoSrc: PhotoSrc = (filename) => {
+    const url = `${baseUrl}/photos/${encodeURIComponent(filename)}`;
+    const token = signPhoto?.(filename);
+    return token ? `${url}?t=${encodeURIComponent(token)}` : url;
+  };
 
   const inPeriod = (ts: number) => ts >= start.getTime() && ts <= end.getTime();
 
@@ -145,7 +165,7 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
     ? `<div class="cards-grid">${newPolishes.map((p: Polish) => `
       <div class="polish-card">
         ${p.photo
-          ? `<div class="polish-photo">${photoImg(p.photo, p.name, baseUrl)}</div>`
+          ? `<div class="polish-photo">${photoImg(p.photo, p.name, photoSrc)}</div>`
           : `<div class="polish-swatch" style="background:${safeColor(p.color)}22"><span style="width:46px;height:46px;border-radius:50%;background:${safeColor(p.color)};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span></div>`}
         <div class="polish-body">
           <div class="polish-name">${escHtml(p.name)}</div>
@@ -160,7 +180,7 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
   const stickerCards = newStickers.length
     ? `<div class="cards-grid">${newStickers.map((s: Sticker) => `
       <div class="sticker-card">
-        <div class="sticker-photo">${s.photo ? photoImg(s.photo, s.name, baseUrl) : '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:34px;background:#fdf4f9">✨</div>'}</div>
+        <div class="sticker-photo">${s.photo ? photoImg(s.photo, s.name, photoSrc) : '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:34px;background:#fdf4f9">✨</div>'}</div>
         <div class="sticker-body">
           <div class="sticker-name">${escHtml(s.name)}</div>
           <div class="sticker-type">${escHtml(s.type)}${s.brand ? ` · ${escHtml(s.brand)}` : ''}</div>
@@ -181,7 +201,7 @@ export function generateReportHtml(data: AppData, period: 'week' | 'month', ref:
         return `<div class="manicure-entry">
           <div class="manicure-date">${new Date(m.date).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
           ${displayPhotos.length ? `<div class="manicure-photos">
-            ${displayPhotos.map(f => `<div class="manicure-photo-slot">${photoImg(f, 'Maniküre', baseUrl)}</div>`).join('')}
+            ${displayPhotos.map(f => `<div class="manicure-photo-slot">${photoImg(f, 'Maniküre', photoSrc)}</div>`).join('')}
             ${Array.from({ length: 4 - displayPhotos.length }, () => '<div class="manicure-photo-slot"></div>').join('')}
           </div>` : ''}
           ${polishChips ? `<div class="polish-chips">${polishChips}</div>` : ''}

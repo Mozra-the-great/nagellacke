@@ -27,6 +27,7 @@ import type { SearchBackend } from './websearch';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
+import { signPhotoToken, verifyPhotoToken } from './photoToken';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
@@ -55,6 +56,14 @@ if (!process.env.ALLOWED_ORIGIN && process.env.NODE_ENV === 'production') {
   process.exit(1);
 }
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? '*';
+// Lifetime of a session-wide photo token (GET /api/photos/token). Short, because
+// the web app and the Android app re-mint one whenever it is about to run out;
+// it only has to outlive a single browsing session's <img> loads.
+const PHOTO_TOKEN_TTL = Number(process.env.PHOTO_TOKEN_TTL ?? 3600);
+// Lifetime of the per-file tokens embedded in report emails. Long enough that a
+// weekly/monthly report is still readable when it is actually opened, but bounded
+// so a forwarded or archived mail stops exposing the photos eventually (#269).
+const REPORT_PHOTO_TOKEN_TTL = Number(process.env.REPORT_PHOTO_TOKEN_TTL ?? 30 * 24 * 3600);
 
 if (ALLOWED_ORIGIN === '*') {
   console.warn('[WARN] ALLOWED_ORIGIN is not set — CORS is open to all origins');
@@ -149,6 +158,42 @@ if (fs.existsSync(path.join(DATA_DIR, 'users.json'))) {
 const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
 const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
 
+// ── Username validation ───────────────────────────────────────────────────────
+// The username is embedded verbatim in every issued JWT payload (see
+// issueTokens below), which in turn rides along as an HTTP header on every
+// subsequent authenticated request. Without an upper bound, an oversized
+// username (e.g. tens of thousands of characters) produces a JWT so large
+// that the *Bearer header itself* exceeds the server's/proxy's header-size
+// limit, and every following request from that account fails at the HTTP
+// layer with 431 (Request Header Fields Too Large) — before Fastify even
+// routes it. That permanently bricks the account (#275). 64 chars is well
+// above any realistic username while keeping headers small. This only gates
+// *new* usernames (register/admin-create) — existing accounts, however they
+// were named historically, keep working.
+const MAX_USERNAME_LENGTH = 64;
+
+/**
+ * Returns an error message if `username` is not a valid new-account
+ * username, or `undefined` if it's fine to use. Deliberately minimal: only
+ * rejects things that are either exploitable (oversized -> #275) or
+ * obviously not a real username (empty/whitespace-only, or raw control
+ * characters that have no business in an identifier and can cause display /
+ * log-injection oddities). No character-set allowlist beyond that — existing
+ * usernames may already contain characters a stricter allowlist would
+ * reject, and this function must never be used to re-validate them.
+ */
+function usernameError(username: string): string | undefined {
+  if (username.trim().length === 0) return 'username darf nicht leer sein';
+  if (username.length > MAX_USERNAME_LENGTH) {
+    return `username darf höchstens ${MAX_USERNAME_LENGTH} Zeichen lang sein`;
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(username)) {
+    return 'username darf keine Steuerzeichen enthalten';
+  }
+  return undefined;
+}
+
 // ── Image validation ──────────────────────────────────────────────────────────
 const MAGIC: [Buffer, string][] = [
   [Buffer.from([0xff, 0xd8, 0xff]), 'image/jpeg'],
@@ -172,6 +217,15 @@ function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
 }
 
+// Fixed hash used to run a same-cost dummy verification when a login targets
+// a username that doesn't exist (#268). Generated once at startup — same
+// hashPassword()/scryptSync(..., 64) call and cost as every real hash, so the
+// dummy branch below takes about as long as the real one, closing the timing
+// side-channel that otherwise let an attacker distinguish "no such user"
+// (instant 401) from "wrong password" (401 after a full scrypt hash) and
+// enumerate usernames despite both returning the identical error body.
+const DUMMY_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString('hex'));
+
 // Constant-time string comparison (avoids leaking the API key via response-time
 // side channel - crypto.timingSafeEqual itself requires equal-length buffers).
 function safeEqual(a: string, b: string): boolean {
@@ -179,6 +233,18 @@ function safeEqual(a: string, b: string): boolean {
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Per-file, longer-lived photo tokens for the <img> tags in a generated report.
+ * Bound to one filename each, so a forwarded mail exposes only the photos in that
+ * report - and only until REPORT_PHOTO_TOKEN_TTL elapses (#269). Module scope
+ * because the report scheduler in main() needs it as much as the routes do.
+ */
+function reportPhotoSigner(username: string): (filename: string) => string {
+  const exp = Math.floor(Date.now() / 1000) + REPORT_PHOTO_TOKEN_TTL;
+  const tv = getUser(username)?.token_version ?? 0;
+  return (filename: string) => signPhotoToken({ exp, u: username, tv, f: filename }, JWT_SECRET);
 }
 
 // ── Sync payload validation ───────────────────────────────────────────────────
@@ -246,6 +312,25 @@ export async function buildApp(): Promise<FastifyInstance> {
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
   // advertised those three methods, so a browser refused to send the real
+  // GET /api/photos/token - mint a short-lived signed token the client appends
+  // to /photos/<file>?t=... . An <img> tag cannot send an Authorization header,
+  // so this is how an authenticated browser session reaches its own photos (#269).
+  app.get('/api/photos/token', {
+    preHandler: requireApiKeyOrJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const exp = Math.floor(Date.now() / 1000) + PHOTO_TOKEN_TTL;
+    const key = request.headers['x-api-key'];
+    if (typeof key === 'string' && key) {
+      return { token: signPhotoToken({ exp, u: '', k: true }, JWT_SECRET, API_KEY), expiresAt: exp * 1000 };
+    }
+    const { username } = request.user as { username: string };
+    return {
+      token: signPhotoToken({ exp, u: username, tv: getUser(username)?.token_version ?? 0 }, JWT_SECRET),
+      expiresAt: exp * 1000,
+    };
+  });
+
   // DELETE /api/photos/:filename or PATCH /api/auth/me whenever the web app was
   // served from a different origin than the API (GitHub Pages, or a "Eigener
   // Server" URL pointing elsewhere). Invisible in the same-origin install.sh
@@ -268,7 +353,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       return err;
     },
   });
-  await app.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
+  // #269: photos used to be served by a bare static handler - the unguessable
+  // UUID filename was the only protection, so a leaked URL (browser history, a
+  // forwarded report mail, a proxy cache) meant permanent anonymous access with
+  // no way to revoke it. The handler now lives in its own encapsulated plugin so
+  // requirePhotoAccess applies to /photos/* only, and not to the SPA assets
+  // registered below.
+  await app.register(async (photos) => {
+    photos.addHook('onRequest', requirePhotoAccess);
+    await photos.register(staticFiles, { root: PHOTOS_DIR, prefix: '/photos/' });
+  });
 
   // Rate-limit errors (and any other thrown error) are reshaped to the app's
   // uniform { error: string } response format instead of Fastify's default
@@ -280,6 +374,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(statusCode).send({ error: 'Interner Fehler' });
     }
     reply.code(statusCode).send({ error: error.message || 'Interner Fehler' });
+  });
+
+  // `null` is valid JSON, so a body of literally `null` with an application/json
+  // content-type parses to `request.body === null`. Every handler then does
+  // `const { x } = request.body as {...}` and throws a TypeError, which the error
+  // handler above reshapes into a 500 - for what is plainly a client input error.
+  // Normalising it to {} lets each route's own `!x || !y` checks answer with their
+  // usual 400 instead, without touching a single handler (#273).
+  app.addHook('preValidation', async (request) => {
+    if (request.body === null) request.body = {};
   });
 
   // Serve web app (built to public/ by install.sh or update/apply)
@@ -353,6 +457,69 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     if (!tokenTypeValid(request) || !tokenVersionValid(request)) {
       return reply.code(401).send({ error: 'API-Key oder Login erforderlich' });
+    }
+  }
+
+  /** The filename part of a /photos/<name> URL, or null if it isn't one. */
+  function requestedPhotoName(rawUrl: string): string | null {
+    const pathOnly = rawUrl.split('?')[0];
+    if (!pathOnly.startsWith('/photos/')) return null;
+    try {
+      return decodeURIComponent(pathOnly.slice('/photos/'.length));
+    } catch {
+      return null;   // malformed percent-encoding
+    }
+  }
+
+  /**
+   * Gate for /photos/* (#269). Accepts, in order:
+   *  1. `X-Api-Key` or a `Authorization: Bearer <access JWT>` header - what the
+   *     Android app and scripted clients can send.
+   *  2. a signed `?t=` photo token - the only option for an <img> tag or a mail
+   *     client, which cannot set headers. A token bound to a filename (`f`, as
+   *     embedded in report emails) is rejected for any other photo.
+   *
+   * Deliberately an onRequest hook rather than a preHandler: it must reject
+   * before @fastify/static gets a chance to stream the file.
+   */
+  async function requirePhotoAccess(request: FastifyRequest, reply: FastifyReply) {
+    const unauthorized = () => reply.code(401).send({ error: 'Unauthorized' });
+
+    const key = request.headers['x-api-key'];
+    if (typeof key === 'string' && key) {
+      if (safeEqual(key, API_KEY)) return;
+      return reply.code(401).send({ error: 'Ungültiger API-Schlüssel' });
+    }
+    if (request.headers.authorization) {
+      try {
+        await request.jwtVerify();
+      } catch {
+        return unauthorized();
+      }
+      if (!tokenTypeValid(request) || !tokenVersionValid(request)) return unauthorized();
+      return;
+    }
+
+    const { t } = request.query as { t?: string };
+    if (typeof t !== 'string' || !t) return unauthorized();
+    const payload = verifyPhotoToken(t, JWT_SECRET, { apiKey: API_KEY });
+    if (!payload) return unauthorized();
+
+    // A `k` token (minted from X-Api-Key) needs nothing further: it only verifies
+    // under a secret derived from the key currently in force, so rotating the key
+    // already revoked it. A user token additionally has to match the account's
+    // current token_version - that is how /api/auth/logout-all revokes outstanding
+    // photo links, the revocation path #269 asked for.
+    if (!payload.k) {
+      const user = getUser(payload.u);
+      if (!user || (payload.tv ?? 0) !== (user.token_version ?? 0)) return unauthorized();
+    }
+
+    if (payload.f) {
+      const requested = requestedPhotoName(request.url);
+      if (requested === null || payload.f !== requested) {
+        return reply.code(403).send({ error: 'Forbidden' });
+      }
     }
   }
 
@@ -664,6 +831,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    // Only enforced for the create-user branch below (`existing` is
+    // untouched) — an already-existing account must keep working here
+    // however it was historically named.
+    const usernameErr = usernameError(username);
+    if (!getUser(username) && usernameErr) {
+      return reply.code(400).send({ error: usernameErr });
+    }
     // If the account already exists, promoting it to admin and handing back
     // a session must not happen without proving knowledge of *that account's*
     // real password - the length check above only validates a fresh
@@ -715,6 +889,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    const usernameErr = usernameError(username);
+    if (usernameErr) return reply.code(400).send({ error: usernameErr });
     if (role !== undefined && role !== 'admin' && role !== 'user') {
       return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
     }
@@ -989,7 +1165,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL, reportPhotoSigner(username));
     return reply.type('text/html').send(html);
   });
 
@@ -1013,7 +1189,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL);
+    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL, reportPhotoSigner(username));
     try {
       await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     } catch (e: unknown) {
@@ -1072,6 +1248,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    const usernameErr = usernameError(username);
+    if (usernameErr) return reply.code(400).send({ error: usernameErr });
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     // The very first registered user becomes admin immediately (#173) — rather
     // than relying solely on migrateFirstUserToAdmin() at the next restart,
@@ -1093,7 +1271,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   }, async (request, reply) => {
     const { username, password } = request.body as { username?: string; password?: string };
     const user = username ? getUser(username) : undefined;
-    if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (!password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (!user) {
+      // Run a dummy verification of the same cost as the real one below
+      // (#268) — without this, a non-existent username short-circuits here
+      // instantly while an existing one falls through to a full scrypt hash,
+      // and that measurable timing gap enumerates usernames even though the
+      // error body is identical either way. The result is discarded; only
+      // the elapsed time matters.
+      verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    }
 
     // Account-scoped brute-force lockout (#259 hardening pass) — independent
     // of the route's per-IP rate limit above, which alone doesn't stop an
@@ -1314,6 +1502,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     const user = getUser(username);
     if (!user || !password || !verifyPassword(password, user.password_hash)) {
       return reply.code(401).send({ error: 'Passwort erforderlich' });
+    }
+    // Guard mirrors /recovery-codes/regenerate, and deliberately sits *after* the
+    // password check so it can't be used to probe whether an account has 2FA.
+    // Without it, disableTotp() ran unconditionally - and it bumps token_version
+    // unconditionally too, so a defensive or retried call on an account that never
+    // had 2FA silently logged the user out of every other device while reporting
+    // { ok: true } as if something had been turned off (#276).
+    if (!user.totp_enabled) {
+      return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
     }
     disableTotp(username);
     const updated = getUser(username);
@@ -1604,7 +1801,7 @@ async function main() {
       const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
       const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
       const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl);
+      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
       setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
       console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);

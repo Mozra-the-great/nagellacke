@@ -45,6 +45,11 @@ import retrofit2.http.Path
 @Serializable data class SyncResponse(val data: AppData)
 @Serializable data class PhotoRequest(val data: String, val mimeType: String)
 @Serializable data class PhotoResponse(val filename: String)
+/**
+ * GET /api/photos/token. Both fields default so a server predating #269 — which has no
+ * such endpoint and no photo auth either — degrades to "no token" instead of throwing.
+ */
+@Serializable data class PhotoTokenResponse(val token: String? = null, val expiresAt: Long = 0)
 
 interface ServerApi {
     @GET("api/auth/me")
@@ -72,6 +77,12 @@ interface ServerApi {
 
     @POST("api/photos")
     suspend fun uploadPhoto(@Body body: PhotoRequest): PhotoResponse
+
+    // Since server #269 /photos/* is no longer public. Coil loads photo URLs through its
+    // own HTTP stack without this adapter's Authorization interceptor, so it needs the
+    // signed token in the query string instead.
+    @GET("api/photos/token")
+    suspend fun photoToken(): PhotoTokenResponse
 
     @DELETE("api/photos/{filename}")
     suspend fun deletePhoto(@Path("filename") filename: String)
