@@ -772,7 +772,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Statistik</h2>
         <div className={styles.statsGrid}>
-          <div className={styles.stat}><div className={styles.statNum}>{stats.polishes}</div><div className={styles.statLabel}>Lacke</div></div>
+          <div className={styles.stat}><div className={styles.statNum}>{stats.polishes}</div><div className={styles.statLabel}>Lacke gesamt (inkl. Wunschliste)</div></div>
           <div className={styles.stat}><div className={styles.statNum}>{stats.stickers}</div><div className={styles.statLabel}>Sticker</div></div>
           <div className={styles.stat}><div className={styles.statNum}>{stats.manicures}</div><div className={styles.statLabel}>Maniküren</div></div>
         </div>
