@@ -11,6 +11,16 @@
   border-color: rgba(255,255,255,0.15);
 }
 
+/* Status 'empty'/'gone' (#279): dims the whole card a bit further, on top of
+   the badge, so a scan of the grid doesn't mistake these for owned polishes. */
+.muted {
+  opacity: 0.62;
+}
+
+.muted:hover {
+  opacity: 0.85;
+}
+
 .openBtn {
   display: flex;
   flex-direction: column;
@@ -55,6 +65,34 @@
   color: var(--md-primary);
   background: rgba(255,200,230,0.12);
   border: 1px solid rgba(255,200,230,0.30);
+  border-radius: 8px;
+  padding: 2px 5px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.emptyBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  padding: 2px 5px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.goneBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255,150,150,0.9);
+  background: rgba(255,90,90,0.12);
+  border: 1px solid rgba(255,120,120,0.35);
   border-radius: 8px;
   padding: 2px 5px;
   line-height: 1.2;

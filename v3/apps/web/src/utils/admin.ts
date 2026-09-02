@@ -1,4 +1,4 @@
-import { loadSyncConfig, saveSyncConfig } from '../useAppData';
+import { loadSyncConfig } from '../useAppData';
 
 export type Role = 'admin' | 'user';
 
@@ -142,14 +142,19 @@ export function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
 const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
 /**
- * Exchanges the root X-Api-Key for an admin session, once (#173 §3.3). On
- * success stores the returned JWTs via the same sync-config machinery the
- * regular login flow uses, and clears the stored API key from localStorage —
- * its job in the browser is done. Throws (with the server's 409 message) if
- * an admin account already exists, so the caller can fall back to "please log
- * in with your admin account".
+ * Exchanges the root X-Api-Key for an admin session, once (#173 §3.3).
+ * Clears the stored API key from localStorage on success — its job in the
+ * browser is done. Throws (with the server's 409 message) if an admin
+ * account already exists, so the caller can fall back to "please log in
+ * with your admin account".
+ *
+ * Deliberately does NOT persist the returned JWTs itself (#277): the caller
+ * owns the component-level login state (config/serverToken/etc.) and must
+ * run the same "just logged in" bookkeeping a regular login does — e.g.
+ * SettingsPage's `applyLoginTokens` — so the sync box reflects the new
+ * session immediately instead of only after a reload.
  */
-export async function bootstrapAdmin(serverUrl: string, apiKey: string, username: string, password: string): Promise<void> {
+export async function bootstrapAdmin(serverUrl: string, apiKey: string, username: string, password: string): Promise<{ token: string; refreshToken?: string }> {
   const base = serverUrl.replace(/\/$/, '');
   const res = await fetch(`${base}/api/admin/bootstrap`, {
     method: 'POST',
@@ -158,6 +163,6 @@ export async function bootstrapAdmin(serverUrl: string, apiKey: string, username
   });
   const data = await res.json().catch(() => ({})) as { token?: string; refreshToken?: string; error?: string };
   if (!res.ok || !data.token) throw new Error(data.error ?? `Fehler ${res.status}`);
-  saveSyncConfig({ provider: 'server', serverUrl, serverToken: data.token, serverRefreshToken: data.refreshToken });
   localStorage.removeItem(APIKEY_STORAGE);
+  return { token: data.token, refreshToken: data.refreshToken };
 }
