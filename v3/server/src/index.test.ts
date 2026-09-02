@@ -660,3 +660,63 @@ describe('#217: POST /api/sync and /api/sync/push validate the request body', ()
     expect(res.statusCode).toBe(200);
   });
 });
+
+// #275: an unbounded username ends up embedded verbatim in every issued JWT,
+// which rides along as an HTTP header on every subsequent request. Past a
+// certain length that header alone exceeds the server's/proxy's max header
+// size, and the account is permanently bricked with HTTP 431 - before
+// Fastify even routes the request. These guard the length cap that prevents
+// that at registration time.
+describe('POST /api/auth/register — username length/shape validation (#275)', () => {
+  it('accepts a 64-character username (the maximum)', async () => {
+    const username = 'u'.repeat(64);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects a 65-character username with 400', async () => {
+    const username = 'u'.repeat(65);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it('rejects an oversized username (the actual #275 scenario) with 400, not by minting a giant JWT', async () => {
+    const username = 'u'.repeat(100_000);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an empty username with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: '', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a whitespace-only username with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: '   \t  ', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a username containing control characters with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: 'bad\x00name', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

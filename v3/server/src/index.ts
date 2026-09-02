@@ -158,6 +158,42 @@ if (fs.existsSync(path.join(DATA_DIR, 'users.json'))) {
 const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
 const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
 
+// ── Username validation ───────────────────────────────────────────────────────
+// The username is embedded verbatim in every issued JWT payload (see
+// issueTokens below), which in turn rides along as an HTTP header on every
+// subsequent authenticated request. Without an upper bound, an oversized
+// username (e.g. tens of thousands of characters) produces a JWT so large
+// that the *Bearer header itself* exceeds the server's/proxy's header-size
+// limit, and every following request from that account fails at the HTTP
+// layer with 431 (Request Header Fields Too Large) — before Fastify even
+// routes it. That permanently bricks the account (#275). 64 chars is well
+// above any realistic username while keeping headers small. This only gates
+// *new* usernames (register/admin-create) — existing accounts, however they
+// were named historically, keep working.
+const MAX_USERNAME_LENGTH = 64;
+
+/**
+ * Returns an error message if `username` is not a valid new-account
+ * username, or `undefined` if it's fine to use. Deliberately minimal: only
+ * rejects things that are either exploitable (oversized -> #275) or
+ * obviously not a real username (empty/whitespace-only, or raw control
+ * characters that have no business in an identifier and can cause display /
+ * log-injection oddities). No character-set allowlist beyond that — existing
+ * usernames may already contain characters a stricter allowlist would
+ * reject, and this function must never be used to re-validate them.
+ */
+function usernameError(username: string): string | undefined {
+  if (username.trim().length === 0) return 'username darf nicht leer sein';
+  if (username.length > MAX_USERNAME_LENGTH) {
+    return `username darf höchstens ${MAX_USERNAME_LENGTH} Zeichen lang sein`;
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(username)) {
+    return 'username darf keine Steuerzeichen enthalten';
+  }
+  return undefined;
+}
+
 // ── Image validation ──────────────────────────────────────────────────────────
 const MAGIC: [Buffer, string][] = [
   [Buffer.from([0xff, 0xd8, 0xff]), 'image/jpeg'],
@@ -776,6 +812,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    // Only enforced for the create-user branch below (`existing` is
+    // untouched) — an already-existing account must keep working here
+    // however it was historically named.
+    const usernameErr = usernameError(username);
+    if (!getUser(username) && usernameErr) {
+      return reply.code(400).send({ error: usernameErr });
+    }
     // If the account already exists, promoting it to admin and handing back
     // a session must not happen without proving knowledge of *that account's*
     // real password - the length check above only validates a fresh
@@ -827,6 +870,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    const usernameErr = usernameError(username);
+    if (usernameErr) return reply.code(400).send({ error: usernameErr });
     if (role !== undefined && role !== 'admin' && role !== 'user') {
       return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
     }
@@ -1184,6 +1229,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }
+    const usernameErr = usernameError(username);
+    if (usernameErr) return reply.code(400).send({ error: usernameErr });
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     // The very first registered user becomes admin immediately (#173) — rather
     // than relying solely on migrateFirstUserToAdmin() at the next restart,
