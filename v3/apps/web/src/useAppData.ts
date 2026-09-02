@@ -6,7 +6,7 @@ import { createAdapter } from '@nagellacke/sync';
 
 async function deletePhotoFromServer(filename: string): Promise<void> {
   const config = loadSyncConfig();
-  if (!config) return;
+  if (!config || !hasSyncCredentials(config)) return;
   try {
     const adapter = createAdapter(config, persistRefreshedTokens);
     await adapter.deletePhoto(filename);
@@ -118,28 +118,86 @@ export function saveAiEnabled(value: boolean): void {
   localStorage.setItem(AI_ENABLED_KEY, String(value));
 }
 
+/**
+ * The "Eigener Server" access/refresh JWTs are kept in memory only, never
+ * localStorage (#299) — same rationale as photoToken.ts: they're materially
+ * more powerful than a photo token (full collection read/write, and admin
+ * routes when the account is admin), so persisting them would leave an
+ * XSS-readable credential good for up to the refresh token's 30-day
+ * lifetime, with no way to revoke it short of logout-all. The rest of the
+ * config (provider, serverUrl, ...) still persists across reloads; losing
+ * only the tokens means a reload requires logging back in, same trade-off
+ * ensurePhotoToken() already makes for photos.
+ */
+let sessionServerToken: string | null = null;
+let sessionServerRefreshToken: string | null = null;
+
+function stripServerTokens(config: SyncConfig): SyncConfig {
+  const rest = { ...config };
+  delete rest.serverToken;
+  delete rest.serverRefreshToken;
+  return rest;
+}
+
 export function loadSyncConfig(): SyncConfig | null {
   try {
     const raw = localStorage.getItem(SYNC_CONFIG_KEY);
-    if (raw) return JSON.parse(raw) as SyncConfig;
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as SyncConfig;
+    if (stored.provider !== 'server') return stored;
+    // Migration off a pre-#299 entry that still has JWTs embedded: salvage
+    // them into memory (so an already-logged-in tab isn't forced to log
+    // back in immediately) and rewrite localStorage without them.
+    if (stored.serverToken || stored.serverRefreshToken) {
+      sessionServerToken = stored.serverToken ?? sessionServerToken;
+      sessionServerRefreshToken = stored.serverRefreshToken ?? sessionServerRefreshToken;
+      localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(stripServerTokens(stored)));
+    }
+    return { ...stored, serverToken: sessionServerToken ?? undefined, serverRefreshToken: sessionServerRefreshToken ?? undefined };
   } catch { /* empty */ }
   return null;
 }
 
 export function saveSyncConfig(config: SyncConfig | null): void {
-  if (config) localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
-  else localStorage.removeItem(SYNC_CONFIG_KEY);
+  if (!config) {
+    sessionServerToken = null;
+    sessionServerRefreshToken = null;
+    localStorage.removeItem(SYNC_CONFIG_KEY);
+    return;
+  }
+  if (config.provider === 'server') {
+    sessionServerToken = config.serverToken ?? null;
+    sessionServerRefreshToken = config.serverRefreshToken ?? null;
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(stripServerTokens(config)));
+    return;
+  }
+  sessionServerToken = null;
+  sessionServerRefreshToken = null;
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
 }
 
 /**
- * Writes a renewed access/refresh pair back into the stored sync config, so a
- * silent refresh survives a page reload (#109). Re-reads the config rather than
- * closing over one, since a refresh can land long after the adapter was built.
+ * Writes a renewed access/refresh pair into the in-memory session state, so a
+ * silent refresh keeps working for the rest of the tab's life (#109, #299).
+ * Re-reads the config rather than closing over one, since a refresh can land
+ * long after the adapter was built.
  */
 export function persistRefreshedTokens(token: string, refreshToken: string): void {
   const current = loadSyncConfig();
   if (!current || current.provider !== 'server') return;
-  saveSyncConfig({ ...current, serverToken: token, serverRefreshToken: refreshToken });
+  sessionServerToken = token;
+  sessionServerRefreshToken = refreshToken;
+}
+
+/**
+ * True when `config` carries everything a server-sync request needs right
+ * now. For provider 'server' that means an access token must currently be
+ * in memory — after a reload (#299) there isn't one until the user logs
+ * back in, and callers should no-op rather than surface a scary adapter
+ * error on every load.
+ */
+function hasSyncCredentials(config: SyncConfig): boolean {
+  return config.provider !== 'server' || !!config.serverToken;
 }
 
 export function useAppData() {
@@ -188,7 +246,10 @@ export function useAppData() {
   const syncPendingRef = useRef(false);
   const sync = useCallback(async () => {
     const config = loadSyncConfig();
-    if (!config) return;
+    // No error surfaced when logged out (#299): after a reload there's no
+    // in-memory access token yet, and that's an expected state, not a
+    // failure - the Sync section's login form already reflects it.
+    if (!config || !hasSyncCredentials(config)) return;
     if (syncingRef.current) { syncPendingRef.current = true; return; }
     syncingRef.current = true;
     setSyncing(true);
@@ -377,7 +438,7 @@ export function useAppData() {
     localStorage.removeItem(FINISH_MIGRATION_BACKUP_KEY);
     commit(() => restored);
     const config = loadSyncConfig();
-    if (!config) return;
+    if (!config || !hasSyncCredentials(config)) return;
     setSyncing(true);
     setSyncError(null);
     try {
