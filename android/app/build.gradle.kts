@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -22,13 +24,23 @@ val keystoreFilePath: String? = System.getenv("KEYSTORE_FILE")
 // Empty is a deliberate default rather than a placeholder: "" is unambiguously
 // "not configured", which OAuthClientIds.isConfigured() can test for, while a
 // placeholder string is indistinguishable from a real - and merely wrong - id.
-val localProperties = java.util.Properties().apply {
+// NB: `Properties` has to be imported at the top of the file rather than written as
+// java.util.Properties here - Gradle's own `java` project extension shadows the package
+// name inside the script body.
+val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (file.exists()) file.inputStream().use { stream -> load(stream) }
 }
 
-fun oauthClientId(key: String): String =
-    System.getenv(key) ?: localProperties.getProperty(key) ?: ""
+// System.getenv returns a platform type, so an elvis chain on it trips
+// "always returns the left operand of non-nullable type" - which the Kotlin DSL script
+// compiler reports as an error, not a warning. isNullOrBlank() sidesteps that and also
+// treats an empty env var as unset, which is what a caller means by it.
+fun oauthClientId(key: String): String {
+    val fromEnv: String? = System.getenv(key)
+    if (!fromEnv.isNullOrBlank()) return fromEnv
+    return localProperties.getProperty(key) ?: ""
+}
 
 android {
     namespace = "de.nagellacke"
