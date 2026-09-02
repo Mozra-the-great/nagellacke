@@ -172,6 +172,15 @@ function verifyPassword(password: string, stored: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
 }
 
+// Fixed hash used to run a same-cost dummy verification when a login targets
+// a username that doesn't exist (#268). Generated once at startup — same
+// hashPassword()/scryptSync(..., 64) call and cost as every real hash, so the
+// dummy branch below takes about as long as the real one, closing the timing
+// side-channel that otherwise let an attacker distinguish "no such user"
+// (instant 401) from "wrong password" (401 after a full scrypt hash) and
+// enumerate usernames despite both returning the identical error body.
+const DUMMY_PASSWORD_HASH = hashPassword(crypto.randomBytes(32).toString('hex'));
+
 // Constant-time string comparison (avoids leaking the API key via response-time
 // side channel - crypto.timingSafeEqual itself requires equal-length buffers).
 function safeEqual(a: string, b: string): boolean {
@@ -1093,7 +1102,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   }, async (request, reply) => {
     const { username, password } = request.body as { username?: string; password?: string };
     const user = username ? getUser(username) : undefined;
-    if (!user || !password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (!password) return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    if (!user) {
+      // Run a dummy verification of the same cost as the real one below
+      // (#268) — without this, a non-existent username short-circuits here
+      // instantly while an existing one falls through to a full scrypt hash,
+      // and that measurable timing gap enumerates usernames even though the
+      // error body is identical either way. The result is discarded; only
+      // the elapsed time matters.
+      verifyPassword(password, DUMMY_PASSWORD_HASH);
+      return reply.code(401).send({ error: 'Ungültige Anmeldedaten' });
+    }
 
     // Account-scoped brute-force lockout (#259 hardening pass) — independent
     // of the route's per-IP rate limit above, which alone doesn't stop an

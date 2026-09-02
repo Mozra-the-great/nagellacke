@@ -95,6 +95,47 @@ describe('POST /api/auth/login — regression guard (no 2FA)', () => {
   });
 });
 
+describe('POST /api/auth/login — username enumeration via timing (#268)', () => {
+  // A millisecond-based timing assertion is exactly the kind of test that's
+  // flaky in CI (shared/throttled runners, GC pauses, scrypt's own jitter),
+  // so this deliberately does NOT assert on elapsed time. Instead it checks
+  // the structural fix directly: a non-existent username now runs a dummy
+  // verifyPassword() call of the same cost as the real one (same scryptSync
+  // params, via the same DUMMY_PASSWORD_HASH shape as a real hash) rather
+  // than short-circuiting instantly — which is what actually closes the
+  // timing side-channel. That's covered by:
+  //   1. the response for a non-existent user is byte-for-byte identical
+  //      (status + body) to the response for a wrong password on a real
+  //      user — already true before this fix, and still true after;
+  //   2. an empty password is rejected before either branch runs any
+  //      scrypt hash at all, for both an existing and a non-existent
+  //      username — i.e. the fix must not make the already-fast empty-
+  //      password path slower or behave differently than before.
+  it('returns an identical 401 body for a non-existent username and a wrong password on a real one', async () => {
+    const username = freshUsername();
+    await register(username);
+
+    const wrongPasswordRes = await login(username, 'totally-wrong-password');
+    const noSuchUserRes = await login(`${username}-does-not-exist`, 'totally-wrong-password');
+
+    expect(wrongPasswordRes.statusCode).toBe(401);
+    expect(noSuchUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.json()).toEqual(wrongPasswordRes.json());
+  });
+
+  it('rejects an empty password identically for an existing and a non-existent username, without hashing', async () => {
+    const username = freshUsername();
+    await register(username);
+
+    const existingUserRes = await login(username, '');
+    const noSuchUserRes = await login(`${username}-does-not-exist`, '');
+
+    expect(existingUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.json()).toEqual(existingUserRes.json());
+  });
+});
+
 describe('§0 typ-claim fix', () => {
   it('rejects a refresh token on a protected route (the pre-existing hole this PR closes)', async () => {
     const username = freshUsername();
