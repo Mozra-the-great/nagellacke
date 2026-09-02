@@ -282,6 +282,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.code(statusCode).send({ error: error.message || 'Interner Fehler' });
   });
 
+  // `null` is valid JSON, so a body of literally `null` with an application/json
+  // content-type parses to `request.body === null`. Every handler then does
+  // `const { x } = request.body as {...}` and throws a TypeError, which the error
+  // handler above reshapes into a 500 - for what is plainly a client input error.
+  // Normalising it to {} lets each route's own `!x || !y` checks answer with their
+  // usual 400 instead, without touching a single handler (#273).
+  app.addHook('preValidation', async (request) => {
+    if (request.body === null) request.body = {};
+  });
+
   // Serve web app (built to public/ by install.sh or update/apply)
   const publicDir = path.join(process.cwd(), 'public');
   if (fs.existsSync(publicDir)) {
