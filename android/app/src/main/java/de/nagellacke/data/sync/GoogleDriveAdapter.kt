@@ -6,6 +6,8 @@ import de.nagellacke.ui.settings.OAuthClientIds
 import kotlinx.serialization.encodeToString
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -133,7 +135,22 @@ class GoogleDriveAdapter(
         return id
     }
 
-    override suspend fun sync(local: AppData): SyncResult {
+    // Every network call in this adapter is OkHttp's *synchronous* execute(), and
+    // syncNow() launches on viewModelScope (Dispatchers.Main) - so without this hop
+    // the call ran on the main thread and Android threw NetworkOnMainThreadException
+    // unconditionally, crashing "Sync jetzt" (#270). The blocking bodies stay plain
+    // (non-suspend) functions so their early `return`s remain legal: withContext is
+    // not inline, so a non-local return out of its lambda would not compile.
+    override suspend fun sync(local: AppData): SyncResult =
+        withContext(Dispatchers.IO) { syncBlocking(local) }
+
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult =
+        withContext(Dispatchers.IO) { uploadPhotoBlocking(data, mimeType) }
+
+    override suspend fun deletePhoto(filename: String): Unit =
+        withContext(Dispatchers.IO) { deletePhotoBlocking(filename) }
+
+    private fun syncBlocking(local: AppData): SyncResult {
         if (!ensureFreshAccessToken()) {
             return SyncResult(success = false, merged = local, error = "OAuth-Token abgelaufen und konnte nicht erneuert werden. Bitte erneut anmelden.")
         }
@@ -160,7 +177,7 @@ class GoogleDriveAdapter(
         }
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    private fun uploadPhotoBlocking(data: ByteArray, mimeType: String): PhotoUploadResult {
         if (!ensureFreshAccessToken()) error("OAuth-Token abgelaufen und konnte nicht erneuert werden.")
         val folderId = ensurePhotoFolder()
         val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
@@ -181,7 +198,7 @@ class GoogleDriveAdapter(
         return PhotoUploadResult(filename, "$driveApi/files/$id?alt=media")
     }
 
-    override suspend fun deletePhoto(filename: String) {
+    private fun deletePhotoBlocking(filename: String) {
         val found = findFile(filename) as? FindFileResult.Found ?: return
         client.newCall(Request.Builder().url("$driveApi/files/${found.id}").delete().build()).execute().close()
     }
