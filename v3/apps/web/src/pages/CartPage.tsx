@@ -11,11 +11,13 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
 import { hasServerSync, startAutofillJob, startSmartCartJob, pollAiJob } from '../utils/ai';
 import type { AiJobTraceStep } from '../utils/ai';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './CartPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
 
 export default function CartPage({ appData }: { appData: AppData }) {
+  const photoSrc = usePhotoUrl();
   const [viewing, setViewing] = useState<Polish | null>(null);
   const [showChooser, setShowChooser] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -247,7 +249,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
             <div className={styles.modalBody}>
               <div className={styles.detailPreview}>
                 {viewing.photo
-                  ? <img src={`/photos/${viewing.photo}`} alt={viewing.name} className={styles.detailPhoto} />
+                  ? <img src={photoSrc(viewing.photo)} alt={viewing.name} className={styles.detailPhoto} />
                   : <NailBottle color={viewing.color} finish={viewing.finish} status={viewing.status} brand={viewing.brand} />
                 }
               </div>

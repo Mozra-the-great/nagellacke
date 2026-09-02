@@ -51,7 +51,7 @@ async function refreshAccessToken(): Promise<boolean> {
 
 /** fetch + one transparent retry after refreshing on a 401 (no-op when an
  *  X-Api-Key is in use, since that never expires and can't be refreshed). */
-async function authedFetch(url: string, init: RequestInit): Promise<Response> {
+export async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...init.headers, ...authHeaders() } });
   if (res.status !== 401 || localStorage.getItem('nagellacke_v3_apikey')) return res;
   if (!(await refreshAccessToken())) return res;
