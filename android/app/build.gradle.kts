@@ -11,6 +11,25 @@ plugins {
 // Without it the release build is produced unsigned (safe for local development / CI without secrets).
 val keystoreFilePath: String? = System.getenv("KEYSTORE_FILE")
 
+// OAuth client IDs for the cloud-sync providers. These are per-installation values:
+// anyone self-hosting this app registers their own OAuth clients in the Google /
+// Microsoft / Dropbox developer consoles. They used to be hardcoded placeholder
+// strings in OAuthHelper.kt ("YOUR_GOOGLE_CLIENT_ID...") that were passed straight
+// into real OAuth requests (#271), with nothing anywhere saying they had to be
+// replaced. They are now supplied the same way the signing config is: an environment
+// variable, falling back to local.properties (gitignored), falling back to empty.
+//
+// Empty is a deliberate default rather than a placeholder: "" is unambiguously
+// "not configured", which OAuthClientIds.isConfigured() can test for, while a
+// placeholder string is indistinguishable from a real - and merely wrong - id.
+val localProperties = java.util.Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun oauthClientId(key: String): String =
+    System.getenv(key) ?: localProperties.getProperty(key) ?: ""
+
 android {
     namespace = "de.nagellacke"
     compileSdk = 35
@@ -25,6 +44,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         manifestPlaceholders["appAuthRedirectScheme"] = "nagellacke"
+
+        buildConfigField("String", "OAUTH_CLIENT_ID_GOOGLE", "\"${oauthClientId("OAUTH_CLIENT_ID_GOOGLE")}\"")
+        buildConfigField("String", "OAUTH_CLIENT_ID_MICROSOFT", "\"${oauthClientId("OAUTH_CLIENT_ID_MICROSOFT")}\"")
+        buildConfigField("String", "OAUTH_CLIENT_ID_DROPBOX", "\"${oauthClientId("OAUTH_CLIENT_ID_DROPBOX")}\"")
     }
 
     signingConfigs {

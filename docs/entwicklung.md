@@ -29,6 +29,35 @@ cd ../android
 Die Android-Tests sind reine JVM-Unit-Tests; ein `androidTest`/Instrumentation-Sourceset
 gibt es bewusst nicht.
 
+> Der Android-Build läuft in CI **nur** auf `android-v*`-Tags (`.github/workflows/android-release.yml`),
+> nicht bei Pull Requests. Änderungen unter `android/` sollten deshalb lokal mit
+> `./gradlew assembleDebug` gegengeprüft werden — oder der Workflow wird für den Branch
+> manuell über „Run workflow" angestoßen.
+
+## OAuth-Client-IDs für Cloud-Sync (Android)
+
+Google Drive, OneDrive und Dropbox brauchen jeweils eine **eigene** OAuth-Client-ID. Es gibt
+keine mitgelieferten: wer die App selbst hostet, registriert seine eigenen Clients. Bis #271
+standen an dieser Stelle Platzhalter (`YOUR_GOOGLE_CLIENT_ID…`) direkt im Quelltext, die
+ungeprüft in echte OAuth-Anfragen gingen.
+
+Die IDs kommen jetzt zur Build-Zeit rein — Umgebungsvariable schlägt `android/local.properties`
+(gitignored), sonst leer:
+
+| Schlüssel | Registrierung |
+|---|---|
+| `OAUTH_CLIENT_ID_GOOGLE` | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → OAuth-Client, Typ „Android" |
+| `OAUTH_CLIENT_ID_MICROSOFT` | [Microsoft Entra](https://entra.microsoft.com) → App registrations |
+| `OAUTH_CLIENT_ID_DROPBOX` | [Dropbox App Console](https://www.dropbox.com/developers/apps) |
+
+Als Redirect-URI ist überall `nagellacke://oauth` einzutragen.
+
+Fehlt eine ID, ist sie im Build der **leere String** — nicht ein Platzhalter. Das ist Absicht:
+leer heißt eindeutig „nicht eingerichtet" (`OAuthClientIds.isConfigured()`), während ein
+Platzhalter von einer echten, bloß falschen ID nicht zu unterscheiden ist.
+
+Vorlage samt Kommentaren: `android/local.properties.example`.
+
 ## Repo-Struktur
 
 ```
