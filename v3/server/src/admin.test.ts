@@ -218,6 +218,47 @@ describe('POST /api/admin/bootstrap', () => {
   });
 });
 
+// #275: same length/shape cap as self-registration, so an admin can't be
+// tricked (or trick themselves) into creating an account whose JWT bricks
+// itself with HTTP 431 on the very next request.
+describe('POST /api/admin/users — username length/shape validation (#275)', () => {
+  it('accepts a 64-character username (the maximum)', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token: adminToken } = await register(app, 'owner');
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/users',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { username: 'u'.repeat(64), password: 'password123' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects a 65-character username with 400', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token: adminToken } = await register(app, 'owner');
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/users',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { username: 'u'.repeat(65), password: 'password123' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a whitespace-only username with 400', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token: adminToken } = await register(app, 'owner');
+    const res = await app.inject({
+      method: 'POST', url: '/api/admin/users',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { username: '   ', password: 'password123' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe('.api_key startup validation (PR #216 review item 3)', () => {
   it('refuses to start (process.exit(1)) when .api_key exists but is empty, instead of failing open', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-admin-test-'));
