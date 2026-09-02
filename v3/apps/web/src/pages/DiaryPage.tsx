@@ -6,6 +6,7 @@ import PhotoField from '../components/PhotoField';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './DiaryPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -65,6 +66,7 @@ function resolveSwatches(m: Manicure, allPolishes: Polish[]): string[] {
 }
 
 export default function DiaryPage({ appData }: { appData: AppData }) {
+  const photoSrc = usePhotoUrl();
   const [viewing, setViewing] = useState<Manicure | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Manicure | null>(null);
@@ -190,7 +192,7 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
                 <div className={styles.entryTop}>
                   {thumb && (
                     <img
-                      src={`/photos/${thumb}`}
+                      src={photoSrc(thumb)}
                       alt={`Maniküre ${formatDate(m.date)}`}
                       className={styles.entryThumb}
                     />
@@ -238,9 +240,9 @@ export default function DiaryPage({ appData }: { appData: AppData }) {
 
       {viewing && (() => {
         const vPhotos = [
-          ...(viewing.photo ? [{ src: `/photos/${viewing.photo}`, label: 'Foto' }] : []),
+          ...(viewing.photo ? [{ src: photoSrc(viewing.photo), label: 'Foto' }] : []),
           ...PHOTO_SLOTS.filter((s) => viewing.photos?.[s.key]).map((s) => ({
-            src: `/photos/${viewing.photos![s.key]}`,
+            src: photoSrc(viewing.photos![s.key]!),
             label: s.label,
           })),
         ];

@@ -48,12 +48,20 @@ function colorDots(colors: string[] | undefined): string {
   return colors.map(c => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${safeColor(c)};border:1px solid rgba(0,0,0,.15);margin-right:2px;vertical-align:middle"></span>`).join('');
 }
 
-function photoTag(filename: string | undefined | null, alt: string, style = ''): string {
+/** Resolves a stored photo filename to a `src`. See generateReport's `photoSrc`. */
+type PhotoSrc = (filename: string) => string;
+
+function photoTag(filename: string | undefined | null, alt: string, photoSrc: PhotoSrc, style = ''): string {
   if (!filename) return '';
-  return `<img src="/photos/${encodeURIComponent(filename)}" alt="${escHtml(alt)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}" onerror="this.style.display='none'">`;
+  return `<img src="${escHtml(photoSrc(filename))}" alt="${escHtml(alt)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:8px;${style}" onerror="this.style.display='none'">`;
 }
 
-export function generateReport(data: AppData, period: 'week' | 'month', ref: Date): string {
+/**
+ * @param photoSrc Builds each photo's `src`. Since #269 `/photos/*` needs a signed
+ *   `?t=` token, and the report is opened as a blob: document where a relative
+ *   path wouldn't resolve against the app origin — pass `absolutePhotoUrl`.
+ */
+export function generateReport(data: AppData, period: 'week' | 'month', ref: Date, photoSrc: PhotoSrc): string {
   const { start, end, label } = getPeriodBounds(period, ref);
 
   const inPeriod = (ts: number) => ts >= start.getTime() && ts <= end.getTime();
@@ -209,7 +217,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
     ? `<div class="cards-grid">${newPolishes.map((p: Polish) => `
       <div class="polish-card">
         ${p.photo
-          ? `<div class="polish-photo">${photoTag(p.photo, p.name)}</div>`
+          ? `<div class="polish-photo">${photoTag(p.photo, p.name, photoSrc)}</div>`
           : `<div class="polish-swatch" style="background:${safeColor(p.color)}15">
                <span style="width:48px;height:48px;border-radius:50%;background:${safeColor(p.color)};display:inline-block;box-shadow:0 2px 8px rgba(0,0,0,.2)"></span>
              </div>`}
@@ -226,7 +234,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
   const stickerCards = newStickers.length
     ? `<div class="cards-grid">${newStickers.map((s: Sticker) => `
       <div class="sticker-card">
-        <div class="sticker-photo">${photoTag(s.photo, s.name, 'width:100%;height:100%;object-fit:cover') || '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;">✨</div>'}</div>
+        <div class="sticker-photo">${photoTag(s.photo, s.name, photoSrc, 'width:100%;height:100%;object-fit:cover') || '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;">✨</div>'}</div>
         <div class="sticker-body">
           <div class="sticker-name">${escHtml(s.name)}</div>
           <div class="sticker-type">${escHtml(s.type)}${s.brand ? ` · ${escHtml(s.brand)}` : ''}</div>
@@ -250,7 +258,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
           <div class="manicure-date">${new Date(m.date).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
           ${displayPhotos.length ? `
             <div class="manicure-photos">
-              ${displayPhotos.map(f => `<div class="manicure-photo-slot">${photoTag(f, 'Maniküre-Foto')}</div>`).join('')}
+              ${displayPhotos.map(f => `<div class="manicure-photo-slot">${photoTag(f, 'Maniküre-Foto', photoSrc)}</div>`).join('')}
               ${Array.from({ length: 4 - displayPhotos.length }, () => '<div class="manicure-photo-slot"></div>').join('')}
             </div>` : ''}
           ${polishChips ? `<div class="polish-chips">${polishChips}</div>` : ''}

@@ -1,5 +1,6 @@
 package de.nagellacke.data.sync
 
+import android.net.Uri
 import android.util.Base64
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import de.nagellacke.BuildConfig
@@ -76,9 +77,42 @@ class ServerAdapter(
 
     private suspend fun <T> withAuthRetry(block: suspend () -> T): T = authRetry.run(block)
 
+    // ── Photo access token (server #269) ──────────────────────────────────────────
+    // /photos/* no longer serves unauthenticated requests. Coil fetches those URLs
+    // through its own HTTP stack, not through this adapter's Retrofit client, so it
+    // never sees the Authorization interceptor above — the credential has to travel
+    // in the URL instead, as a short-lived signed token.
+    //
+    // photoUrl() is a non-suspend interface method and therefore cannot mint one on
+    // demand; the token is refreshed from the suspending paths that already run
+    // before photos are displayed (sync, uploadPhoto). Kept in memory only, never
+    // persisted: a photo credential that outlives the process is exactly what #269
+    // set out to remove.
+    @Volatile private var photoToken: String? = null
+    @Volatile private var photoTokenExpiresAt = 0L
+
+    /** Re-mint this long before expiry so a screen full of photos never races it. */
+    private val photoTokenMarginMs = 60_000L
+
+    private suspend fun refreshPhotoTokenIfNeeded() {
+        if (photoToken != null && System.currentTimeMillis() < photoTokenExpiresAt - photoTokenMarginMs) return
+        try {
+            val response = withAuthRetry { api.photoToken() }
+            val token = response.token
+            if (token != null && response.expiresAt > 0) {
+                photoToken = token
+                photoTokenExpiresAt = response.expiresAt
+            }
+        } catch (e: Exception) {
+            // A server predating #269 answers 404 and still serves photos without a
+            // token, so this must never fail the surrounding sync/upload.
+        }
+    }
+
     override suspend fun sync(local: AppData): SyncResult = runCatching {
         // POST /api/sync merges + persists on the server and returns the merged data
         val response = withAuthRetry { api.postSync(SyncRequest(data = local, clientTime = System.currentTimeMillis())) }
+        refreshPhotoTokenIfNeeded()
         val merged = mergeData(local, response.data)
         SyncResult(success = true, merged = merged)
     }.getOrElse { e ->
@@ -93,6 +127,7 @@ class ServerAdapter(
     override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
         val base64 = Base64.encodeToString(data, Base64.NO_WRAP)
         val response = withAuthRetry { api.uploadPhoto(PhotoRequest(data = base64, mimeType = mimeType)) }
+        refreshPhotoTokenIfNeeded()
         return PhotoUploadResult(filename = response.filename, url = photoUrl(response.filename))
     }
 
@@ -100,8 +135,11 @@ class ServerAdapter(
         withAuthRetry { api.deletePhoto(filename) }
     }
 
-    override fun photoUrl(filename: String): String =
-        "${config.serverUrl.trimEnd('/')}/photos/${filename}"
+    override fun photoUrl(filename: String): String {
+        val base = "${config.serverUrl.trimEnd('/')}/photos/${filename}"
+        val token = photoToken ?: return base
+        return base + "?t=" + Uri.encode(token)
+    }
 
     /**
      * The signed-in account's role, or null when it cannot be determined — an offline

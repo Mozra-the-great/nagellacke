@@ -203,3 +203,40 @@ describe('logAdminAction / getAuditLog', () => {
     expect(JSON.stringify(entries)).toContain('"pass"');
   });
 });
+
+describe('AI jobs file permissions (#274)', () => {
+  it('writes ai_jobs.json with mode 0600, not the umask-inherited default', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.addAiJob({
+      id: 'job-1',
+      type: 'autofill',
+      status: 'pending',
+      username: 'alice',
+      input: { polish: { name: 'Test', brand: 'Brand', num: '1' } },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    const filePath = path.join(dir, 'ai_jobs.json');
+    const mode = fs.statSync(filePath).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it('keeps mode 0600 after an update rewrites the file', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.addAiJob({
+      id: 'job-2',
+      type: 'smart-cart',
+      status: 'pending',
+      username: 'bob',
+      input: { prompt: 'find a red polish' },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    db.updateAiJob('job-2', { status: 'done', result: { ok: true } });
+    const filePath = path.join(dir, 'ai_jobs.json');
+    const mode = fs.statSync(filePath).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+});

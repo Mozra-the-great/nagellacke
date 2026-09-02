@@ -95,6 +95,47 @@ describe('POST /api/auth/login — regression guard (no 2FA)', () => {
   });
 });
 
+describe('POST /api/auth/login — username enumeration via timing (#268)', () => {
+  // A millisecond-based timing assertion is exactly the kind of test that's
+  // flaky in CI (shared/throttled runners, GC pauses, scrypt's own jitter),
+  // so this deliberately does NOT assert on elapsed time. Instead it checks
+  // the structural fix directly: a non-existent username now runs a dummy
+  // verifyPassword() call of the same cost as the real one (same scryptSync
+  // params, via the same DUMMY_PASSWORD_HASH shape as a real hash) rather
+  // than short-circuiting instantly — which is what actually closes the
+  // timing side-channel. That's covered by:
+  //   1. the response for a non-existent user is byte-for-byte identical
+  //      (status + body) to the response for a wrong password on a real
+  //      user — already true before this fix, and still true after;
+  //   2. an empty password is rejected before either branch runs any
+  //      scrypt hash at all, for both an existing and a non-existent
+  //      username — i.e. the fix must not make the already-fast empty-
+  //      password path slower or behave differently than before.
+  it('returns an identical 401 body for a non-existent username and a wrong password on a real one', async () => {
+    const username = freshUsername();
+    await register(username);
+
+    const wrongPasswordRes = await login(username, 'totally-wrong-password');
+    const noSuchUserRes = await login(`${username}-does-not-exist`, 'totally-wrong-password');
+
+    expect(wrongPasswordRes.statusCode).toBe(401);
+    expect(noSuchUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.json()).toEqual(wrongPasswordRes.json());
+  });
+
+  it('rejects an empty password identically for an existing and a non-existent username, without hashing', async () => {
+    const username = freshUsername();
+    await register(username);
+
+    const existingUserRes = await login(username, '');
+    const noSuchUserRes = await login(`${username}-does-not-exist`, '');
+
+    expect(existingUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.statusCode).toBe(401);
+    expect(noSuchUserRes.json()).toEqual(existingUserRes.json());
+  });
+});
+
 describe('§0 typ-claim fix', () => {
   it('rejects a refresh token on a protected route (the pre-existing hole this PR closes)', async () => {
     const username = freshUsername();
@@ -318,6 +359,43 @@ describe('POST /api/auth/totp/setup and /enable are blocked while 2FA is already
 });
 
 describe('POST /api/auth/totp/disable', () => {
+  // #276: /disable used to run disableTotp() unconditionally, and that bumps
+  // token_version - so a defensive or duplicate call on an account that never had
+  // 2FA logged the user out everywhere while reporting { ok: true }.
+  it('rejects with 400 when 2FA was never enabled, without touching other sessions', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    // A second, independent session that must survive the call below.
+    const otherLogin = await login(username);
+    const { token: otherToken } = otherLogin.json() as { token: string };
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/totp/disable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('2FA ist nicht aktiviert');
+
+    for (const t of [token, otherToken]) {
+      const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${t}` } });
+      expect(meRes.statusCode).toBe(200);
+    }
+  });
+
+  it('checks the password before revealing whether 2FA is enabled', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/totp/disable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'definitely-wrong' },
+    });
+    // 401 (password), not 400 ("2FA ist nicht aktiviert") - the guard must not
+    // turn this endpoint into a 2FA-status oracle for a stolen token.
+    expect(res.statusCode).toBe(401);
+  });
+
   it('rejects without the correct password', async () => {
     const username = freshUsername();
     const { secret } = await registerWithTotpEnabled(username);
@@ -658,5 +736,65 @@ describe('#217: POST /api/sync and /api/sync/push validate the request body', ()
       },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+// #275: an unbounded username ends up embedded verbatim in every issued JWT,
+// which rides along as an HTTP header on every subsequent request. Past a
+// certain length that header alone exceeds the server's/proxy's max header
+// size, and the account is permanently bricked with HTTP 431 - before
+// Fastify even routes the request. These guard the length cap that prevents
+// that at registration time.
+describe('POST /api/auth/register — username length/shape validation (#275)', () => {
+  it('accepts a 64-character username (the maximum)', async () => {
+    const username = 'u'.repeat(64);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects a 65-character username with 400', async () => {
+    const username = 'u'.repeat(65);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it('rejects an oversized username (the actual #275 scenario) with 400, not by minting a giant JWT', async () => {
+    const username = 'u'.repeat(100_000);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username, password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an empty username with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: '', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a whitespace-only username with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: '   \t  ', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a username containing control characters with 400', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { username: 'bad\x00name', password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
