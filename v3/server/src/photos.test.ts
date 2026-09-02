@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 const JWT_SECRET = 'test-jwt-secret-do-not-use-in-prod';
 let buildApp: typeof import('./index').buildApp;
 let signPhotoToken: typeof import('./photoToken').signPhotoToken;
+let verifyPhotoToken: typeof import('./photoToken').verifyPhotoToken;
 
 beforeAll(async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-photos-test-'));
@@ -17,7 +18,7 @@ beforeAll(async () => {
   process.env.ALLOWED_ORIGIN = 'http://localhost';
   process.env.ALLOW_REGISTRATION = 'true';
   ({ buildApp } = await import('./index'));
-  ({ signPhotoToken } = await import('./photoToken'));
+  ({ signPhotoToken, verifyPhotoToken } = await import('./photoToken'));
 });
 
 let app: FastifyInstance;
@@ -163,6 +164,30 @@ describe('GET /photos/* access control (#269)', () => {
 
     const wrongRes = await app.inject({ method: 'GET', url: `/photos/${other}?t=${encodeURIComponent(scoped)}` });
     expect(wrongRes.statusCode).toBe(403);
+  });
+
+  it('mints a working token from X-Api-Key and rejects a forged k-token', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+
+    // The API key is generated at first boot and stored under DATA_DIR.
+    const apiKey = fs.readFileSync(path.join(process.env.DATA_DIR as string, '.api_key'), 'utf-8').trim();
+
+    const minted = await app.inject({
+      method: 'GET', url: '/api/photos/token', headers: { 'x-api-key': apiKey },
+    });
+    expect(minted.statusCode).toBe(200);
+    const { token: photoToken } = minted.json() as { token: string };
+
+    const ok = await app.inject({ method: 'GET', url: `/photos/${filename}?t=${encodeURIComponent(photoToken)}` });
+    expect(ok.statusCode).toBe(200);
+
+    // The k flag selects a signing secret derived from the API key, so the same
+    // token must not verify under the plain user secret - which is what makes a
+    // key rotation revoke it.
+    expect(verifyPhotoToken(photoToken, JWT_SECRET)).toBeNull();
+    expect(verifyPhotoToken(photoToken, JWT_SECRET, { apiKey })).not.toBeNull();
+    expect(verifyPhotoToken(photoToken, JWT_SECRET, { apiKey: 'a-rotated-key' })).toBeNull();
   });
 
   it('revokes outstanding photo tokens on logout-all — the revocation path #269 asked for', async () => {

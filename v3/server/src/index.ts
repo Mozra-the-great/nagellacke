@@ -27,7 +27,7 @@ import type { SearchBackend } from './websearch';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
-import { signPhotoToken, verifyPhotoToken, apiKeyDigest } from './photoToken';
+import { signPhotoToken, verifyPhotoToken } from './photoToken';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
@@ -277,7 +277,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const exp = Math.floor(Date.now() / 1000) + PHOTO_TOKEN_TTL;
     const key = request.headers['x-api-key'];
     if (typeof key === 'string' && key) {
-      return { token: signPhotoToken({ exp, u: '', k: apiKeyDigest(API_KEY) }, JWT_SECRET), expiresAt: exp * 1000 };
+      return { token: signPhotoToken({ exp, u: '', k: true }, JWT_SECRET, API_KEY), expiresAt: exp * 1000 };
     }
     const { username } = request.user as { username: string };
     return {
@@ -447,16 +447,15 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { t } = request.query as { t?: string };
     if (typeof t !== 'string' || !t) return unauthorized();
-    const payload = verifyPhotoToken(t, JWT_SECRET);
+    const payload = verifyPhotoToken(t, JWT_SECRET, { apiKey: API_KEY });
     if (!payload) return unauthorized();
 
-    if (payload.k) {
-      // Minted from the API key: rotating the key revokes every such token.
-      if (payload.k !== apiKeyDigest(API_KEY)) return unauthorized();
-    } else {
-      // Minted for a user: /api/auth/logout-all bumps token_version and so
-      // revokes outstanding photo links too - that is the revocation path #269
-      // asked for.
+    // A `k` token (minted from X-Api-Key) needs nothing further: it only verifies
+    // under a secret derived from the key currently in force, so rotating the key
+    // already revoked it. A user token additionally has to match the account's
+    // current token_version - that is how /api/auth/logout-all revokes outstanding
+    // photo links, the revocation path #269 asked for.
+    if (!payload.k) {
       const user = getUser(payload.u);
       if (!user || (payload.tv ?? 0) !== (user.token_version ?? 0)) return unauthorized();
     }
