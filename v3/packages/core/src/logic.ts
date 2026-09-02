@@ -1,21 +1,36 @@
 import type { Polish, Sticker, Manicure, Category, FilterState, AppData } from './types';
 import { hexToHue, normalizeFinish } from './utils';
 
+/**
+ * Case-folds a field for substring matching, tolerating a missing value.
+ *
+ * `name`/`brand`/`num` are typed as required, but a v2 import, an AI autofill or a
+ * corrupted sync can still leave them undefined at runtime — the same class of bad
+ * record #218 already guards against elsewhere. In the search chain below that was
+ * not merely a wrong result but a crash: the `||` chain short-circuits, so a query
+ * matching `name` never evaluated `num`, while a query that matched nothing earlier
+ * — a *number*, typically — reached `p.num.toLowerCase()` and threw a TypeError that
+ * took the whole collection view down (#284).
+ */
+function lc(value: string | undefined | null): string {
+  return typeof value === 'string' ? value.toLowerCase() : '';
+}
+
 export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
   return polishes.filter((p) => {
     if (p.deletedAt) return false;
     if (f.status && p.status !== f.status) return false;
-    if (f.finish && !p.finish.includes(f.finish)) return false;
+    if (f.finish && !p.finish?.includes(f.finish)) return false;
     if (f.brand && p.brand !== f.brand) return false;
     if (f.category && !p.categories?.includes(f.category)) return false;
     if (f.search) {
       const q = f.search.toLowerCase();
       return (
-        p.name.toLowerCase().includes(q) ||
-        p.brand.toLowerCase().includes(q) ||
-        p.num.toLowerCase().includes(q) ||
-        p.finish.some((fn) => fn.toLowerCase().includes(q)) ||
-        (p.notes ?? '').toLowerCase().includes(q)
+        lc(p.name).includes(q) ||
+        lc(p.brand).includes(q) ||
+        lc(p.num).includes(q) ||
+        (p.finish ?? []).some((fn) => lc(fn).includes(q)) ||
+        lc(p.notes).includes(q)
       );
     }
     return true;
@@ -23,12 +38,15 @@ export function filterPolishes(polishes: Polish[], f: FilterState): Polish[] {
 }
 
 export function sortPolishes(polishes: Polish[], sort: FilterState['sort']): Polish[] {
+  // Same missing-field tolerance as filterPolishes: sorting runs on the very same
+  // records, so a name/brand that is undefined at runtime would throw here instead
+  // (#284). An entry without the sort key just sorts as if it were empty.
   return [...polishes].sort((a, b) => {
     switch (sort) {
-      case 'newest':  return b.createdAt - a.createdAt;
-      case 'oldest':  return a.createdAt - b.createdAt;
-      case 'name':    return a.name.localeCompare(b.name);
-      case 'brand':   return a.brand.localeCompare(b.brand);
+      case 'newest':  return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+      case 'oldest':  return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+      case 'name':    return lc(a.name).localeCompare(lc(b.name));
+      case 'brand':   return lc(a.brand).localeCompare(lc(b.brand));
       case 'hue':     return hexToHue(a.color) - hexToHue(b.color);
       case 'rating':  return (b.rating ?? 0) - (a.rating ?? 0);
       default:        return 0;
@@ -39,12 +57,12 @@ export function sortPolishes(polishes: Polish[], sort: FilterState['sort']): Pol
 export function filterStickers(stickers: Sticker[], search: string): Sticker[] {
   if (!search) return stickers.filter((s) => !s.deletedAt);
   const q = search.toLowerCase();
+  // `name` is required on the type but can be missing on an imported record, and a
+  // sticker search hits the same crash as #284 does for polishes.
   return stickers.filter(
     (s) =>
       !s.deletedAt &&
-      (s.name.toLowerCase().includes(q) ||
-        (s.brand ?? '').toLowerCase().includes(q) ||
-        (s.style ?? '').toLowerCase().includes(q)),
+      (lc(s.name).includes(q) || lc(s.brand).includes(q) || lc(s.style).includes(q)),
   );
 }
 

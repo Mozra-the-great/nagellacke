@@ -6,7 +6,8 @@ import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
 import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
-import { uploadPhoto } from '../utils/photos';
+import { uploadPhoto, authedFetch } from '../utils/photos';
+import { ensurePhotoToken, absolutePhotoUrl } from '../utils/photoToken';
 import { generateReport } from '../utils/report';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
@@ -312,7 +313,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       let skipped = 0;
       for (const filename of filenames) {
         try {
-          const res = await fetch(`/photos/${encodeURIComponent(filename)}`);
+          // authedFetch, not fetch: /photos/* requires a credential since #269,
+          // and a header is the right one here (this isn't an <img> tag).
+          const res = await authedFetch(`/photos/${encodeURIComponent(filename)}`);
           if (!res.ok) { skipped++; continue; }
           const blob = await res.blob();
           zip.folder('photos')!.file(filename, blob);
@@ -707,10 +710,14 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     }
   };
 
-  const openReport = () => {
+  const openReport = async () => {
+    // The report's <img> tags need a signed photo token (#269), and the blob:
+    // document they end up in can't resolve a relative /photos/ path against
+    // the app origin - hence absolutePhotoUrl.
+    await ensurePhotoToken();
     // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
     // which shifts getPeriodBounds off by one day in UTC-offset timezones.
-    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'));
+    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'), absolutePhotoUrl);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
@@ -1062,7 +1069,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         </label>
 
         <div className={styles.btnRow} style={{ marginBottom: 20 }}>
-          <button className={styles.saveBtn} onClick={openReport}>
+          <button className={styles.saveBtn} onClick={() => { void openReport(); }}>
             📄 Bericht erstellen
           </button>
           <p className={styles.fieldHelpText} style={{ alignSelf: 'center', margin: 0 }}>

@@ -5,6 +5,7 @@ import type { useAppData } from '../useAppData';
 import PhotoField from '../components/PhotoField';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './StickersPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -17,6 +18,7 @@ type FormState = {
 };
 
 export default function StickersPage({ appData }: { appData: AppData }) {
+  const photoSrc = usePhotoUrl();
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<Sticker | null>(null);
   const [editing, setEditing] = useState<Sticker | null>(null);
@@ -101,7 +103,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
           <div key={s.id} className={styles.item}>
             <button type="button" className={styles.openBtn} onClick={() => setViewing(s)} aria-label={`${s.name} ansehen`}>
               {s.photo
-                ? <img src={`/photos/${s.photo}`} alt={s.name} className={styles.itemThumb} />
+                ? <img src={photoSrc(s.photo)} alt={s.name} className={styles.itemThumb} />
                 : (
                   <div className={styles.itemColors}>
                     {(s.colors ?? ['#ccc']).slice(0, 3).map((c, i) => (
@@ -140,7 +142,7 @@ export default function StickersPage({ appData }: { appData: AppData }) {
             </div>
             <div className={styles.modalBody}>
               {viewing.photo && (
-                <img src={`/photos/${viewing.photo}`} alt={viewing.name} className={styles.detailPhoto} />
+                <img src={photoSrc(viewing.photo)} alt={viewing.name} className={styles.detailPhoto} />
               )}
               {!viewing.photo && (viewing.colors ?? []).length > 0 && (
                 <div className={styles.detailColors}>
