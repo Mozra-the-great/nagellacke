@@ -5,6 +5,8 @@ import de.nagellacke.BuildConfig
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -35,7 +37,7 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
     private val davBase = "$base/remote.php/dav/files/${config.nextcloudUser}"
     private val dataUrl = "$davBase/nagellacke/nagellacke-data.json"
 
-    private suspend fun ensureDir(path: String) {
+    private fun ensureDir(path: String) {
         val url = "$davBase/$path"
         val check = client.newCall(
             Request.Builder().url(url).method("PROPFIND", null)
@@ -68,7 +70,22 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         }
     }
 
-    override suspend fun sync(local: AppData): SyncResult = try {
+    // Every network call in this adapter is OkHttp's *synchronous* execute(), and
+    // syncNow() launches on viewModelScope (Dispatchers.Main) - so without this hop
+    // the call ran on the main thread and Android threw NetworkOnMainThreadException
+    // unconditionally, crashing "Sync jetzt" (#270). The blocking bodies stay plain
+    // (non-suspend) functions so their early `return`s remain legal: withContext is
+    // not inline, so a non-local return out of its lambda would not compile.
+    override suspend fun sync(local: AppData): SyncResult =
+        withContext(Dispatchers.IO) { syncBlocking(local) }
+
+    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult =
+        withContext(Dispatchers.IO) { uploadPhotoBlocking(data, mimeType) }
+
+    override suspend fun deletePhoto(filename: String): Unit =
+        withContext(Dispatchers.IO) { deletePhotoBlocking(filename) }
+
+    private fun syncBlocking(local: AppData): SyncResult = try {
         ensureDir("nagellacke")
         when (val fetch = fetchRemote()) {
             is RemoteFetchResult.Error -> SyncResult(success = false, merged = local, error = fetch.message)
@@ -90,7 +107,7 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         SyncResult(success = false, merged = local, error = e.message)
     }
 
-    override suspend fun uploadPhoto(data: ByteArray, mimeType: String): PhotoUploadResult {
+    private fun uploadPhotoBlocking(data: ByteArray, mimeType: String): PhotoUploadResult {
         ensureDir("nagellacke/photos")
         val filename = "${UUID.randomUUID()}.${extensionForMimeType(mimeType)}"
         val url = "$davBase/nagellacke/photos/$filename"
@@ -105,7 +122,7 @@ class NextcloudAdapter(private val config: SyncConfig) : SyncAdapter {
         return PhotoUploadResult(filename, url)
     }
 
-    override suspend fun deletePhoto(filename: String) {
+    private fun deletePhotoBlocking(filename: String) {
         client.newCall(
             Request.Builder().url("$davBase/nagellacke/photos/$filename")
                 .delete().header("Authorization", authHeader).build()
