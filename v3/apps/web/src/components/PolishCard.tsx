@@ -20,17 +20,24 @@ export default function PolishCard({
   // `name` is typed as required, but a corrupted sync/import record can still
   // land here without one at runtime (#218).
   const name = polish.name || 'Unbenannt';
+  const isMuted = polish.status === 'empty' || polish.status === 'gone';
 
   return (
     // Plain, non-interactive container - a `role="button"` here containing
     // the real <button>s below (open/toggle/delete) would be invalid ARIA
     // (WCAG 4.1.2, #255). The "open details" affordance is its own <button>
     // below instead; viewToggle/deleteBtn stay siblings, not descendants of it.
-    <div className={styles.card}>
-      {(count > 1 || polish.status === 'wish') && (
+    <div className={isMuted ? `${styles.card} ${styles.muted}` : styles.card}>
+      {(count > 1 || polish.status === 'wish' || polish.status === 'empty' || polish.status === 'gone') && (
         <div className={styles.topBadges}>
           {polish.status === 'wish' && (
             <span className={styles.wishBadge} title="Wunschliste">🛒</span>
+          )}
+          {polish.status === 'empty' && (
+            <span className={styles.emptyBadge} title="Leer">Leer</span>
+          )}
+          {polish.status === 'gone' && (
+            <span className={styles.goneBadge} title="Nicht mehr da">Weg</span>
           )}
           {count > 1 && <span className={styles.countBadge}>{count}×</span>}
         </div>
