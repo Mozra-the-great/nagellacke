@@ -318,6 +318,43 @@ describe('POST /api/auth/totp/setup and /enable are blocked while 2FA is already
 });
 
 describe('POST /api/auth/totp/disable', () => {
+  // #276: /disable used to run disableTotp() unconditionally, and that bumps
+  // token_version - so a defensive or duplicate call on an account that never had
+  // 2FA logged the user out everywhere while reporting { ok: true }.
+  it('rejects with 400 when 2FA was never enabled, without touching other sessions', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    // A second, independent session that must survive the call below.
+    const otherLogin = await login(username);
+    const { token: otherToken } = otherLogin.json() as { token: string };
+
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/totp/disable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'correct-horse-battery' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('2FA ist nicht aktiviert');
+
+    for (const t of [token, otherToken]) {
+      const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${t}` } });
+      expect(meRes.statusCode).toBe(200);
+    }
+  });
+
+  it('checks the password before revealing whether 2FA is enabled', async () => {
+    const username = freshUsername();
+    const { token } = await register(username);
+    const res = await app.inject({
+      method: 'POST', url: '/api/auth/totp/disable',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { password: 'definitely-wrong' },
+    });
+    // 401 (password), not 400 ("2FA ist nicht aktiviert") - the guard must not
+    // turn this endpoint into a 2FA-status oracle for a stolen token.
+    expect(res.statusCode).toBe(401);
+  });
+
   it('rejects without the correct password', async () => {
     const username = freshUsername();
     const { secret } = await registerWithTotpEnabled(username);

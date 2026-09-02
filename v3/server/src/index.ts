@@ -1315,6 +1315,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!user || !password || !verifyPassword(password, user.password_hash)) {
       return reply.code(401).send({ error: 'Passwort erforderlich' });
     }
+    // Guard mirrors /recovery-codes/regenerate, and deliberately sits *after* the
+    // password check so it can't be used to probe whether an account has 2FA.
+    // Without it, disableTotp() ran unconditionally - and it bumps token_version
+    // unconditionally too, so a defensive or retried call on an account that never
+    // had 2FA silently logged the user out of every other device while reporting
+    // { ok: true } as if something had been turned off (#276).
+    if (!user.totp_enabled) {
+      return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
+    }
     disableTotp(username);
     const updated = getUser(username);
     return { ok: true, ...issueTokens(username, updated?.token_version ?? 0) };
