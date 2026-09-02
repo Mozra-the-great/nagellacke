@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { uploadPhoto, hasPhotoUploadAuth } from '../utils/photos';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './PhotoField.module.css';
 
 export default function PhotoField({
@@ -15,6 +16,7 @@ export default function PhotoField({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canUpload = hasPhotoUploadAuth();
+  const photoSrc = usePhotoUrl();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -35,7 +37,7 @@ export default function PhotoField({
   return (
     <div className={styles.wrap}>
       {value && (
-        <img src={`/photos/${value}`} alt={label} className={styles.preview} />
+        <img src={photoSrc(value)} alt={label} className={styles.preview} />
       )}
       <div className={styles.row}>
         <button

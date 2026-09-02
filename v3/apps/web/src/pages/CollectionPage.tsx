@@ -10,11 +10,13 @@ import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
 import { startAutofillJob, pollAiJob } from '../utils/ai';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
 
 export default function CollectionPage({ appData }: { appData: AppData }) {
+  const photoSrc = usePhotoUrl();
   const [filter, setFilter] = useState<FilterState>({
     search: '', finish: '', category: '', status: '', brand: '', sort: 'newest',
   });
@@ -131,7 +133,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
             <div className={styles.modalBody}>
               <div className={styles.detailPreview}>
                 {viewing.photo
-                  ? <img src={`/photos/${viewing.photo}`} alt={viewing.name} className={styles.detailPhoto} />
+                  ? <img src={photoSrc(viewing.photo)} alt={viewing.name} className={styles.detailPhoto} />
                   : <NailBottle color={viewing.color} finish={viewing.finish} status={viewing.status} brand={viewing.brand} />
                 }
               </div>

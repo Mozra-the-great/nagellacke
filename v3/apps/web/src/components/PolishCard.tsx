@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Polish } from '@nagellacke/core';
 import NailBottle from './NailBottle';
+import { usePhotoUrl } from '../utils/photoToken';
 import styles from './PolishCard.module.css';
 
 export default function PolishCard({
@@ -15,6 +16,7 @@ export default function PolishCard({
   onDelete: () => void;
 }) {
   const hasPhoto = !!polish.photo;
+  const photoSrc = usePhotoUrl();
   const [showPhoto, setShowPhoto] = useState(hasPhoto && defaultShowPhoto);
   const count = polish.count ?? 1;
   // `name` is typed as required, but a corrupted sync/import record can still
@@ -43,7 +45,7 @@ export default function PolishCard({
             finish={polish.finish}
             status={polish.status}
             brand={polish.brand}
-            photoUrl={hasPhoto && showPhoto ? `/photos/${polish.photo}` : undefined}
+            photoUrl={hasPhoto && showPhoto ? photoSrc(polish.photo!) : undefined}
           />
         </div>
 
