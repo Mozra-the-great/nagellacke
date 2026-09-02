@@ -65,6 +65,18 @@
   padding: 0 24px 12px;
   overflow-x: auto;
   scrollbar-width: none;
+  /* #283: the row scrolls horizontally with no scrollbar, so at narrow
+     widths the last select is cut off with no hint that more follows.
+     Fades the 24px edges (matching the row's own left/right padding, so
+     nothing actually visible at rest gets clipped) to signal "more this
+     way" wherever the row overflows. Static, not scroll-position-aware —
+     a minor inaccuracy once fully scrolled to one end — but needs no JS
+     and degrades harmlessly (just an unused fade in the padding) when the
+     row doesn't overflow at all. Works the same in light and dark since it
+     masks this element's own alpha rather than blending against a
+     particular background color underneath. */
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
 }
 
 .filters::-webkit-scrollbar { display: none; }
