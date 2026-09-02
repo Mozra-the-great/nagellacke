@@ -15,6 +15,36 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
 import retrofit2.Retrofit
 
+/**
+ * Process-wide holder for the current server's photo-access token (#269), keyed by server URL.
+ *
+ * The UI resolves photo URLs by constructing a fresh, throwaway [ServerAdapter] on every
+ * recomposition (see `photoResolution()` in `CollectionViewModel.kt`) — it only ever calls
+ * [ServerAdapter.photoUrl], never `sync()`/`uploadPhoto()`, so an instance-local token field on
+ * that adapter would always be null (#297). Routing the token through this shared object means
+ * whichever adapter last minted one (from `SyncManager.syncNow()`, `uploadPhoto()`, etc.) makes
+ * it visible to every adapter, including throwaway display-only ones.
+ *
+ * Kept in memory only, never persisted to disk — a photo credential that outlives the process is
+ * exactly what #269 set out to remove. Keyed by server URL, not shared globally, so switching to
+ * a different server's config can't leak a stale token from the previous one.
+ */
+private object PhotoTokenCache {
+    data class Entry(val token: String, val expiresAt: Long)
+
+    private var serverUrl: String? = null
+    private var entry: Entry? = null
+
+    @Synchronized
+    fun get(serverUrl: String): Entry? = entry.takeIf { this.serverUrl == serverUrl }
+
+    @Synchronized
+    fun put(serverUrl: String, token: String, expiresAt: Long) {
+        this.serverUrl = serverUrl
+        this.entry = Entry(token, expiresAt)
+    }
+}
+
 class ServerAdapter(
     private val config: SyncConfig,
     private val configStore: SyncConfigStore? = null,
@@ -85,23 +115,24 @@ class ServerAdapter(
     //
     // photoUrl() is a non-suspend interface method and therefore cannot mint one on
     // demand; the token is refreshed from the suspending paths that already run
-    // before photos are displayed (sync, uploadPhoto). Kept in memory only, never
-    // persisted: a photo credential that outlives the process is exactly what #269
-    // set out to remove.
-    @Volatile private var photoToken: String? = null
-    @Volatile private var photoTokenExpiresAt = 0L
+    // before photos are displayed (sync, uploadPhoto). Stored in the process-wide
+    // PhotoTokenCache rather than an instance field: photoResolution() builds a
+    // throwaway ServerAdapter purely to call photoUrl() (never sync()/uploadPhoto()),
+    // so an instance-local token would always be null there (#297). Still kept in
+    // memory only, never persisted: a photo credential that outlives the process is
+    // exactly what #269 set out to remove.
 
     /** Re-mint this long before expiry so a screen full of photos never races it. */
     private val photoTokenMarginMs = 60_000L
 
     private suspend fun refreshPhotoTokenIfNeeded() {
-        if (photoToken != null && System.currentTimeMillis() < photoTokenExpiresAt - photoTokenMarginMs) return
+        val cached = PhotoTokenCache.get(config.serverUrl)
+        if (cached != null && System.currentTimeMillis() < cached.expiresAt - photoTokenMarginMs) return
         try {
             val response = withAuthRetry { api.photoToken() }
             val token = response.token
             if (token != null && response.expiresAt > 0) {
-                photoToken = token
-                photoTokenExpiresAt = response.expiresAt
+                PhotoTokenCache.put(config.serverUrl, token, response.expiresAt)
             }
         } catch (e: Exception) {
             // A server predating #269 answers 404 and still serves photos without a
@@ -137,7 +168,7 @@ class ServerAdapter(
 
     override fun photoUrl(filename: String): String {
         val base = "${config.serverUrl.trimEnd('/')}/photos/${filename}"
-        val token = photoToken ?: return base
+        val token = PhotoTokenCache.get(config.serverUrl)?.token ?: return base
         return base + "?t=" + Uri.encode(token)
     }
 
