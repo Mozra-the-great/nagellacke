@@ -271,7 +271,7 @@ export default function AdminPage() {
         <div className={styles.catList}>
           {users.map((u) => (
             <div key={u.username} className={styles.catItem}>
-              <span>
+              <span className={styles.catItemLabel}>
                 {u.username} {u.role === 'admin' && <span className={styles.fieldHint}>(Admin)</span>}
                 {u.email && <span className={styles.fieldHint}> · {u.email}</span>}
               </span>

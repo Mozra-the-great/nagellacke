@@ -62,10 +62,11 @@
 
 .catList { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .catItem {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
   padding: 10px 14px; background: var(--md-surface-variant); border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 14px; row-gap: 8px;
 }
+.catItemLabel { min-width: 0; overflow-wrap: break-word; word-break: break-word; }
 .catDeleteBtn { font-size: 18px; color: var(--md-on-surface-variant); line-height: 1; }
 .catEmpty { font-size: 13px; color: var(--md-on-surface-variant); padding: 4px 0; }
 .catAddRow { display: flex; gap: 8px; }
