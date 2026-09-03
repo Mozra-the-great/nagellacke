@@ -110,7 +110,7 @@ input { font: inherit; color: inherit; }
   --dur-slow: .8s;
   --ease-hand: cubic-bezier(.34, 1.15, .64, 1);
 
-  /* --- nail finish layers (studio hand), see section 10 --- */
+  /* --- finish overlays, consumed by #swatchTpl (see index.html) --- */
   --fx-shimmer: 0;
   --fx-chrome: 0;
   --fx-holo: 0;
@@ -314,6 +314,14 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   gap: var(--gap);
   align-items: center;
 }
+/* the hero art is a wide composition; an even split cramped it and left the
+   text column with slack it did not need. The gutter is narrower than the
+   global --gap: at 119px it starved the text column to 447px, which is 5px
+   short of what the three fact chips need to stay on one line. */
+.hero-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: clamp(2rem, 4vw, 3.5rem);
+}
 @media (max-width: 860px) {
   .two-col,
   .hero-grid { grid-template-columns: 1fr; }
@@ -348,8 +356,6 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
  */
 .hand-frame,
 .paper-card,
-.studio-controls,
-.studio-readout,
 #shelfDetail,
 .finishes,
 .diary-face,
@@ -371,8 +377,6 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 .hand-frame::after,
 .paper-card::after,
-.studio-controls::after,
-.studio-readout::after,
 #shelfDetail::after,
 .diary-face::after,
 .chart::after,
@@ -389,8 +393,6 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 
 /* variety: give a handful of components their own wobble so nothing
    lines up identically */
-.studio-controls { border-radius: var(--wobble-3); }
-.studio-controls::after { border-radius: var(--wobble-4); }
 .chart { border-radius: var(--wobble-4); }
 .chart::after { border-radius: var(--wobble-3); }
 #shelfDetail { border-radius: var(--wobble-2); }
@@ -440,7 +442,7 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
 }
 .hand-frame--chip::after { border-radius: var(--wobble-pill); inset: -3px; }
 
-/* note variant: sticky-note look, used for the studio readout & similar */
+/* note variant: sticky-note look, used for pinned side notes */
 .hand-frame--note {
   background: var(--paper-3);
   border-radius: var(--wobble-4);
@@ -543,7 +545,13 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
                    the topbar (and the page) wider than the viewport */
   max-width: 100%;
   padding-block: .2rem; /* room for focus ring */
+  /* `flex-end` on an overflowing scroll container clips the *start* of the
+     content and puts it out of reach of scrolling — on a phone the first two
+     links were cut in half with no way to bring them back. `safe` drops the
+     alignment back to start exactly when that would happen; the unprefixed
+     value stays first as the fallback for anything that doesn't know it. */
   justify-content: flex-end;
+  justify-content: safe flex-end;
 }
 
 .topbar nav a {
@@ -570,22 +578,48 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    9. HERO
    ========================================================================= */
 
-#hero .lead {
-  font-size: clamp(1rem, .95rem + .3vw, 1.15rem);
-  max-width: 46ch;
+/* The h1 used to read "Nagellacke" — the same word the logo already sets
+   40px above it — so the largest type on the page said nothing the visitor
+   didn't know. It now carries the actual pitch over two lines, which means
+   it also wants to be smaller than the single-word version: 5.6rem across
+   two lines overwhelmed the column and pushed the lead below the fold. */
+#hero h1 {
+  font-size: clamp(2.5rem, 1.9rem + 2.4vw, 4rem);
+  line-height: 1.08;
+  margin-bottom: .35em;
 }
 
-/* h1's own animated squiggle (see markup §3.1/9): thinner than the old
-   single arc, roughened, and drawn with a slightly offset accent
-   drop-shadow so it reads as two ballpoint passes rather than one bar */
+/* Only the last word is underlined, so the squiggle has to track that word
+   rather than the whole heading — hence the inline-block wrapper it can be
+   positioned against. */
+.h1-mark {
+  position: relative;
+  display: inline-block;
+}
+
+/* h1's own squiggle (see markup §3.1/9): thinner than the old single arc,
+   roughened, and drawn with a slightly offset accent drop-shadow so it reads
+   as two ballpoint passes rather than one bar. preserveAspectRatio="none" in
+   the markup is load-bearing — the box is far flatter than the 260x20 viewBox,
+   so the default letterboxing shrank the rule to ~80% of the word's width. */
 .squiggle {
   overflow: visible;
-  max-width: 100%;
-  margin-top: -.1em;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  width: 100%;
+  height: .22em;
+  margin-top: -.06em;
 }
 .squiggle path {
   stroke-width: 2;
   filter: url(#roughSoft) drop-shadow(1.6px 1.9px 0 var(--accent));
+}
+
+#hero .lead {
+  font-size: clamp(1.05rem, 1rem + .35vw, 1.2rem);
+  max-width: 42ch;
 }
 
 .btn {
@@ -633,21 +667,23 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-block: 1.5rem;
+  margin-block: 1.75rem;
 }
+.hero-actions .btn { min-width: 12.5rem; }
 
 /* the three "kein Tracking / …" scribbles — real markup: <ul class="fact-row"><li>… */
 .fact-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem 1.5rem;
-  margin-top: 1.5rem;
+  gap: .6rem 1rem;
+  margin-top: 1.75rem;
   padding: 0;
 }
 .fact-row li {
   font-family: var(--font-hand);
   font-weight: 600;
-  font-size: 1.3rem;
+  font-size: 1.15rem;
+  white-space: nowrap;
   color: var(--ink-soft);
   position: relative;
   padding-left: 1.3em;
@@ -663,8 +699,15 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    plain selector rather than a descendant combinator. Roughing the outer
    group + the bottle clones covers the whole scene without ever touching
    the "Lieblingslack ♥" text. */
+/* The still life is authored on a 420x350 viewBox, which at the column's
+   natural width left it noticeably smaller than the text column beside it —
+   the two halves ended at different heights and the section carried a large
+   empty band underneath. Letting it fill its column and pinning the aspect
+   ratio makes the halves resolve to comparable heights. */
 .hero-illustration {
   overflow: visible;
+  width: 100%;
+  height: auto;
 }
 .hero-illustration > g,
 .hero-illustration use {
@@ -677,308 +720,6 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    beats the rule above without needing !important. */
 .hero-illustration > g.hero-fine {
   filter: url(#roughSoft);
-}
-
-
-/* =========================================================================
-   10. STUDIO — palette, finishes, readout, the hand
-   ========================================================================= */
-
-/* the studio needs more elbow room than the standard container — the
-   control panel wants a genuinely wide, calm grid, and the hand wants to
-   stay large next to it — so it gets its own wider max-width */
-#studio.section {
-  max-width: 1240px;
-}
-
-#studio .layout,
-#studio .studio-grid {
-  display: grid;
-  /* even columns: the panel needs real width for a calm palette grid, the
-     hand stays large (near its own natural cap) and centred on the
-     panel's height */
-  grid-template-columns: 1fr 1fr;
-  gap: var(--gap);
-  align-items: center;
-}
-@media (max-width: 860px) {
-  #studio .layout,
-  #studio .studio-grid {
-    grid-template-columns: 1fr;
-  }
-  /* hand first, controls after, per spec 3.4 */
-  #studioHand, #studio svg[role="img"] { order: -1; }
-}
-
-.studio-hand-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .5rem;
-  position: sticky;
-  top: 5rem;
-}
-@media (max-width: 860px) {
-  .studio-hand-wrap { position: static; }
-}
-
-.studio-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  padding: clamp(1.25rem, 3vw, 1.75rem);
-}
-
-/* --- palette -------------------------------------------------------- */
-
-.palette {
-  display: grid;
-  /* the wider studio panel comfortably fits an even 6 columns (2 tidy rows
-     of 12 swatches) instead of leaving an orphaned last row */
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-  gap: .75rem 1rem;
-}
-
-.swatch {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .35rem;
-  padding: .25rem;
-  border-radius: var(--wobble-5);
-  /* containing block for [aria-pressed="true"]::after below — without this
-     its `inset:0` escapes to the nearest positioned ancestor instead
-     (.studio-controls), ballooning the selection ring to the whole card */
-  position: relative;
-}
-
-.swatch svg {
-  width: 48px;
-  height: 48px;
-  overflow: visible;
-  filter: url(#roughSoft);
-  transition: transform var(--dur-fast) var(--ease-hand);
-}
-
-/* colour blob fill: the path already carries style="fill:var(--polish)" —
-   same convention as the bottles / the studio hand. This fallback only
-   matters if --polish is ever missing on the button. */
-.swatch [data-blob],
-.swatch svg :is(path, circle, use) {
-  fill: var(--polish, var(--pencil-soft));
-}
-
-/* Defensive colour map: the 12 palette colours are fixed and known, so
-   set --polish straight from data-color even if the button's own inline
-   style is ever missing it — the swatch blobs must never render grey. */
-.swatch[data-color="#b3122e"] { --polish: #b3122e; }
-.swatch[data-color="#d98a9a"] { --polish: #d98a9a; }
-.swatch[data-color="#5a1f45"] { --polish: #5a1f45; }
-.swatch[data-color="#7a3b8f"] { --polish: #7a3b8f; }
-.swatch[data-color="#24418f"] { --polish: #24418f; }
-.swatch[data-color="#8fc7e8"] { --polish: #8fc7e8; }
-.swatch[data-color="#8aa87a"] { --polish: #8aa87a; }
-.swatch[data-color="#1f5f43"] { --polish: #1f5f43; }
-.swatch[data-color="#b9793f"] { --polish: #b9793f; }
-.swatch[data-color="#f2c14e"] { --polish: #f2c14e; }
-.swatch[data-color="#e9dfd2"] { --polish: #e9dfd2; }
-.swatch[data-color="#3a2a24"] { --polish: #3a2a24; }
-
-.swatch span {
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.05rem;
-  text-align: center;
-  color: var(--ink-soft);
-}
-
-.swatch:hover svg { transform: rotate(-3deg) scale(1.05); }
-
-.swatch[aria-pressed="true"] {
-  background: var(--paper-3);
-}
-.swatch[aria-pressed="true"] svg {
-  transform: scale(1.08);
-  filter: url(#roughSoft) drop-shadow(0 0 0 var(--accent));
-}
-.swatch[aria-pressed="true"] span {
-  color: var(--accent);
-  font-weight: 600;
-}
-.swatch[aria-pressed="true"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 2px dashed var(--accent);
-  border-radius: var(--wobble-5);
-  pointer-events: none;
-}
-
-/* --- own colour mixer ------------------------------------------------ */
-
-.own-color {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-}
-.own-color label {
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.3rem;
-}
-
-#ownColor {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 2px solid var(--ink);
-  border-radius: var(--wobble-3);
-  background: var(--paper);
-  cursor: pointer;
-  position: relative;
-}
-#ownColor::-webkit-color-swatch-wrapper { padding: 3px; }
-#ownColor::-webkit-color-swatch { border: none; border-radius: var(--wobble-4); }
-#ownColor::-moz-color-swatch { border: none; border-radius: var(--wobble-4); }
-
-/* --- finishes ---------------------------------------------------------- */
-
-.finishes {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: .6rem;
-  padding: 1rem;
-}
-@media (max-width: 480px) {
-  .finishes { grid-template-columns: repeat(2, 1fr); }
-}
-
-.finish {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .3rem;
-  padding: .5em .4em;
-  border: 1.5px solid var(--pencil-soft);
-  border-radius: var(--wobble-5);
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.15rem;
-  transition: transform var(--dur-fast) var(--ease-hand), border-color var(--dur-fast);
-}
-.finish:hover { transform: rotate(-1.5deg); }
-.finish svg {
-  width: 56px;
-  height: 56px;
-  overflow: visible;
-  filter: url(#roughSoft);
-}
-
-.finish[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--paper-3);
-  color: var(--accent);
-}
-
-/* --- readout note ------------------------------------------------------ */
-
-.studio-readout {
-  padding: 1.25rem 1.25rem 1rem;
-  background: var(--paper-3);
-  border-radius: var(--wobble-4);
-  transform: rotate(.6deg);
-}
-.studio-readout::after { border-radius: var(--wobble-3); }
-
-/* washi tape strip across the top corner */
-.studio-readout::before {
-  content: "";
-  position: absolute;
-  top: -14px;
-  left: 20%;
-  width: 90px;
-  height: 30px;
-  background: var(--tape);
-  transform: rotate(-4deg);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .08);
-}
-
-.studio-readout dl,
-.studio-readout p { margin: 0; }
-
-#swName {
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.75rem;
-  color: var(--ink);
-}
-#swHex {
-  font-family: var(--font-hand);
-  font-weight: 600;
-  color: var(--ink-soft);
-  font-size: 1.2rem;
-  letter-spacing: .05em;
-}
-#swFinish {
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.15rem;
-  color: var(--accent);
-}
-#swMood {
-  margin-top: .5rem;
-  font-family: var(--font-body);
-  font-style: italic;
-  color: var(--ink-soft);
-}
-
-.studio-controls .fine-print {
-  color: var(--pencil);
-}
-
-#addToShelf { align-self: flex-start; }
-
-#clearShelf {
-  font-family: var(--font-body);
-  font-size: .85rem;
-  color: var(--ink-soft);
-  text-decoration: underline;
-  padding: .3em 0;
-}
-
-
-/* =========================================================================
-   11. THE HAND — #studioHand & finish switching (spec 4.1)
-   ========================================================================= */
-
-#studioHand {
-  width: min(100%, 560px);
-  overflow: visible;
-  margin-inline: auto;
-  filter: url(#rough);
-}
-
-.nail-fill {
-  transition: fill .35s ease;
-}
-
-#studioHand[data-finish="shimmer"] { --fx-shimmer: 1; }
-#studioHand[data-finish="glitter"] { --fx-glitter: 1; }
-#studioHand[data-finish="chrome"]  { --fx-chrome: 1; }
-#studioHand[data-finish="holo"]    { --fx-holo: 1; }
-#studioHand[data-finish="matte"]   { --fx-matte: 1; --fx-gloss: 0; }
-/* classic: all fx layers stay at their :root defaults (0), gloss at .75 */
-
-.studio-hint,
-.hand-tip {
-  text-align: center;
-  font-family: var(--font-hand);
-  font-weight: 600;
-  font-size: 1.25rem;
-  color: var(--pencil);
-  margin-top: .75rem;
 }
 
 
@@ -1785,19 +1526,19 @@ html.js .reveal path[pathLength="100"]:nth-of-type(6) { transition-delay: 450ms;
 @media print {
   body::before { display: none; }
   body { background: #fff; color: #000; }
-  .topbar, .skip-link, .studio-controls, .filters, #addToShelf,
-  #clearShelf, .phone-tabs, .deco-tape, .deco-dogear, .deco-stain,
+  .topbar, .skip-link, .filters,
+  .phone-tabs, .deco-tape, .deco-dogear, .deco-stain,
   .deco-sparkle, .sprite {
     display: none !important;
   }
-  .hand-frame, .paper-card, .studio-readout, #shelfDetail, .chart, .legal,
+  .hand-frame, .paper-card, #shelfDetail, .chart, .legal,
   .diary-face {
     border-color: #000;
     background: #fff;
     box-shadow: none;
     background-image: none;
   }
-  .hand-frame::after, .paper-card::after, .studio-readout::after,
+  .hand-frame::after, .paper-card::after,
   #shelfDetail::after, .chart::after, .legal::after, .diary-face::after,
   .finishes::before, .diary-card::before, #zahlen::before {
     display: none;
