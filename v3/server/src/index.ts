@@ -1677,6 +1677,30 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.provider !== 'openrouter' && body.provider !== 'gemini') {
       return reply.code(400).send({ error: 'provider muss "openrouter" oder "gemini" sein' });
     }
+    // Every field below was written through on an `!== undefined` check alone, so a
+    // JSON number was stored under a key AiConfig types as `string` (#301). The type
+    // drift is the smaller half: searxngUrl is the one field the handler calls a
+    // method on (.trim()) before storing, so a number there threw a TypeError and the
+    // route answered 500 — a server error for a plainly malformed request.
+    // `undefined` stays valid throughout: omitting a field means "keep the current
+    // value", which is how the UI saves a model change without resending a key it
+    // was never shown.
+    const stringFields: ReadonlyArray<readonly [unknown, string]> = [
+      [body.openrouter?.apiKey, 'openrouter.apiKey'],
+      [body.openrouter?.model, 'openrouter.model'],
+      [body.gemini?.apiKey, 'gemini.apiKey'],
+      [body.gemini?.model, 'gemini.model'],
+      [body.webSearch?.searxngUrl, 'webSearch.searxngUrl'],
+      [body.webSearch?.braveApiKey, 'webSearch.braveApiKey'],
+    ];
+    for (const [value, field] of stringFields) {
+      if (value !== undefined && typeof value !== 'string') {
+        return reply.code(400).send({ error: `${field} muss ein String sein` });
+      }
+    }
+    if (body.openrouter?.freeOnly !== undefined && typeof body.openrouter.freeOnly !== 'boolean') {
+      return reply.code(400).send({ error: 'openrouter.freeOnly muss ein Boolean sein' });
+    }
     const current = getAiConfig();
     const config: AiConfig = {
       provider: body.provider,
