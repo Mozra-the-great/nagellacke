@@ -110,6 +110,165 @@
   }
 
   // =======================================================================
+  // 0. i18n (#250) — German is the canonical copy already in index.html;
+  // this only ever adds an English overlay on top of it. Static text goes
+  // through the generic [data-i18n] sweep in applyLang(); the shelf's
+  // per-bottle name/note (only shown after a click, not static markup) and
+  // the small "Finish: " / "× getragen" bits it builds are looked up
+  // through currentLang/UI_STRINGS/FINISH_EN directly from initShelf.
+  // =======================================================================
+  var LANG_KEY = 'nagellacke.lang';
+  var currentLang = 'de';
+  var langChangeListeners = [];
+  function onLangChange(fn) {
+    langChangeListeners.push(fn);
+  }
+
+  var UI_STRINGS = {
+    de: { finish: 'Finish: ', worn: '× getragen' },
+    en: { finish: 'Finish: ', worn: '× worn' }
+  };
+  // Only finish word that actually differs between the two languages —
+  // the rest (Classic/Shimmer/Glitter/Chrome/Holo) are the same in both.
+  var FINISH_EN = { Matt: 'Matte' };
+
+  // English text for every [data-i18n] key in index.html. Anything not
+  // listed here (or not found by an element's key) simply falls back to
+  // the German text already sitting in the DOM.
+  var DICT = {
+    'skip-link': 'Skip to content',
+    'nav-aria': 'Main navigation',
+    'nav-regal': 'Shelf',
+    'word-tagebuch': 'Diary',
+    'nav-app': 'App',
+    'nav-privacy': 'Privacy',
+    'lang-toggle-aria': 'Choose language / Sprache wählen',
+
+    'hero-kicker': 'Collect · Wear · Remember',
+    'hero-h1-a': 'Your polish collection',
+    'hero-h1-b': 'as a',
+    'hero-h1-c': 'Sketchbook',
+    'hero-lead':
+      'Keep your shelf, try out colors and finishes, and log every mani in the diary — with a photo, date, and a note on why that exact polish had to be the one that day.',
+    'hero-cta-primary': 'Browse the shelf',
+    'hero-cta-secondary': 'What the app can do',
+    'hero-fact-1': 'no tracking',
+    'hero-fact-2': 'your data stays with you',
+    'hero-fact-3': 'works offline',
+    'hero-svg-label': 'Favorite polish ♥',
+
+    'regal-h2': 'Your shelf',
+    'regal-lead':
+      "What you own, what's still on the wishlist, and what's sadly run dry — your whole collection at a glance.",
+    'filters-aria': 'Filter shelf',
+    'filter-all': 'All',
+    'filter-ok': 'In stock',
+    'filter-wish': 'Wishlist',
+    'filter-empty': 'Empty',
+    'shelf-empty': 'Nothing to see here — try a different filter.',
+    'shelf-placeholder': 'Tap a bottle on the shelf to learn more about it.',
+
+    'diary-h2': 'The diary',
+    'diary-lead':
+      "Which mani was on when, with a little note about it — to flip back through when you don't know what to wish for next.",
+    'diary-date-1': 'March 3',
+    'diary-polish-1': 'Cherry Pit Kiss',
+    'diary-note-1':
+      'Rainy Tuesday, coffee instead of tax returns. Lasted eleven days without a single chip.',
+    'diary-date-2': 'April 18',
+    'diary-polish-2': 'Pearl & Dusty Rose',
+    'diary-note-2':
+      'First spring walk in the park. Already slightly nibbled at the tips after a week.',
+    'diary-date-3': 'June 9',
+    'diary-polish-3': 'Ink Blue + Glitter Accent',
+    'diary-note-3':
+      "Birthday party at K.'s, the registry office the day after. The glitter held smoothly all the way to summer vacation.",
+    'diary-date-4': 'July 27',
+    'diary-polish-4': 'Sage with Flower Sticker',
+    'diary-note-4':
+      "Hot afternoon in the garden, applied the stickers a bit too early. Two had already fallen off after three days.",
+    'diary-tally': '4 of 132 entries',
+
+    'app-h2': 'What it looks like day to day',
+    'app-lead': 'Swipe through the views and see what everyday life with the app looks like.',
+    'phone-tabs-aria': 'Choose app view',
+    'word-sammlung': 'Collection',
+    'word-statistik': 'Stats',
+    'word-sticker': 'Stickers',
+    'panel-sammlung':
+      'Search your whole collection by color, brand, or finish, and see at a glance what’s still missing.',
+    'panel-tagebuch':
+      'Keep track of which polish you wore when — with a photo, date, and a few words about it.',
+    'panel-statistik': 'See which brands and color families really dominate your shelf.',
+    'panel-sticker':
+      'Also manage your nail art stickers and foils, ready for the next manicure.',
+    'platform-web': 'Web app in the browser',
+    'platform-offline': 'works offline',
+
+    'zahlen-h2': 'What your shelf reveals',
+    'zahlen-lead':
+      'After a few months of collecting, the shelf reveals a lot about your own taste.',
+    'chart-brands-h3': 'Top brands',
+    'chart-colors-h3': 'Color families',
+    'color-rot': 'Red',
+    'color-rose': 'Rose',
+    'color-blau': 'Blue',
+    'color-gruen': 'Green',
+    'color-nude': 'Nude',
+    'big-number-lacke': 'Polishes',
+    'big-number-manis': 'Manis',
+    'big-number-wuensche': 'Wishes',
+
+    'footer-note': 'Built with pencil, pen, and a bit of code.',
+    'footer-privacy': 'Privacy Policy',
+    'footer-top': 'Back to top',
+    'footer-github': 'Project on GitHub',
+    'footer-fine': 'A private, ad-free app. No cookies, no tracking on this page.'
+  };
+
+  function applyLang(lang) {
+    qsa('[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      var enText = DICT[key];
+      var attrName = el.getAttribute('data-i18n-attr');
+      if (attrName) {
+        if (el.__deAttr == null) el.__deAttr = el.getAttribute(attrName) || '';
+        el.setAttribute(attrName, lang === 'en' && enText ? enText : el.__deAttr);
+      } else {
+        if (el.__deText == null) el.__deText = el.textContent;
+        el.textContent = lang === 'en' && enText ? enText : el.__deText;
+      }
+    });
+
+    currentLang = lang;
+    document.documentElement.lang = lang;
+    qsa('.lang-btn').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.getAttribute('data-lang') === lang ? 'true' : 'false');
+    });
+    langChangeListeners.forEach(function (fn) {
+      fn(lang);
+    });
+  }
+
+  function initI18n() {
+    var buttons = qsa('.lang-btn');
+
+    var stored = lsGet(LANG_KEY);
+    var initial = stored === 'en' || stored === 'de' ? stored : 'de';
+    applyLang(initial);
+
+    if (!buttons.length) return;
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var lang = btn.getAttribute('data-lang') === 'en' ? 'en' : 'de';
+        if (lang === currentLang) return;
+        applyLang(lang);
+        lsSet(LANG_KEY, lang);
+      });
+    });
+  }
+
+  // =======================================================================
   // 1. Scroll reveal
   // =======================================================================
   function initReveal() {
@@ -148,7 +307,10 @@
     var shelf = qs('#shelf');
     if (!shelf) return;
 
-    var chips = qsa('.chip');
+    // Scoped to .filters: the DE/EN toggle buttons reuse the .chip class for
+    // its look, a bare qsa('.chip') would wrongly pull them into the filter
+    // group and reset their aria-pressed state on every filter click.
+    var chips = qsa('.filters .chip');
     var detail = qs('#shelfDetail');
     var clearBtn = qs('#clearShelf');
     var emptyMsg = qs('.shelf-empty') || qs('#shelfEmpty');
@@ -217,10 +379,11 @@
         // No explicit sub-elements provided in the markup: rebuild the
         // card content via DOM methods (never innerHTML).
         while (detail.firstChild) detail.removeChild(detail.firstChild);
+        var strings = UI_STRINGS[currentLang] || UI_STRINGS.de;
         var rows = [
           { cls: 'shelf-detail-name', text: data.name },
           { cls: 'shelf-detail-brand', text: data.brand },
-          { cls: 'shelf-detail-finish', text: 'Finish: ' + data.finish },
+          { cls: 'shelf-detail-finish', text: strings.finish + data.finish },
           { cls: 'shelf-detail-hex', text: data.hex },
           { cls: 'shelf-detail-worn', text: data.worn },
           { cls: 'shelf-detail-note', text: data.note }
@@ -243,13 +406,19 @@
       });
 
       var color = btn.getAttribute('data-color') || '';
+      var isEn = currentLang === 'en';
+      var name = (isEn && btn.getAttribute('data-name-en')) || btn.getAttribute('data-name') || '';
+      var note = (isEn && btn.getAttribute('data-note-en')) || btn.getAttribute('data-note') || '';
+      var finishRaw = btn.getAttribute('data-finish') || '';
+      var finish = (isEn && FINISH_EN[finishRaw]) || finishRaw;
+      var strings = UI_STRINGS[currentLang] || UI_STRINGS.de;
       fillDetail({
-        name: btn.getAttribute('data-name') || '',
+        name: name,
         brand: btn.getAttribute('data-brand') || '',
-        finish: btn.getAttribute('data-finish') || '',
+        finish: finish,
         hex: isValidHex(color) ? color.toUpperCase() : color,
-        worn: (btn.getAttribute('data-worn') || '0') + '× getragen',
-        note: btn.getAttribute('data-note') || ''
+        worn: (btn.getAttribute('data-worn') || '0') + strings.worn,
+        note: note
       });
     }
 
@@ -260,6 +429,22 @@
     }
 
     qsa('.bottle', shelf).forEach(bindBottle);
+
+    // Bottle names shown on the shelf itself (not just in the detail card)
+    // also need to follow the active language, and the selected bottle's
+    // detail card needs refreshing in place when the toggle is clicked.
+    function applyShelfLang() {
+      qsa('.bottle', shelf).forEach(function (b) {
+        var label = qs('.bottle-label', b);
+        if (!label) return;
+        var nameEn = b.getAttribute('data-name-en');
+        label.textContent = (currentLang === 'en' && nameEn) || b.getAttribute('data-name') || '';
+      });
+      var selected = qs('.bottle.is-selected', shelf);
+      if (selected) selectBottle(selected);
+    }
+    applyShelfLang();
+    onLangChange(applyShelfLang);
 
     // ---- Add to shelf + persistence ---------------------------------
     function loadStored() {
@@ -484,6 +669,7 @@
   function init() {
     initReveal();
     initShelf();
+    initI18n();
     initDiaryFlip();
     initAppTabs();
     initBars();

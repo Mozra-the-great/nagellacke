@@ -573,6 +573,19 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   padding-left: clamp(.75rem, 2vw, 1.5rem);
 }
 
+.lang-toggle {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex: none;
+  border-left: 1px dashed var(--pencil-soft);
+  padding-left: clamp(.75rem, 2vw, 1.5rem);
+}
+.lang-toggle .chip {
+  padding: .2em .65em;
+  font-size: .85rem;
+}
+
 
 /* =========================================================================
    9. HERO
