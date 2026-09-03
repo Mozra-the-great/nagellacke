@@ -32,16 +32,23 @@ function authHeaders(): Record<string, string> {
  */
 async function refreshAccessToken(): Promise<boolean> {
   const cfg = loadSyncConfig();
-  if (!cfg || cfg.provider !== 'server' || !cfg.serverRefreshToken) return false;
+  if (!cfg || cfg.provider !== 'server') return false;
   try {
     const res = await fetch('/api/auth/refresh', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: cfg.serverRefreshToken }),
+      // The refresh token is normally the httpOnly cookie now (#299), which only
+      // travels when credentials are requested. serverRefreshToken is sent when one
+      // is still in memory — that covers a session started before the cookie existed
+      // and an older server that never sets one.
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Nagellacke-Refresh': '1' },
+      body: JSON.stringify(cfg.serverRefreshToken ? { refreshToken: cfg.serverRefreshToken } : {}),
     });
     if (!res.ok) return false;
+    // refreshToken is absent on the cookie path by design — the renewed one lives in
+    // the Set-Cookie the browser just applied, where a script cannot reach it.
     const { token, refreshToken } = await res.json() as { token?: string; refreshToken?: string };
-    if (!token || !refreshToken) return false;
+    if (!token) return false;
     persistRefreshedTokens(token, refreshToken);
     return true;
   } catch {

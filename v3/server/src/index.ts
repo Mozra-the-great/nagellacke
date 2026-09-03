@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import staticFiles from '@fastify/static';
@@ -155,6 +156,70 @@ if (fs.existsSync(path.join(DATA_DIR, 'users.json'))) {
 // for a month (#109). Shortened to 7d, with a long-lived refresh token both
 // the web client and the Android app (see ServerAdapter.kt, #220) trade in
 // silently on a 401 — cutting the exposure window fourfold either way.
+/**
+ * The refresh token also travels as an httpOnly cookie so the web app never has to
+ * keep a 30-day credential anywhere a script can read it (#299).
+ *
+ * Scoped to /api/auth: no other route needs it, and a cookie that is not sent is a
+ * cookie that cannot be stolen off an unrelated request.
+ *
+ * SameSite depends on how the app is deployed, which ALLOWED_ORIGIN tells us:
+ *  - unset (the install.sh default) the SPA is served by this very server, so the
+ *    cookie is same-site and can be 'strict' — the strongest setting, and on its own
+ *    a complete answer to CSRF.
+ *  - set, the SPA lives on another origin (GitHub Pages, or a "Eigener Server" URL
+ *    pointing elsewhere). A strict cookie would simply never be sent, so it has to be
+ *    'none', which browsers only accept together with Secure — i.e. that deployment
+ *    has to be HTTPS, which a cross-origin one should be regardless. CSRF is then
+ *    covered by requireFetchHeader on the refresh route rather than by SameSite.
+ */
+const REFRESH_COOKIE = 'nl_refresh';
+const CROSS_ORIGIN_DEPLOYMENT = ALLOWED_ORIGIN !== '*';
+
+function refreshCookieOptions(): {
+  httpOnly: true; sameSite: 'strict' | 'none'; secure: boolean; path: string; maxAge: number;
+} {
+  return {
+    httpOnly: true,
+    sameSite: CROSS_ORIGIN_DEPLOYMENT ? 'none' : 'strict',
+    // 'none' is rejected by browsers without Secure, so a cross-origin deployment is
+    // HTTPS-only by construction. A same-origin one may well be plain http on a LAN,
+    // and marking the cookie Secure there would silently drop it.
+    secure: CROSS_ORIGIN_DEPLOYMENT,
+    path: '/api/auth',
+    maxAge: refreshCookieMaxAge(),
+  };
+}
+
+/**
+ * JWT_REFRESH_TTL is a jsonwebtoken duration string ('30d', '12h', '90m'...), while a
+ * cookie wants seconds. Anything unparseable falls back to the 30-day default rather
+ * than to a session cookie, so a typo cannot silently shorten the login to one tab.
+ */
+function refreshCookieMaxAge(): number {
+  const DAY = 86400;
+  const match = /^(\d+)\s*([smhd])?$/.exec(REFRESH_TOKEN_TTL.trim());
+  if (!match) return 30 * DAY;
+  const value = Number(match[1]);
+  switch (match[2]) {
+    case 's': return value;
+    case 'm': return value * 60;
+    case 'h': return value * 3600;
+    case 'd': return value * DAY;
+    default: return value; // bare number = seconds, same as jsonwebtoken
+  }
+}
+
+function setRefreshCookie(reply: FastifyReply, refreshToken: string): void {
+  reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions());
+}
+
+function clearRefreshCookie(reply: FastifyReply): void {
+  // Same attributes as when it was set — a browser matches on path/sameSite/secure,
+  // so a clear that differs leaves the original cookie in place.
+  reply.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
+}
+
 const ACCESS_TOKEN_TTL  = process.env.JWT_ACCESS_TTL  ?? '7d';
 const REFRESH_TOKEN_TTL = process.env.JWT_REFRESH_TTL ?? '30d';
 
@@ -338,7 +403,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: ALLOWED_ORIGIN,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE'],
+    // The refresh token travels as an httpOnly cookie (#299), and a browser only
+    // attaches a cross-origin cookie when the response allows credentials. A
+    // wildcard origin is incompatible with credentials, so this only takes effect
+    // for a configured ALLOWED_ORIGIN — which is exactly the cross-origin case.
+    credentials: ALLOWED_ORIGIN !== '*',
   });
+  await app.register(cookie);
   await app.register(jwt, { secret: JWT_SECRET });
   // global: false — each /api/* route below opts in via its own `config.rateLimit`.
   // A global default would also throttle /photos/ and the SPA static assets,
@@ -866,7 +937,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (user.totp_enabled) {
       return { mfaRequired: true, challengeToken: issueMfaChallenge(user.username, user.token_version ?? 0) };
     }
-    return issueTokens(user.username, user.token_version ?? 0);
+    return issueTokens(user.username, user.token_version ?? 0, reply);
   });
 
   // GET /api/admin/users
@@ -1280,7 +1351,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // which would leave a window where this session isn't yet admin.
     createUser(username, hashPassword(password), isFirstUser ? 'admin' : undefined);
     const user = getUser(username);
-    return issueTokens(username, user?.token_version ?? 0);
+    return issueTokens(username, user?.token_version ?? 0, reply);
   });
 
   // POST /api/auth/login
@@ -1324,7 +1395,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (user.totp_enabled) {
       return { mfaRequired: true, challengeToken: issueMfaChallenge(user.username, user.token_version ?? 0) };
     }
-    return issueTokens(user.username, user.token_version ?? 0);
+    return issueTokens(user.username, user.token_version ?? 0, reply);
   });
 
   /**
@@ -1336,11 +1407,27 @@ export async function buildApp(): Promise<FastifyInstance> {
    * app, which ignores the rest) keep working; they simply get a 7-day token
    * instead of a 30-day one and re-login when it lapses.
    */
-  function issueTokens(username: string, tokenVersion: number) {
-    return {
+  /**
+   * Mints an access/refresh pair and, when a reply is supplied, additionally
+   * parks the refresh token in an httpOnly cookie (#299).
+   *
+   * The refresh token stays in the JSON body regardless, because the Android
+   * client has no cookie jar and reads it from there. The browser simply stops
+   * *storing* what it is handed: an XSS cannot read a response the page received
+   * before the script ran, but it can read localStorage at any time — which is
+   * what made a 30-day credential sitting there the actual problem.
+   *
+   * The one place that distinction has teeth is /api/auth/refresh: see the note
+   * there on why a cookie-authenticated refresh must not echo the new refresh
+   * token back into a body an injected script could simply ask for.
+   */
+  function issueTokens(username: string, tokenVersion: number, reply?: FastifyReply) {
+    const tokens = {
       token: app.jwt.sign({ username, tokenVersion, typ: 'access' }, { expiresIn: ACCESS_TOKEN_TTL }),
       refreshToken: app.jwt.sign({ username, tokenVersion, typ: 'refresh' }, { expiresIn: REFRESH_TOKEN_TTL }),
     };
+    if (reply) setRefreshCookie(reply, tokens.refreshToken);
+    return tokens;
   }
 
   // ── TOTP two-step login (#174) ────────────────────────────────────────────────
@@ -1438,7 +1525,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     clearTotpFailures(user.username);
     mfaAttempts.delete(payload.jti);
-    return issueTokens(user.username, user.token_version ?? 0);
+    return issueTokens(user.username, user.token_version ?? 0, reply);
   });
 
   // POST /api/auth/totp/setup — starts (or restarts) enrollment: generates a
@@ -1509,7 +1596,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     const { codes, hashes } = generateRecoveryCodes();
     const newTokenVersion = enableTotp(username, hashes);
-    return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion) };
+    return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion, reply) };
   });
 
   // POST /api/auth/totp/disable — requires re-entering the password (not just
@@ -1538,7 +1625,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     disableTotp(username);
     const updated = getUser(username);
-    return { ok: true, ...issueTokens(username, updated?.token_version ?? 0) };
+    return { ok: true, ...issueTokens(username, updated?.token_version ?? 0, reply) };
   });
 
   // POST /api/auth/totp/recovery-codes/regenerate — invalidates all previous
@@ -1569,8 +1656,24 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.post('/api/auth/refresh', {
     config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
   }, async (request, reply) => {
-    const { refreshToken } = request.body as { refreshToken?: string };
+    // Two callers with different constraints. Android has no cookie jar and sends the
+    // token in the body; the browser sends nothing and lets the httpOnly cookie ride
+    // along (#299). Body wins when both are present, so an explicit token is never
+    // silently ignored in favour of a stale cookie.
+    const bodyToken = (request.body as { refreshToken?: string } | null)?.refreshToken;
+    const cookieToken = request.cookies[REFRESH_COOKIE];
+    const fromCookie = !bodyToken && !!cookieToken;
+    const refreshToken = bodyToken ?? cookieToken;
     if (!refreshToken) return reply.code(400).send({ error: 'refreshToken erforderlich' });
+
+    // A cookie-authenticated refresh is CSRF-able where SameSite can't help — the
+    // cross-origin deployment, where the cookie must be SameSite=none. Requiring a
+    // header no simple cross-site form or <img> can set forces a preflight, which
+    // CORS then answers only for ALLOWED_ORIGIN. Not applied to the body path: that
+    // caller already had to possess the token.
+    if (fromCookie && CROSS_ORIGIN_DEPLOYMENT && request.headers['x-nagellacke-refresh'] !== '1') {
+      return reply.code(403).send({ error: 'Fehlender X-Nagellacke-Refresh-Header' });
+    }
 
     let payload: { username?: string; tokenVersion?: number; typ?: string };
     try {
@@ -1585,9 +1688,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     const user = getUser(payload.username);
     if (!user || (payload.tokenVersion ?? 0) !== (user.token_version ?? 0)) {
+      // A rejected cookie is a dead cookie — drop it so the browser stops replaying it
+      // on every reload after a logout-all or a deleted account.
+      if (fromCookie) clearRefreshCookie(reply);
       return reply.code(401).send({ error: 'Refresh-Token ungültig oder abgelaufen' });
     }
-    return issueTokens(payload.username, user.token_version ?? 0);
+    const tokens = issueTokens(payload.username, user.token_version ?? 0, reply);
+    // This is the line that makes the cookie worth anything. A script injected into
+    // the page can already call this endpoint and have the browser attach the cookie
+    // for it — but if the response echoed the new refresh token, that script would
+    // walk away with a 30-day credential and we would be exactly back where #299
+    // started. The cookie path therefore hands back only the short-lived access
+    // token; the refresh token exists solely as a cookie the script cannot read.
+    if (fromCookie) return { token: tokens.token };
+    return tokens;
   });
 
   // POST /api/auth/logout-all — invalidate every previously issued token for
@@ -1597,9 +1711,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.post('/api/auth/logout-all', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
-  }, async (request) => {
+  }, async (request, reply) => {
     const { username } = request.user as { username: string };
     bumpTokenVersion(username);
+    // The version bump already makes the cookie's token unusable, but leaving it in
+    // the browser means every subsequent reload sends a credential the server will
+    // only reject. Clearing it is what makes "logged out" true on this device too.
+    clearRefreshCookie(reply);
     return { ok: true };
   });
 
