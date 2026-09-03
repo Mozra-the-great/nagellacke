@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -10,6 +12,35 @@ plugins {
 // Set KEYSTORE_FILE env var to the absolute path of the .jks file to enable release signing.
 // Without it the release build is produced unsigned (safe for local development / CI without secrets).
 val keystoreFilePath: String? = System.getenv("KEYSTORE_FILE")
+
+// OAuth client IDs for the cloud-sync providers. These are per-installation values:
+// anyone self-hosting this app registers their own OAuth clients in the Google /
+// Microsoft / Dropbox developer consoles. They used to be hardcoded placeholder
+// strings in OAuthHelper.kt ("YOUR_GOOGLE_CLIENT_ID...") that were passed straight
+// into real OAuth requests (#271), with nothing anywhere saying they had to be
+// replaced. They are now supplied the same way the signing config is: an environment
+// variable, falling back to local.properties (gitignored), falling back to empty.
+//
+// Empty is a deliberate default rather than a placeholder: "" is unambiguously
+// "not configured", which OAuthClientIds.isConfigured() can test for, while a
+// placeholder string is indistinguishable from a real - and merely wrong - id.
+// NB: `Properties` has to be imported at the top of the file rather than written as
+// java.util.Properties here - Gradle's own `java` project extension shadows the package
+// name inside the script body.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { stream -> load(stream) }
+}
+
+// System.getenv returns a platform type, so an elvis chain on it trips
+// "always returns the left operand of non-nullable type" - which the Kotlin DSL script
+// compiler reports as an error, not a warning. isNullOrBlank() sidesteps that and also
+// treats an empty env var as unset, which is what a caller means by it.
+fun oauthClientId(key: String): String {
+    val fromEnv: String? = System.getenv(key)
+    if (!fromEnv.isNullOrBlank()) return fromEnv
+    return localProperties.getProperty(key) ?: ""
+}
 
 android {
     namespace = "de.nagellacke"
@@ -25,6 +56,10 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         manifestPlaceholders["appAuthRedirectScheme"] = "nagellacke"
+
+        buildConfigField("String", "OAUTH_CLIENT_ID_GOOGLE", "\"${oauthClientId("OAUTH_CLIENT_ID_GOOGLE")}\"")
+        buildConfigField("String", "OAUTH_CLIENT_ID_MICROSOFT", "\"${oauthClientId("OAUTH_CLIENT_ID_MICROSOFT")}\"")
+        buildConfigField("String", "OAUTH_CLIENT_ID_DROPBOX", "\"${oauthClientId("OAUTH_CLIENT_ID_DROPBOX")}\"")
     }
 
     signingConfigs {
