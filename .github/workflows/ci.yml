@@ -6,11 +6,19 @@ on:
     paths:
       - 'v3/**'
       - 'android/**'
+      # a change to the pipeline itself has to run the pipeline — without this
+      # a PR that only edits this file matches no path and never builds, so a
+      # broken job definition would merge unverified
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'v3/**'
       - 'android/**'
+      # a change to the pipeline itself has to run the pipeline — without this
+      # a PR that only edits this file matches no path and never builds, so a
+      # broken job definition would merge unverified
+      - '.github/workflows/ci.yml'
   workflow_dispatch: {}
 
 jobs:
