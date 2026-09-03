@@ -12,7 +12,7 @@ import { DropboxAdapter } from './adapters/dropbox';
  */
 export function createAdapter(
   config: SyncConfig,
-  onTokensRefreshed?: (token: string, refreshToken: string) => void,
+  onTokensRefreshed?: (token: string, refreshToken?: string) => void,
 ): SyncAdapter {
   switch (config.provider) {
     case 'server':      return new ServerAdapter(config, onTokensRefreshed);
