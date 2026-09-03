@@ -105,6 +105,19 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [loginError, setLoginError] = useState('');
 
+  // ── Self-registration (#278) ──
+  // The server has always accepted POST /api/auth/register and the Android app
+  // has always offered it; the web app had no form at all, which made the Admin
+  // panel's "Registrierung erlauben" toggle a no-op for this surface.
+  // `registrationAllowed === null` means "not asked yet, or the server didn't
+  // answer" - the register option stays hidden then, so a server predating the
+  // status route keeps showing exactly the login form it always did.
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [registrationAllowed, setRegistrationAllowed] = useState<boolean | null>(null);
+  const [registerPass2, setRegisterPass2] = useState('');
+  const [registerStatus, setRegisterStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [registerError, setRegisterError] = useState('');
+
   // ── Two-step login (TOTP 2FA, #174) ──
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
@@ -164,6 +177,39 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setLoginStatus('error');
+    }
+  };
+
+  const register = async () => {
+    if (loginPass !== registerPass2) {
+      setRegisterError('Die beiden Passwörter stimmen nicht überein.');
+      setRegisterStatus('error');
+      return;
+    }
+    setRegisterStatus('loading');
+    setRegisterError('');
+    const base = serverUrl.replace(/\/$/, '');
+    try {
+      const res = await fetch(`${base}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUser, password: loginPass }),
+      });
+      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
+      if (!res.ok || !data.token) {
+        setRegisterError(data.error ?? `Fehler ${res.status}`);
+        setRegisterStatus('error');
+        return;
+      }
+      // Registration returns a usable token pair, so the new account is logged
+      // in straight away rather than being bounced back to the login form.
+      setRegisterStatus('idle');
+      setRegisterPass2('');
+      setAuthMode('login');
+      applyLoginTokens(data.token, data.refreshToken);
+    } catch (e) {
+      setRegisterError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setRegisterStatus('error');
     }
   };
 
@@ -479,6 +525,25 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
   const bearerHeaders = (): Record<string, string> =>
     serverToken ? { 'Authorization': `Bearer ${serverToken}` } : {};
+
+  // Asks the server whether self-registration is open, so the register option
+  // is only offered when it would actually succeed (#278). Runs on the typed
+  // serverUrl rather than the saved config, because the whole point is the
+  // not-yet-configured visitor. A failure (offline, or a server predating this
+  // route) leaves the flag null, which hides the option entirely.
+  useEffect(() => {
+    if (provider !== 'server' || !serverUrl.trim() || serverToken) {
+      setRegistrationAllowed(null);
+      return;
+    }
+    const controller = new AbortController();
+    const base = serverUrl.replace(/\/$/, '');
+    fetch(`${base}/api/auth/registration-status`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean }> : null))
+      .then((data) => { setRegistrationAllowed(data?.allowed ?? null); })
+      .catch(() => { /* offline or older server - stay on login-only */ });
+    return () => controller.abort();
+  }, [provider, serverUrl, serverToken]);
 
   useEffect(() => {
     if (!isServerSync) return;
@@ -876,21 +941,67 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     type="password"
                     value={loginPass}
                     onChange={(e) => setLoginPass(e.target.value)}
-                    autoComplete="current-password"
-                    onKeyDown={(e) => { if (e.key === 'Enter') void login(); }}
+                    autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && authMode === 'login') void login(); }}
                   />
+                  {authMode === 'register' && (
+                    <p className={styles.fieldHelpText}>Mindestens 8 Zeichen.</p>
+                  )}
                 </label>
+                {authMode === 'register' && (
+                  <label className={styles.field}>
+                    <span>Passwort wiederholen</span>
+                    <input
+                      type="password"
+                      value={registerPass2}
+                      onChange={(e) => setRegisterPass2(e.target.value)}
+                      autoComplete="new-password"
+                      onKeyDown={(e) => { if (e.key === 'Enter') void register(); }}
+                    />
+                  </label>
+                )}
                 <div role="status" aria-live="polite" aria-atomic="true">
-                  {loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
-                  {loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                  {authMode === 'login' && loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
+                  {authMode === 'login' && loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                  {authMode === 'register' && registerStatus === 'loading' && <span className={styles.infoText}>Konto wird erstellt…</span>}
+                  {authMode === 'register' && registerStatus === 'error' && <div className={styles.errorBanner}>{registerError}</div>}
                 </div>
-                <button
-                  className={styles.saveBtn}
-                  onClick={login}
-                  disabled={!loginUser || !loginPass || loginStatus === 'loading'}
-                >
-                  {loginStatus === 'loading' ? 'Anmelden…' : 'Anmelden'}
-                </button>
+                {authMode === 'login' ? (
+                  <button
+                    className={styles.saveBtn}
+                    onClick={login}
+                    disabled={!loginUser || !loginPass || loginStatus === 'loading'}
+                  >
+                    {loginStatus === 'loading' ? 'Anmelden…' : 'Anmelden'}
+                  </button>
+                ) : (
+                  <button
+                    className={styles.saveBtn}
+                    onClick={register}
+                    disabled={!loginUser || loginPass.length < 8 || !registerPass2 || registerStatus === 'loading'}
+                  >
+                    {registerStatus === 'loading' ? 'Konto wird erstellt…' : 'Konto erstellen'}
+                  </button>
+                )}
+                {/* Only offered when the server said registration is actually
+                    open (#278) - null means "didn't ask / older server", and
+                    then this stays a login-only box, exactly as before. */}
+                {registrationAllowed === true && (
+                  <button
+                    type="button"
+                    className={styles.syncBtn}
+                    onClick={() => {
+                      setAuthMode(authMode === 'login' ? 'register' : 'login');
+                      setRegisterPass2('');
+                      setRegisterError('');
+                      setRegisterStatus('idle');
+                      setLoginError('');
+                      setLoginStatus('idle');
+                    }}
+                  >
+                    {authMode === 'login' ? 'Noch kein Konto? Registrieren' : 'Zurück zum Anmelden'}
+                  </button>
+                )}
               </div>
             )}
           </>

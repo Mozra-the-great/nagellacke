@@ -1232,16 +1232,40 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { ok: true, config };
   });
 
+  /**
+   * Whether anyone may register right now: the very first user always may
+   * (bootstrap), otherwise it takes the allowRegistration flag — a panel value
+   * in server_settings.json wins over the env var when set, see the
+   * precedence-rule comment on ServerSettings in db.ts.
+   *
+   * Shared by POST /api/auth/register and GET /api/auth/registration-status so
+   * the two can't drift apart and show the user a register form the server
+   * would then refuse (#278).
+   */
+  function registrationOpen(): boolean {
+    if (getUserCount() === 0) return true;
+    return getServerSettings().allowRegistration ?? (process.env.ALLOW_REGISTRATION === 'true');
+  }
+
+  // GET /api/auth/registration-status — deliberately public. The web app has to
+  // decide whether to offer a register form *before* anyone is logged in, and
+  // the only other place carrying this flag (GET /api/admin/settings) is
+  // admin-only. It discloses nothing a client couldn't already learn by POSTing
+  // to /api/auth/register and reading the 403, and nothing about who exists —
+  // `firstUser` says only that the server has no accounts at all yet, which is
+  // exactly the state POST /api/admin/bootstrap already advertises (#278).
+  app.get('/api/auth/registration-status', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    return { allowed: registrationOpen(), firstUser: getUserCount() === 0 };
+  });
+
   // POST /api/auth/register
-  // Open only for the very first user (bootstrap) or when allowRegistration is
-  // enabled — a panel value in server_settings.json wins over the env var
-  // when set, see the precedence-rule comment on ServerSettings in db.ts.
   app.post('/api/auth/register', {
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
-    const allowRegistration = getServerSettings().allowRegistration ?? (process.env.ALLOW_REGISTRATION === 'true');
     const isFirstUser = getUserCount() === 0;
-    if (!allowRegistration && !isFirstUser) {
+    if (!registrationOpen()) {
       return reply.code(403).send({ error: 'Registrierung deaktiviert' });
     }
     const { username, password } = request.body as { username?: string; password?: string };
