@@ -18,6 +18,7 @@ import de.nagellacke.data.sync.AiSettingsDto
 import de.nagellacke.data.sync.AuthRepository
 import de.nagellacke.data.sync.AuthResult
 import de.nagellacke.data.sync.LoginOutcome
+import de.nagellacke.data.sync.PhotoTokenCache
 import de.nagellacke.data.sync.ReportsClient
 import de.nagellacke.data.sync.ServerAdapter
 import de.nagellacke.data.sync.SaveAiSettingsRequest
@@ -130,6 +131,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun notifyConfigChanged() {
+        // The signed-in identity just changed (connected, disconnected or switched
+        // provider), so any photo token still cached belongs to the previous one.
+        // Deliberately not done in SyncConfigStore.saveConfig(): that also runs on
+        // every access-token refresh, where dropping the photo token would blank out
+        // images until the next sync re-mints one.
+        PhotoTokenCache.shared.clear()
         _configVersion.update { it + 1 }
         _reportSchedule.value = ReportScheduleState()
         _aiSettings.value = null
