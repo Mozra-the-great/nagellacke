@@ -38,6 +38,17 @@ fun deleteUnreferencedFiles(
 }
 
 fun resolveWithin(root: File, filename: String): File {
+    // An absolute filename has to be rejected before it is joined, because joining hides
+    // it: File(root, "/etc/passwd") does not produce "/etc/passwd", it produces
+    // "<root>/etc/passwd", which passes the prefix check below and looks contained.
+    // Containment is not the guarantee this function documents, and the re-rooting is the
+    // silent collision the KDoc rules out - "/x.jpg" and "x.jpg" would name one file.
+    // On Windows the join instead throws IOException and the catch below turned that into
+    // a SecurityException by accident, which is why the test covering this only ever
+    // passed there; Android is Linux, so the case was live in production.
+    if (File(filename).isAbsolute) {
+        throw SecurityException("Invalid photo filename: $filename")
+    }
     // Canonicalization itself can fail — an IOException on a name the OS considers
     // malformed, or a filesystem error. Fail closed and report it as a rejection like
     // any other, so callers only ever have to handle one exception type from this guard
