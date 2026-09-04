@@ -52,7 +52,26 @@ jobs:
           # nothing, closing with "No --comment flag was passed, so no GitHub comments
           # were posted." Every run before that had the same gap on top of the subagent
           # stall, so no PR in this repo has ever been shown a finding.
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # The skill's step 1 skips a PR that Claude has already commented on, which
+          # makes the review one-shot: push a fix and it declines to look again. That
+          # is the wrong default here, since `synchronize` is in the trigger precisely
+          # so a fix gets re-checked. The extra instructions lift that one condition
+          # and keep the rest, and tell it to read the existing threads first so a
+          # re-review does not re-post findings that are already open — which matters
+          # doubly because unresolved threads block merging in the ruleset.
+          prompt: |
+            /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            This workflow runs on every push to an open pull request, and re-reviewing
+            after a fix is the intent. In step 1, do not treat "Claude has already
+            commented on this PR" as a reason to skip. Every other skip condition still
+            applies: closed, draft, and changes too trivial to need review.
+
+            You may have reviewed an earlier commit of this PR. Read the existing review
+            comments before you post anything, and do not repeat a finding that an open
+            thread already covers. Comment only on what is new in the latest commits, or
+            on a previously reported issue whose attempted fix does not actually resolve
+            it — and in that case say what is still wrong with it.
           allowed_bots: 'claude[bot]'
           # The review used to delegate its first step to a background subagent and then
           # end its turn waiting for the result. In a one-shot CI run nothing can deliver
