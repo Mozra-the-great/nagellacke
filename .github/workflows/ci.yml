@@ -6,6 +6,9 @@ on:
     paths:
       - 'v3/**'
       - 'android/**'
+      # the shared merge fixtures are read by tests on both sides, so a
+      # fixtures-only change still has to run them
+      - 'fixtures/**'
       # a change to the pipeline itself has to run the pipeline — without this
       # a commit that only edits this file matches no path, so a broken job
       # definition would land on main unverified

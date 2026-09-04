@@ -160,3 +160,11 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.test)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+// The shared merge fixtures live at the repository root, outside both the Gradle build and
+// the npm workspace, because neither implementation of mergeData() owns them — see
+// fixtures/merge/README.md. Hand the tests an absolute path rather than letting them guess
+// one from the working directory, which differs between Gradle and an IDE run.
+tasks.withType<Test>().configureEach {
+    systemProperty("nagellacke.fixtures.dir", rootProject.file("../fixtures").absolutePath)
+}

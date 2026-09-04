@@ -1,0 +1,61 @@
+{
+  "name": "local-edit-beats-older-remote-delete",
+  "description": "The reverse: an edit made after a delete wins, so the record comes back. Undelete-by-edit is the intended consequence of last-write-wins, not an accident.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Revived",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 3000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Gone",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000,
+        "deletedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Revived",
+        "updatedAt": 3000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

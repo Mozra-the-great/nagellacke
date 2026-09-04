@@ -1,0 +1,61 @@
+{
+  "name": "remote-delete-beats-older-local-edit",
+  "description": "A deletion propagates like any other change: the remote tombstone is newer, so it wins over the live local record. This is how a delete on one device reaches the other.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Still Here",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Still Here",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000,
+        "deletedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Still Here",
+        "updatedAt": 2000,
+        "deletedAt": 2000,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}
