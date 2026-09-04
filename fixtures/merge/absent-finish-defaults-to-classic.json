@@ -1,0 +1,43 @@
+{
+  "name": "absent-finish-defaults-to-classic",
+  "description": "The finish key missing entirely — a v2 import or a record written before the multi-finish migration. TypeScript hits normalizeFinish(undefined), Kotlin never calls the serializer and takes the data class default. Two quite different routes to the same value, which is exactly the kind of coincidence worth pinning.",
+  "local": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "No Finish Key",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "No Finish Key",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}
