@@ -57,7 +57,7 @@ export function brandStats(polishes: StatsPolish[]): BrandStat[] {
 export function recentlyUpdated(polishes: StatsPolish[], n: number): StatsPolish[] {
   const sorted = [...polishes].sort((a, b) => b.updatedAt - a.updatedAt);
   const picked: StatsPolish[] = [];
-  for (let i = 0; i <= n; i++) {
+  for (let i = 0; i < n; i++) {
     if (sorted[i]) picked.push(sorted[i]);
   }
   return picked;
