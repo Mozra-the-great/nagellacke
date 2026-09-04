@@ -15,7 +15,7 @@
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body id="top">
-<a class="skip-link" href="#main">Zum Inhalt springen</a>
+<a class="skip-link" href="#main" data-i18n="skip-link">Zum Inhalt springen</a>
 
 <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
 <defs>
@@ -108,11 +108,15 @@
 
 <header class="topbar">
   <a class="logo" href="#top">Nagellacke<svg class="logo-underline" viewBox="0 0 140 14" aria-hidden="true" style="overflow:visible"><path filter="url(#roughSoft)" d="M2 8 C20 2 40 12 60 6 S100 2 138 8" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/><path filter="url(#roughSoft)" d="M4 9.5 C24 4 42 13 62 7.5 S102 4 136 9.5" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" opacity=".55"/></svg></a>
-  <nav aria-label="Hauptnavigation">
-    <a href="#regal">Regal</a>
-    <a href="#tagebuch">Tagebuch</a>
-    <a href="#app">App</a>
-    <a href="privacy-policy.html" class="nav-privacy">Datenschutz</a>
+  <nav aria-label="Hauptnavigation" data-i18n="nav-aria" data-i18n-attr="aria-label">
+    <a href="#regal" data-i18n="nav-regal">Regal</a>
+    <a href="#tagebuch" data-i18n="word-tagebuch">Tagebuch</a>
+    <a href="#app" data-i18n="nav-app">App</a>
+    <a href="privacy-policy.html" class="nav-privacy" data-i18n="nav-privacy">Datenschutz</a>
+    <div class="lang-toggle" role="group" aria-label="Sprache wählen / Choose language" data-i18n="lang-toggle-aria" data-i18n-attr="aria-label">
+      <button type="button" class="chip lang-btn" data-lang="de" aria-pressed="true">DE</button>
+      <button type="button" class="chip lang-btn" data-lang="en" aria-pressed="false">EN</button>
+    </div>
   </nav>
 </header>
 
@@ -121,17 +125,17 @@
 <section id="hero" class="section reveal">
   <div class="hero-grid">
     <div class="hero-text">
-      <p class="kicker">Sammeln · Tragen · Festhalten</p>
-      <h1>Deine Lacksammlung<br>als <span class="h1-mark">Skizzenbuch<svg class="squiggle" viewBox="0 0 260 20" preserveAspectRatio="none" aria-hidden="true" style="overflow:visible"><path pathLength="100" filter="url(#roughSoft)" d="M4 12 C40 2 70 18 110 8 S180 2 256 12" fill="none" stroke="var(--accent)" stroke-width="2.3" stroke-linecap="round"/><path filter="url(#roughSoft)" d="M8 14.5 C44 5 74 20.5 114 11 S184 5 252 14.5" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></svg></span></h1>
-      <p class="lead">Führ dein Regal, probier Farben und Finishes aus und halt jede Mani im Tagebuch fest — mit Foto, Datum und der Notiz, warum genau dieser Lack es an dem Tag sein musste.</p>
+      <p class="kicker" data-i18n="hero-kicker">Sammeln · Tragen · Festhalten</p>
+      <h1><span data-i18n="hero-h1-a">Deine Lacksammlung</span><br><span data-i18n="hero-h1-b">als</span> <span class="h1-mark"><span data-i18n="hero-h1-c">Skizzenbuch</span><svg class="squiggle" viewBox="0 0 260 20" preserveAspectRatio="none" aria-hidden="true" style="overflow:visible"><path pathLength="100" filter="url(#roughSoft)" d="M4 12 C40 2 70 18 110 8 S180 2 256 12" fill="none" stroke="var(--accent)" stroke-width="2.3" stroke-linecap="round"/><path filter="url(#roughSoft)" d="M8 14.5 C44 5 74 20.5 114 11 S184 5 252 14.5" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></svg></span></h1>
+      <p class="lead" data-i18n="hero-lead">Führ dein Regal, probier Farben und Finishes aus und halt jede Mani im Tagebuch fest — mit Foto, Datum und der Notiz, warum genau dieser Lack es an dem Tag sein musste.</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#regal">Ins Regal schauen</a>
-        <a class="btn btn-secondary" href="#app">Was die App kann</a>
+        <a class="btn btn-primary" href="#regal" data-i18n="hero-cta-primary">Ins Regal schauen</a>
+        <a class="btn btn-secondary" href="#app" data-i18n="hero-cta-secondary">Was die App kann</a>
       </div>
       <ul class="fact-row">
-        <li>kein Tracking</li>
-        <li>deine Daten bleiben bei dir</li>
-        <li>offline nutzbar</li>
+        <li data-i18n="hero-fact-1">kein Tracking</li>
+        <li data-i18n="hero-fact-2">deine Daten bleiben bei dir</li>
+        <li data-i18n="hero-fact-3">offline nutzbar</li>
       </ul>
     </div>
     <div class="hero-art">
@@ -231,71 +235,71 @@
           <path pathLength="100" d="M52 64 C104 84 128 122 150 152 C157 162 162 169 169 170" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>
           <path d="M156.9 174.8 L169 170 L158.8 162" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </g>
-        <text x="16" y="46" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="27" letter-spacing=".5">Lieblingslack ♥</text>
+        <text x="16" y="46" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="27" letter-spacing=".5" data-i18n="hero-svg-label">Lieblingslack ♥</text>
       </svg>
     </div>
   </div>
 </section>
 
 <section id="regal" class="section reveal">
-  <h2>Dein Regal</h2>
-  <p class="section-lead">Was du besitzt, was noch auf die Wunschliste soll und was leider schon leer getropft ist – dein ganzes Sammelsurium auf einen Blick.</p>
+  <h2 data-i18n="regal-h2">Dein Regal</h2>
+  <p class="section-lead" data-i18n="regal-lead">Was du besitzt, was noch auf die Wunschliste soll und was leider schon leer getropft ist – dein ganzes Sammelsurium auf einen Blick.</p>
 
-  <div class="filters" role="group" aria-label="Regal filtern">
-    <button class="chip" type="button" data-filter="all" aria-pressed="true">Alle</button>
-    <button class="chip" type="button" data-filter="ok" aria-pressed="false">Vorhanden</button>
-    <button class="chip" type="button" data-filter="wish" aria-pressed="false">Wunschliste</button>
-    <button class="chip" type="button" data-filter="empty" aria-pressed="false">Aufgebraucht</button>
+  <div class="filters" role="group" aria-label="Regal filtern" data-i18n="filters-aria" data-i18n-attr="aria-label">
+    <button class="chip" type="button" data-filter="all" aria-pressed="true" data-i18n="filter-all">Alle</button>
+    <button class="chip" type="button" data-filter="ok" aria-pressed="false" data-i18n="filter-ok">Vorhanden</button>
+    <button class="chip" type="button" data-filter="wish" aria-pressed="false" data-i18n="filter-wish">Wunschliste</button>
+    <button class="chip" type="button" data-filter="empty" aria-pressed="false" data-i18n="filter-empty">Aufgebraucht</button>
   </div>
 
   <div id="shelf" class="shelf">
-    <button class="bottle" type="button" data-status="ok" data-name="Kirschkern-Kuss" data-brand="OPI" data-finish="Classic" data-color="#b3122e" data-worn="14" data-note="Perfekt für Herbstabende, deckt zuverlässig in zwei Schichten.">
+    <button class="bottle" type="button" data-status="ok" data-name="Kirschkern-Kuss" data-name-en="Cherry Pit Kiss" data-brand="OPI" data-finish="Classic" data-color="#b3122e" data-worn="14" data-note="Perfekt für Herbstabende, deckt zuverlässig in zwei Schichten." data-note-en="Perfect for autumn evenings, reliably opaque in two coats.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#b3122e"/></svg>
       <span class="bottle-label">Kirschkern-Kuss</span>
     </button>
-    <button class="bottle" type="button" data-status="ok" data-name="Altrosa-Wolke" data-brand="Essie" data-finish="Shimmer" data-color="#d98a9a" data-worn="9" data-note="Mein Alltagslack, liegt eigentlich immer griffbereit vorn.">
+    <button class="bottle" type="button" data-status="ok" data-name="Altrosa-Wolke" data-name-en="Dusty Rose Cloud" data-brand="Essie" data-finish="Shimmer" data-color="#d98a9a" data-worn="9" data-note="Mein Alltagslack, liegt eigentlich immer griffbereit vorn." data-note-en="My everyday polish, always sitting right at the front within reach.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#d98a9a"/></svg>
       <span class="bottle-label">Altrosa-Wolke</span>
     </button>
-    <button class="bottle" type="button" data-status="ok" data-name="Tintenblau-Traum" data-brand="Catrice" data-finish="Chrome" data-color="#24418f" data-worn="6" data-note="Hält erstaunlich lange, ohne an den Spitzen abzusplittern.">
+    <button class="bottle" type="button" data-status="ok" data-name="Tintenblau-Traum" data-name-en="Ink Blue Dream" data-brand="Catrice" data-finish="Chrome" data-color="#24418f" data-worn="6" data-note="Hält erstaunlich lange, ohne an den Spitzen abzusplittern." data-note-en="Holds up surprisingly long without chipping at the tips.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#24418f"/></svg>
       <span class="bottle-label">Tintenblau-Traum</span>
     </button>
-    <button class="bottle" type="button" data-status="ok" data-name="Sonnengelb-Sommer" data-brand="Kiko Milano" data-finish="Glitter" data-color="#f2c14e" data-worn="3" data-note="Nur für richtig sonnige Tage, sonst wirkt es zu grell.">
+    <button class="bottle" type="button" data-status="ok" data-name="Sonnengelb-Sommer" data-name-en="Sunshine Yellow Summer" data-brand="Kiko Milano" data-finish="Glitter" data-color="#f2c14e" data-worn="3" data-note="Nur für richtig sonnige Tage, sonst wirkt es zu grell." data-note-en="Only for truly sunny days, otherwise it looks too loud.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#f2c14e"/></svg>
       <span class="bottle-label">Sonnengelb-Sommer</span>
     </button>
-    <button class="bottle" type="button" data-status="ok" data-name="Salbei-Ruhe" data-brand="Zoya" data-finish="Matt" data-color="#8aa87a" data-worn="7" data-note="Beruhigende Farbe für Wochen, in denen alles zu viel ist.">
+    <button class="bottle" type="button" data-status="ok" data-name="Salbei-Ruhe" data-name-en="Sage Calm" data-brand="Zoya" data-finish="Matt" data-color="#8aa87a" data-worn="7" data-note="Beruhigende Farbe für Wochen, in denen alles zu viel ist." data-note-en="A calming color for weeks when everything feels like too much.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#8aa87a"/></svg>
       <span class="bottle-label">Salbei-Ruhe</span>
     </button>
-    <button class="bottle is-wish" type="button" data-status="wish" data-name="Pflaumenmus" data-brand="Sally Hansen" data-finish="Holo" data-color="#7a3b8f" data-worn="0" data-note="Steht schon seit dem Frühling auf der Wunschliste.">
+    <button class="bottle is-wish" type="button" data-status="wish" data-name="Pflaumenmus" data-name-en="Plum Jam" data-brand="Sally Hansen" data-finish="Holo" data-color="#7a3b8f" data-worn="0" data-note="Steht schon seit dem Frühling auf der Wunschliste." data-note-en="Has been on the wishlist since spring.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#7a3b8f"/></svg>
       <span class="bottle-label">Pflaumenmus</span>
     </button>
-    <button class="bottle is-wish" type="button" data-status="wish" data-name="Espresso-Note" data-brand="Kure Bazaar" data-finish="Classic" data-color="#3a2a24" data-worn="0" data-note="Für den Winter vorgemerkt, sobald es kälter wird.">
+    <button class="bottle is-wish" type="button" data-status="wish" data-name="Espresso-Note" data-name-en="Espresso Note" data-brand="Kure Bazaar" data-finish="Classic" data-color="#3a2a24" data-worn="0" data-note="Für den Winter vorgemerkt, sobald es kälter wird." data-note-en="Earmarked for winter, as soon as it gets colder.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#3a2a24"/></svg>
       <span class="bottle-label">Espresso-Note</span>
     </button>
-    <button class="bottle is-empty" type="button" data-status="empty" data-name="Eisblau-Frost" data-brand="Barry M" data-finish="Shimmer" data-color="#8fc7e8" data-worn="22" data-note="Leergetragen – war den ganzen letzten Sommer mein Favorit.">
+    <button class="bottle is-empty" type="button" data-status="empty" data-name="Eisblau-Frost" data-name-en="Ice Blue Frost" data-brand="Barry M" data-finish="Shimmer" data-color="#8fc7e8" data-worn="22" data-note="Leergetragen – war den ganzen letzten Sommer mein Favorit." data-note-en="Worn to the last drop — was my favorite all last summer.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#8fc7e8"/></svg>
       <span class="bottle-label">Eisblau-Frost</span>
     </button>
-    <button class="bottle is-empty" type="button" data-status="empty" data-name="Karamell-Latte" data-brand="Nails Inc." data-finish="Classic" data-color="#b9793f" data-worn="18" data-note="Die letzten Tropfen sind leider schon eingetrocknet.">
+    <button class="bottle is-empty" type="button" data-status="empty" data-name="Karamell-Latte" data-name-en="Caramel Latte" data-brand="Nails Inc." data-finish="Classic" data-color="#b9793f" data-worn="18" data-note="Die letzten Tropfen sind leider schon eingetrocknet." data-note-en="The last few drops have sadly already dried up.">
       <svg viewBox="0 0 64 130" aria-hidden="true" style="overflow:visible"><use href="#bottleTpl" style="--polish:#b9793f"/></svg>
       <span class="bottle-label">Karamell-Latte</span>
     </button>
   </div>
-  <p class="shelf-empty" hidden>Hier ist gerade nichts zu sehen — versuch einen anderen Filter.</p>
+  <p class="shelf-empty" hidden data-i18n="shelf-empty">Hier ist gerade nichts zu sehen — versuch einen anderen Filter.</p>
 
   <div id="shelfDetail" class="shelf-detail paper-card" aria-live="polite">
-    <p class="placeholder">Tippe auf ein Fläschchen im Regal, um mehr darüber zu erfahren.</p>
+    <p class="placeholder" data-i18n="shelf-placeholder">Tippe auf ein Fläschchen im Regal, um mehr darüber zu erfahren.</p>
   </div>
 </section>
 
 <section id="tagebuch" class="section reveal">
-  <h2>Das Tagebuch</h2>
-  <p class="section-lead">Welche Mani wann dran war, mit einer kleinen Notiz dazu – zum Zurückblättern, wenn du wieder nicht weißt, was du dir wünschst.</p>
+  <h2 data-i18n="diary-h2">Das Tagebuch</h2>
+  <p class="section-lead" data-i18n="diary-lead">Welche Mani wann dran war, mit einer kleinen Notiz dazu – zum Zurückblättern, wenn du wieder nicht weißt, was du dir wünschst.</p>
 
   <div class="diary-grid">
     <button class="diary-card" type="button" aria-pressed="false">
@@ -306,11 +310,11 @@
           <g transform="translate(104,108) rotate(-1) scale(1.0)" style="--polish:#b3122e"><use href="#swatchTpl"/></g>
           <g transform="translate(144,108) rotate(3) scale(1.04)" style="--polish:#b3122e"><use href="#swatchTpl"/></g>
         </svg>
-        <span class="diary-date">3. März</span>
-        <span class="diary-polish">Kirschkern-Kuss</span>
+        <span class="diary-date" data-i18n="diary-date-1">3. März</span>
+        <span class="diary-polish" data-i18n="diary-polish-1">Kirschkern-Kuss</span>
       </span>
       <span class="diary-face diary-back">
-        <span class="diary-note">Regnerischer Dienstag, Kaffee statt Steuererklärung. Hat elf Tage ohne einen einzigen Abplatzer gehalten.</span>
+        <span class="diary-note" data-i18n="diary-note-1">Regnerischer Dienstag, Kaffee statt Steuererklärung. Hat elf Tage ohne einen einzigen Abplatzer gehalten.</span>
         <span class="diary-stars" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
@@ -329,11 +333,11 @@
           <g transform="translate(104,108) rotate(-1) scale(1.0)" style="--polish:#d9a3ae"><use href="#swatchTpl"/></g>
           <g transform="translate(144,108) rotate(3) scale(1.04)" style="--polish:#d9a3ae"><use href="#swatchTpl"/></g>
         </svg>
-        <span class="diary-date">18. April</span>
-        <span class="diary-polish">Perlmutt &amp; Altrosa</span>
+        <span class="diary-date" data-i18n="diary-date-2">18. April</span>
+        <span class="diary-polish" data-i18n="diary-polish-2">Perlmutt &amp; Altrosa</span>
       </span>
       <span class="diary-face diary-back">
-        <span class="diary-note">Erster Frühlingsspaziergang im Park. Nach einer Woche schon leicht angeknabbert an den Spitzen.</span>
+        <span class="diary-note" data-i18n="diary-note-2">Erster Frühlingsspaziergang im Park. Nach einer Woche schon leicht angeknabbert an den Spitzen.</span>
         <span class="diary-stars" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
@@ -357,11 +361,11 @@
           </g>
           <g transform="translate(144,108) rotate(3) scale(1.04)" style="--polish:#24418f"><use href="#swatchTpl"/></g>
         </svg>
-        <span class="diary-date">9. Juni</span>
-        <span class="diary-polish">Tintenblau + Glitzerakzent</span>
+        <span class="diary-date" data-i18n="diary-date-3">9. Juni</span>
+        <span class="diary-polish" data-i18n="diary-polish-3">Tintenblau + Glitzerakzent</span>
       </span>
       <span class="diary-face diary-back">
-        <span class="diary-note">Geburtstagsfeier bei K., am Tag danach das Standesamt. Der Glitzer hat glatt bis zum Sommerurlaub gehalten.</span>
+        <span class="diary-note" data-i18n="diary-note-3">Geburtstagsfeier bei K., am Tag danach das Standesamt. Der Glitzer hat glatt bis zum Sommerurlaub gehalten.</span>
         <span class="diary-stars" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
@@ -392,11 +396,11 @@
             <circle cx="0" cy="-84" r="1.6" fill="#f2c14e"/>
           </g>
         </svg>
-        <span class="diary-date">27. Juli</span>
-        <span class="diary-polish">Salbei mit Blütensticker</span>
+        <span class="diary-date" data-i18n="diary-date-4">27. Juli</span>
+        <span class="diary-polish" data-i18n="diary-polish-4">Salbei mit Blütensticker</span>
       </span>
       <span class="diary-face diary-back">
-        <span class="diary-note">Heißer Nachmittag im Garten, Sticker etwas zu früh aufgetragen. Zwei sind schon nach drei Tagen abgefallen.</span>
+        <span class="diary-note" data-i18n="diary-note-4">Heißer Nachmittag im Garten, Sticker etwas zu früh aufgetragen. Zwei sind schon nach drei Tagen abgefallen.</span>
         <span class="diary-stars" aria-hidden="true">
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
           <svg viewBox="0 0 16 16" width="16" height="16" style="overflow:visible"><path filter="url(#roughSoft)" d="M8 1 L10 6 L15 6 L11 9 L12.5 14 L8 11 L3.5 14 L5 9 L1 6 L6 6 Z" fill="var(--accent)" stroke="var(--ink)" stroke-width=".5"/></svg>
@@ -407,18 +411,18 @@
       </span>
     </button>
   </div>
-  <p class="diary-tally">4 von 132 Einträgen</p>
+  <p class="diary-tally" data-i18n="diary-tally">4 von 132 Einträgen</p>
 </section>
 
 <section id="app" class="section reveal">
-  <h2>So sieht's im Alltag aus</h2>
-  <p class="section-lead">Wisch durch die Ansichten und schau, was dich im Alltag mit der App erwartet.</p>
+  <h2 data-i18n="app-h2">So sieht's im Alltag aus</h2>
+  <p class="section-lead" data-i18n="app-lead">Wisch durch die Ansichten und schau, was dich im Alltag mit der App erwartet.</p>
 
-  <div class="phone-tabs" role="tablist" aria-label="App-Ansicht wählen">
-    <button class="tab" type="button" role="tab" id="tab-sammlung" data-screen="sammlung" aria-selected="true" aria-controls="panel-sammlung">Sammlung</button>
-    <button class="tab" type="button" role="tab" id="tab-tagebuch" data-screen="tagebuch" aria-selected="false" aria-controls="panel-tagebuch" tabindex="-1">Tagebuch</button>
-    <button class="tab" type="button" role="tab" id="tab-statistik" data-screen="statistik" aria-selected="false" aria-controls="panel-statistik" tabindex="-1">Statistik</button>
-    <button class="tab" type="button" role="tab" id="tab-sticker" data-screen="sticker" aria-selected="false" aria-controls="panel-sticker" tabindex="-1">Sticker</button>
+  <div class="phone-tabs" role="tablist" aria-label="App-Ansicht wählen" data-i18n="phone-tabs-aria" data-i18n-attr="aria-label">
+    <button class="tab" type="button" role="tab" id="tab-sammlung" data-screen="sammlung" aria-selected="true" aria-controls="panel-sammlung" data-i18n="word-sammlung">Sammlung</button>
+    <button class="tab" type="button" role="tab" id="tab-tagebuch" data-screen="tagebuch" aria-selected="false" aria-controls="panel-tagebuch" tabindex="-1" data-i18n="word-tagebuch">Tagebuch</button>
+    <button class="tab" type="button" role="tab" id="tab-statistik" data-screen="statistik" aria-selected="false" aria-controls="panel-statistik" tabindex="-1" data-i18n="word-statistik">Statistik</button>
+    <button class="tab" type="button" role="tab" id="tab-sticker" data-screen="sticker" aria-selected="false" aria-controls="panel-sticker" tabindex="-1" data-i18n="word-sticker">Sticker</button>
   </div>
 
   <div class="app-showcase">
@@ -430,7 +434,7 @@
       </g>
 
       <g class="screen" data-screen="sammlung">
-        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Sammlung</text>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4" data-i18n="word-sammlung">Sammlung</text>
         <g filter="url(#roughSoft)">
           <rect x="40" y="78" width="220" height="28" rx="14" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/>
           <circle cx="248" cy="92" r="5" fill="none" stroke="var(--pencil)" stroke-width="1.4"/>
@@ -448,7 +452,7 @@
       </g>
 
       <g class="screen" data-screen="tagebuch" hidden>
-        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Tagebuch</text>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4" data-i18n="word-tagebuch">Tagebuch</text>
         <g filter="url(#roughSoft)">
           <rect x="40" y="90" width="54" height="54" rx="6" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.4"/>
           <path d="M50 132 C48 112 49 96 58 96 C66 96 68 112 66 132 Z" fill="#b3122e" opacity=".8"/>
@@ -466,7 +470,7 @@
       </g>
 
       <g class="screen" data-screen="statistik" hidden>
-        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Statistik</text>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4" data-i18n="word-statistik">Statistik</text>
         <g filter="url(#roughSoft)">
           <rect x="50" y="100" width="180" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
           <rect x="50" y="140" width="140" height="18" rx="6" fill="var(--pencil-soft)" opacity=".6"/>
@@ -480,7 +484,7 @@
       </g>
 
       <g class="screen" data-screen="sticker" hidden>
-        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4">Sticker</text>
+        <text x="45" y="55" style="font-family:var(--font-hand)" fill="var(--ink)" font-size="25" letter-spacing=".4" data-i18n="word-sticker">Sticker</text>
         <g filter="url(#roughSoft)">
           <path d="M65 105 C55 95 40 105 50 118 C58 128 65 132 65 132 C65 132 72 128 80 118 C90 105 75 95 65 105 Z" fill="#c2185b" stroke="var(--ink)" stroke-width="1.2"/>
           <path d="M125 95 L129 106 L141 106 L131 113 L135 124 L125 117 L115 124 L119 113 L109 106 L121 106 Z" fill="#f2c14e" stroke="var(--ink)" stroke-width="1"/>
@@ -498,27 +502,27 @@
     </svg>
 
     <div class="screen-notes">
-      <div class="screen-note" id="panel-sammlung" role="tabpanel" aria-labelledby="tab-sammlung" data-screen="sammlung">Durchsuch deine ganze Sammlung nach Farbe, Marke oder Finish und sieh auf einen Blick, was noch fehlt.</div>
-      <div class="screen-note" id="panel-tagebuch" role="tabpanel" aria-labelledby="tab-tagebuch" data-screen="tagebuch">Halt fest, welchen Lack du wann getragen hast – mit Foto, Datum und ein paar Worten dazu.</div>
-      <div class="screen-note" id="panel-statistik" role="tabpanel" aria-labelledby="tab-statistik" data-screen="statistik">Sieh, welche Marken und Farbfamilien dein Regal wirklich dominieren.</div>
-      <div class="screen-note" id="panel-sticker" role="tabpanel" aria-labelledby="tab-sticker" data-screen="sticker">Verwalte auch deine Nailart-Sticker und Folien, griffbereit für die nächste Maniküre.</div>
+      <div class="screen-note" id="panel-sammlung" role="tabpanel" aria-labelledby="tab-sammlung" data-screen="sammlung" data-i18n="panel-sammlung">Durchsuch deine ganze Sammlung nach Farbe, Marke oder Finish und sieh auf einen Blick, was noch fehlt.</div>
+      <div class="screen-note" id="panel-tagebuch" role="tabpanel" aria-labelledby="tab-tagebuch" data-screen="tagebuch" data-i18n="panel-tagebuch">Halt fest, welchen Lack du wann getragen hast – mit Foto, Datum und ein paar Worten dazu.</div>
+      <div class="screen-note" id="panel-statistik" role="tabpanel" aria-labelledby="tab-statistik" data-screen="statistik" data-i18n="panel-statistik">Sieh, welche Marken und Farbfamilien dein Regal wirklich dominieren.</div>
+      <div class="screen-note" id="panel-sticker" role="tabpanel" aria-labelledby="tab-sticker" data-screen="sticker" data-i18n="panel-sticker">Verwalte auch deine Nailart-Sticker und Folien, griffbereit für die nächste Maniküre.</div>
     </div>
   </div>
 
   <ul class="platform-row">
     <li>Android</li>
-    <li>Web-App im Browser</li>
-    <li>alles offline nutzbar</li>
+    <li data-i18n="platform-web">Web-App im Browser</li>
+    <li data-i18n="platform-offline">alles offline nutzbar</li>
   </ul>
 </section>
 
 <section id="zahlen" class="section reveal">
-  <h2>Was das Regal verrät</h2>
-  <p class="section-lead">Nach ein paar Monaten Sammeln erzählt das Regal einiges über den eigenen Geschmack.</p>
+  <h2 data-i18n="zahlen-h2">Was das Regal verrät</h2>
+  <p class="section-lead" data-i18n="zahlen-lead">Nach ein paar Monaten Sammeln erzählt das Regal einiges über den eigenen Geschmack.</p>
 
   <div class="charts">
     <div class="chart">
-      <h3>Top Marken</h3>
+      <h3 data-i18n="chart-brands-h3">Top Marken</h3>
       <div class="bar-list">
         <div class="bar-row"><span class="bar-label">OPI</span><span class="bar-track"><div class="bar" style="--w:100%"></div></span><span class="bar-value">12</span></div>
         <div class="bar-row"><span class="bar-label">Essie</span><span class="bar-track"><div class="bar" style="--w:75%"></div></span><span class="bar-value">9</span></div>
@@ -528,34 +532,34 @@
       </div>
     </div>
     <div class="chart">
-      <h3>Farbfamilien</h3>
+      <h3 data-i18n="chart-colors-h3">Farbfamilien</h3>
       <div class="bar-list">
-        <div class="bar-row"><span class="bar-label">Rot</span><span class="bar-track"><div class="bar" style="--w:100%;--barcolor:#b3122e"></div></span><span class="bar-value">18</span></div>
-        <div class="bar-row"><span class="bar-label">Rosé</span><span class="bar-track"><div class="bar" style="--w:78%;--barcolor:#d98a9a"></div></span><span class="bar-value">14</span></div>
-        <div class="bar-row"><span class="bar-label">Blau</span><span class="bar-track"><div class="bar" style="--w:50%;--barcolor:#24418f"></div></span><span class="bar-value">9</span></div>
-        <div class="bar-row"><span class="bar-label">Grün</span><span class="bar-track"><div class="bar" style="--w:33%;--barcolor:#1f5f43"></div></span><span class="bar-value">6</span></div>
-        <div class="bar-row"><span class="bar-label">Nude</span><span class="bar-track"><div class="bar" style="--w:28%;--barcolor:#e9dfd2"></div></span><span class="bar-value">5</span></div>
+        <div class="bar-row"><span class="bar-label" data-i18n="color-rot">Rot</span><span class="bar-track"><div class="bar" style="--w:100%;--barcolor:#b3122e"></div></span><span class="bar-value">18</span></div>
+        <div class="bar-row"><span class="bar-label" data-i18n="color-rose">Rosé</span><span class="bar-track"><div class="bar" style="--w:78%;--barcolor:#d98a9a"></div></span><span class="bar-value">14</span></div>
+        <div class="bar-row"><span class="bar-label" data-i18n="color-blau">Blau</span><span class="bar-track"><div class="bar" style="--w:50%;--barcolor:#24418f"></div></span><span class="bar-value">9</span></div>
+        <div class="bar-row"><span class="bar-label" data-i18n="color-gruen">Grün</span><span class="bar-track"><div class="bar" style="--w:33%;--barcolor:#1f5f43"></div></span><span class="bar-value">6</span></div>
+        <div class="bar-row"><span class="bar-label" data-i18n="color-nude">Nude</span><span class="bar-track"><div class="bar" style="--w:28%;--barcolor:#e9dfd2"></div></span><span class="bar-value">5</span></div>
       </div>
     </div>
   </div>
 
   <div class="big-numbers">
-    <p class="big-number">48<span>Lacke</span></p>
-    <p class="big-number">132<span>Manis</span></p>
-    <p class="big-number">7<span>Wünsche</span></p>
+    <p class="big-number">48<span data-i18n="big-number-lacke">Lacke</span></p>
+    <p class="big-number">132<span data-i18n="big-number-manis">Manis</span></p>
+    <p class="big-number">7<span data-i18n="big-number-wuensche">Wünsche</span></p>
   </div>
 </section>
 
 </main>
 
 <footer>
-  <p class="footer-note">Gebaut mit Bleistift, Kuli und ein bisschen Code.</p>
+  <p class="footer-note" data-i18n="footer-note">Gebaut mit Bleistift, Kuli und ein bisschen Code.</p>
   <ul class="footer-links">
-    <li><a class="footer-privacy" href="privacy-policy.html">Datenschutzerklärung</a></li>
-    <li><a href="#top">Zum Seitenanfang</a></li>
-    <li><a href="https://github.com/Mozra-the-great/nagellacke" rel="noopener" target="_blank">Projekt auf GitHub</a></li>
+    <li><a class="footer-privacy" href="privacy-policy.html" data-i18n="footer-privacy">Datenschutzerklärung</a></li>
+    <li><a href="#top" data-i18n="footer-top">Zum Seitenanfang</a></li>
+    <li><a href="https://github.com/Mozra-the-great/nagellacke" rel="noopener" target="_blank" data-i18n="footer-github">Projekt auf GitHub</a></li>
   </ul>
-  <p class="footer-fine">Eine private, werbefreie App. Keine Cookies, kein Tracking auf dieser Seite.</p>
+  <p class="footer-fine" data-i18n="footer-fine">Eine private, werbefreie App. Keine Cookies, kein Tracking auf dieser Seite.</p>
 </footer>
 
 <script src="assets/sketch.js" defer></script>
