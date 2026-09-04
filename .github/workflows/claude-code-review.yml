@@ -2,9 +2,12 @@ name: Claude Code Review
 
 on:
   pull_request:
-    # synchronize deliberately absent: the review would otherwise re-run, and
-    # re-bill, on every push into an open PR. One review per PR is the trade.
-    types: [opened, ready_for_review, reopened]
+    # synchronize has to stay while claude-review is a required status check: GitHub
+    # evaluates required checks against the head commit, so a job that does not run on
+    # a pushed commit never reports there and the PR is blocked forever. Dropping it to
+    # save the per-run cost did exactly that to #312. Remove it only together with
+    # claude-review's required-check entry in the ruleset.
+    types: [opened, synchronize, ready_for_review, reopened]
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
