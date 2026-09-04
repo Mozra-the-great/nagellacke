@@ -2,7 +2,9 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    # synchronize deliberately absent: the review would otherwise re-run, and
+    # re-bill, on every push into an open PR. One review per PR is the trade.
+    types: [opened, ready_for_review, reopened]
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
@@ -18,13 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # write, not read: the review's whole output is inline comments on the PR, and
-      # posting them goes through POST /pulls/{n}/reviews. With read the job still ran
-      # green and reported nothing, which reads exactly like "found no issues" — #310
-      # finished with 30 denied tool calls and zero comments.
+      # write, not read: posting inline comments goes through POST /pulls/{n}/reviews,
+      # and a PR-level summary through the issues endpoint. Needed to say anything at
+      # all — though note the execution log later showed the earlier silence was NOT a
+      # permissions problem (zero denials); see the claude_args comment below.
       pull-requests: write
-      # A PR-level summary comment is created through the issues endpoint, so the review
-      # needs this too to say anything that is not tied to a specific line.
       issues: write
       id-token: write
 
@@ -43,6 +43,17 @@ jobs:
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
           allowed_bots: 'claude[bot]'
+          # The review used to delegate its first step to a background subagent and then
+          # end its turn waiting for the result. In a one-shot CI run nothing can deliver
+          # that result — the run ends with the turn — so it exited "success" after 6
+          # turns having never looked at the diff (execution log for #312: Agent started,
+          # then ScheduleWakeup, sleep 1, a blocked sleep 30, and "I'll just wait for the
+          # automatic notification"). A bare tool name in --disallowedTools removes the
+          # tool from the model's context entirely, so the same work happens inline
+          # instead of being handed off. Task is the older name for Agent; ScheduleWakeup
+          # is the stalling mechanism it reached for next.
+          claude_args: |
+            --disallowedTools "Agent,Task,ScheduleWakeup"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
