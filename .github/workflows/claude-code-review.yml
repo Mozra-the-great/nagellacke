@@ -23,12 +23,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # write, not read: posting inline comments goes through POST /pulls/{n}/reviews,
-      # and a PR-level summary through the issues endpoint. Needed to say anything at
-      # all — though note the execution log later showed the earlier silence was NOT a
-      # permissions problem (zero denials); see the claude_args comment below.
-      pull-requests: write
-      issues: write
+      # read is enough, and matches the documented example: the review posts through
+      # the Claude GitHub App, which carries its own write access, not through this
+      # job's GITHUB_TOKEN. These were briefly widened to write on the theory that
+      # missing permissions were why the review never commented; the execution logs
+      # disproved that (zero denials), and #317 confirmed it by posting three inline
+      # comments once the claude_args allowlist below was in place.
+      pull-requests: read
+      issues: read
       id-token: write
 
     steps:
