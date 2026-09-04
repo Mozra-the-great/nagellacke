@@ -18,8 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      # write, not read: the review's whole output is inline comments on the PR, and
+      # posting them goes through POST /pulls/{n}/reviews. With read the job still ran
+      # green and reported nothing, which reads exactly like "found no issues" — #310
+      # finished with 30 denied tool calls and zero comments.
+      pull-requests: write
+      # A PR-level summary comment is created through the issues endpoint, so the review
+      # needs this too to say anything that is not tied to a specific line.
+      issues: write
       id-token: write
 
     steps:
@@ -39,3 +45,27 @@ jobs:
           allowed_bots: 'claude[bot]'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+
+      # The action writes a turn-by-turn log — including which tool calls were denied and
+      # why — to a file that is otherwise thrown away with the runner. Without it a review
+      # that *could not* post is indistinguishable from one that had nothing to say, which
+      # is what made the permissions problem above invisible for two PRs.
+      - name: Collect execution log
+        if: always()
+        run: |
+          src="${{ steps.claude-review.outputs.execution_file }}"
+          # Fall back to the path the action logs when the output is not set.
+          [ -n "$src" ] && [ -f "$src" ] || src="${RUNNER_TEMP}/claude-execution-output.json"
+          if [ -f "$src" ]; then
+            cp "$src" "${RUNNER_TEMP}/claude-review-log.json"
+          else
+            echo "No execution log found (looked at: $src)"
+          fi
+
+      - name: Upload execution log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: claude-review-log
+          path: ${{ runner.temp }}/claude-review-log.json
+          if-no-files-found: warn
