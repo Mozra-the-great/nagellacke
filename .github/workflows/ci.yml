@@ -87,6 +87,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
 
+      - name: Unit tests
+        # Runs before the APK build on purpose: assembleDebug only proves the
+        # Kotlin compiles, and #297 was a logic bug that compiled cleanly.
+        # These are JVM unit tests (app/src/test/), no emulator needed.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Upload test report
+        # Gradle prints only the failing test names; the HTML/XML report has
+        # the assertion diffs and stack traces needed to fix them.
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-test-report
+          path: android/app/build/reports/tests/testDebugUnitTest/
+
       - name: Build debug APK
         # Debug build only - no signing secrets needed (uses AGP's built-in
         # debug signing config) and the OAuth client id BuildConfig fields
