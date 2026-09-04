@@ -38,16 +38,20 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Regenerate lockfile for Linux (manual trigger only)
-        # package-lock.json only carried Windows-platform entries for native
-        # optional deps (@rollup/rollup-*, @rolldown/binding-*) — plain
-        # `npm install` against the existing lock doesn't add the missing
-        # linux-x64-gnu entries on its own. Force a full fresh resolution.
-        if: github.event_name == 'workflow_dispatch'
-        run: rm -f package-lock.json && rm -rf node_modules
-
       - name: Install
-        run: npm install
+        # ci, not install: `npm install` is free to resolve versions the lockfile
+        # does not name, so CI could build against a dependency tree no
+        # contributor has. `npm ci` installs the lockfile exactly and fails if the
+        # two disagree, which makes a green build mean something.
+        #
+        # This was previously blocked by package-lock.json carrying only
+        # Windows-platform entries for the native optional deps, hence the
+        # workflow_dispatch step that deleted the lockfile to force a fresh
+        # resolution. That is fixed: the lockfile now names every platform binary
+        # (@rollup/rollup-linux-x64-gnu, @rolldown/binding-linux-x64-gnu and
+        # @esbuild/linux-x64 among them), so the workaround and the artifact that
+        # existed to ship a repaired lockfile out of CI are both gone.
+        run: npm ci
 
       - name: Build core
         run: npm run build:core
@@ -61,15 +65,10 @@ jobs:
       - name: Build web
         run: npm run build:web
 
-      - name: Test (core)
+      - name: Test
+        # Not core only, despite the old label: the root script is
+        # `--workspaces --if-present`, so this covers core, server and web.
         run: npm run test
-
-      - name: Upload package-lock.json
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: package-lock
-          path: v3/package-lock.json
 
   build-android:
     runs-on: ubuntu-latest
