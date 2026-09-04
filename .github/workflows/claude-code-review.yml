@@ -44,7 +44,13 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # --comment is what makes the review visible. Without it the plugin writes its
+          # findings only into its own execution log, which is discarded with the runner:
+          # the #313 run reviewed the diff properly across 27 turns and still posted
+          # nothing, closing with "No --comment flag was passed, so no GitHub comments
+          # were posted." Every run before that had the same gap on top of the subagent
+          # stall, so no PR in this repo has ever been shown a finding.
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
           allowed_bots: 'claude[bot]'
           # The review used to delegate its first step to a background subagent and then
           # end its turn waiting for the result. In a one-shot CI run nothing can deliver
