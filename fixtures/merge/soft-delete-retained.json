@@ -1,0 +1,47 @@
+{
+  "name": "soft-delete-retained",
+  "description": "A locally soft-deleted record survives a merge with a remote that has never heard of it. Dropping it here would resurrect the record on the next sync back.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Deleted",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000,
+        "deletedAt": 9999
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Deleted",
+        "updatedAt": 1000,
+        "deletedAt": 9999,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

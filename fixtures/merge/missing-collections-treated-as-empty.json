@@ -1,0 +1,38 @@
+{
+  "name": "missing-collections-treated-as-empty",
+  "description": "A payload that omits collections entirely — an older client, or a partial push. Both sides must treat an absent list as empty rather than failing.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Only Polish",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ]
+  },
+  "remote": {},
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Only Polish",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "empty-both-sides",
+  "description": "Degenerate case: merging two empty payloads yields empty lists, not null or a crash.",
+  "local": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

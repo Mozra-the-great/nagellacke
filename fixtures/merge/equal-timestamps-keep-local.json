@@ -1,0 +1,60 @@
+{
+  "name": "equal-timestamps-keep-local",
+  "description": "Tie-break. Both sides carry the same updatedAt, which happens whenever a record round-trips untouched. Both implementations compare strictly greater-than, so the local copy stays. Pinned because a change to >= on either side would silently make syncs non-idempotent.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Local Copy",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Remote Copy",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Local Copy",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}
