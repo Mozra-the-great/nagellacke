@@ -7,18 +7,16 @@ on:
       - 'v3/**'
       - 'android/**'
       # a change to the pipeline itself has to run the pipeline — without this
-      # a PR that only edits this file matches no path and never builds, so a
-      # broken job definition would merge unverified
+      # a commit that only edits this file matches no path, so a broken job
+      # definition would land on main unverified
       - '.github/workflows/ci.yml'
+  # Deliberately unfiltered, unlike the push trigger above: `build` and
+  # `build-android` are required status checks on main, and a required check that
+  # never runs is reported as pending forever rather than skipped — a docs-only PR
+  # would match no path, never report, and stay unmergeable. Paying a couple of
+  # runner-minutes on such a PR is the cheaper side of that trade.
   pull_request:
     branches: [main]
-    paths:
-      - 'v3/**'
-      - 'android/**'
-      # a change to the pipeline itself has to run the pipeline — without this
-      # a PR that only edits this file matches no path and never builds, so a
-      # broken job definition would merge unverified
-      - '.github/workflows/ci.yml'
   workflow_dispatch: {}
 
 permissions:
