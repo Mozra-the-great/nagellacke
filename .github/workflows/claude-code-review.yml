@@ -50,7 +50,7 @@ jobs:
           # nothing, closing with "No --comment flag was passed, so no GitHub comments
           # were posted." Every run before that had the same gap on top of the subagent
           # stall, so no PR in this repo has ever been shown a finding.
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} --comment'
+          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
           allowed_bots: 'claude[bot]'
           # The review used to delegate its first step to a background subagent and then
           # end its turn waiting for the result. In a one-shot CI run nothing can deliver
@@ -61,8 +61,16 @@ jobs:
           # tool from the model's context entirely, so the same work happens inline
           # instead of being handed off. Task is the older name for Agent; ScheduleWakeup
           # is the stalling mechanism it reached for next.
+          # --allowedTools is not a formality here: the action starts the MCP server that
+          # posts inline comments ONLY when claude_args names its tool, so without this
+          # line the tool is absent from the session and the review has nothing to post
+          # with. The #315 run found three real bugs, could not reach that tool, fell back
+          # to `gh api`, and was blocked there as a mutating call — so it reported nothing.
+          # The skill's own allowed-tools frontmatter naming the tool is not enough; the
+          # docs are explicit that this line must be kept anyway.
           claude_args: |
             --disallowedTools "Agent,Task,ScheduleWakeup"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
