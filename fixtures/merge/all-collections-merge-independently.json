@@ -1,0 +1,131 @@
+{
+  "name": "all-collections-merge-independently",
+  "description": "Polishes, categories, manicures and stickers are merged by the same rule but must not interfere: an id colliding across two collections is unrelated data.",
+  "local": {
+    "polishes": [
+      {
+        "id": "x1",
+        "name": "Local Polish",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [
+      {
+        "id": "x1",
+        "label": "Local Cat",
+        "updatedAt": 1000
+      }
+    ],
+    "manicures": [
+      {
+        "id": "x1",
+        "date": "2026-01-01",
+        "createdAt": 1000,
+        "updatedAt": 3000
+      }
+    ],
+    "stickers": [
+      {
+        "id": "x1",
+        "name": "Local Sticker",
+        "type": "accent",
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ]
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "x1",
+        "name": "Remote Polish",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [
+      {
+        "id": "x1",
+        "label": "Remote Cat",
+        "updatedAt": 500
+      }
+    ],
+    "manicures": [
+      {
+        "id": "x1",
+        "date": "2026-02-02",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "stickers": [
+      {
+        "id": "x2",
+        "name": "Remote Sticker",
+        "type": "foil",
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ]
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "x1",
+        "name": "Remote Polish",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [
+      {
+        "id": "x1",
+        "label": "Local Cat",
+        "updatedAt": 1000,
+        "deletedAt": null
+      }
+    ],
+    "manicures": [
+      {
+        "id": "x1",
+        "date": "2026-01-01",
+        "updatedAt": 3000,
+        "deletedAt": null
+      }
+    ],
+    "stickers": [
+      {
+        "id": "x1",
+        "name": "Local Sticker",
+        "updatedAt": 1000,
+        "deletedAt": null
+      },
+      {
+        "id": "x2",
+        "name": "Remote Sticker",
+        "updatedAt": 1000,
+        "deletedAt": null
+      }
+    ]
+  }
+}

@@ -77,7 +77,7 @@ export default function App() {
         <div className={styles.titleArea}>
           <h1 className={styles.appTitle}>Nail Lacquer</h1>
           <p className={styles.appSubtitle}>
-            {activeCount} {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
+            {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
           </p>
         </div>
         <nav className={styles.navRow}>

@@ -1,0 +1,60 @@
+{
+  "name": "remote-newer-wins",
+  "description": "The basic last-write-wins rule: the remote copy has the higher updatedAt, so its field values replace the local ones.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Blue",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Blue Updated",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Blue Updated",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

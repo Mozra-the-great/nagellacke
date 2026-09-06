@@ -5,11 +5,25 @@ on:
     branches: [main]
     paths:
       - 'v3/**'
+      - 'android/**'
+      # the shared merge fixtures are read by tests on both sides, so a
+      # fixtures-only change still has to run them
+      - 'fixtures/**'
+      # a change to the pipeline itself has to run the pipeline — without this
+      # a commit that only edits this file matches no path, so a broken job
+      # definition would land on main unverified
+      - '.github/workflows/ci.yml'
+  # Deliberately unfiltered, unlike the push trigger above: `build` and
+  # `build-android` are required status checks on main, and a required check that
+  # never runs is reported as pending forever rather than skipped — a docs-only PR
+  # would match no path, never report, and stay unmergeable. Paying a couple of
+  # runner-minutes on such a PR is the cheaper side of that trade.
   pull_request:
     branches: [main]
-    paths:
-      - 'v3/**'
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -24,16 +38,20 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Regenerate lockfile for Linux (manual trigger only)
-        # package-lock.json only carried Windows-platform entries for native
-        # optional deps (@rollup/rollup-*, @rolldown/binding-*) — plain
-        # `npm install` against the existing lock doesn't add the missing
-        # linux-x64-gnu entries on its own. Force a full fresh resolution.
-        if: github.event_name == 'workflow_dispatch'
-        run: rm -f package-lock.json && rm -rf node_modules
-
       - name: Install
-        run: npm install
+        # ci, not install: `npm install` is free to resolve versions the lockfile
+        # does not name, so CI could build against a dependency tree no
+        # contributor has. `npm ci` installs the lockfile exactly and fails if the
+        # two disagree, which makes a green build mean something.
+        #
+        # This was previously blocked by package-lock.json carrying only
+        # Windows-platform entries for the native optional deps, hence the
+        # workflow_dispatch step that deleted the lockfile to force a fresh
+        # resolution. That is fixed: the lockfile now names every platform binary
+        # (@rollup/rollup-linux-x64-gnu, @rolldown/binding-linux-x64-gnu and
+        # @esbuild/linux-x64 among them), so the workaround and the artifact that
+        # existed to ship a repaired lockfile out of CI are both gone.
+        run: npm ci
 
       - name: Build core
         run: npm run build:core
@@ -47,12 +65,46 @@ jobs:
       - name: Build web
         run: npm run build:web
 
-      - name: Test (core)
+      - name: Test
+        # Not core only, despite the old label: the root script is
+        # `--workspaces --if-present`, so this covers core, server and web.
         run: npm run test
 
-      - name: Upload package-lock.json
-        if: always()
+  build-android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+
+      - name: Unit tests
+        # Runs before the APK build on purpose: assembleDebug only proves the
+        # Kotlin compiles, and #297 was a logic bug that compiled cleanly.
+        # These are JVM unit tests (app/src/test/), no emulator needed.
+        run: ./gradlew testDebugUnitTest
+
+      - name: Upload test report
+        # Gradle prints only the failing test names; the HTML/XML report has
+        # the assertion diffs and stack traces needed to fix them.
+        if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: package-lock
-          path: v3/package-lock.json
+          name: android-test-report
+          path: android/app/build/reports/tests/testDebugUnitTest/
+
+      - name: Build debug APK
+        # Debug build only - no signing secrets needed (uses AGP's built-in
+        # debug signing config) and the OAuth client id BuildConfig fields
+        # (app/build.gradle.kts) fall back to empty strings when the
+        # corresponding secrets/local.properties entries are absent.
+        run: ./gradlew assembleDebug

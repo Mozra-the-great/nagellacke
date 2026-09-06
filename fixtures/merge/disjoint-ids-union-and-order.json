@@ -1,0 +1,91 @@
+{
+  "name": "disjoint-ids-union-and-order",
+  "description": "Records unique to one side are all kept, and the output order is local-first then remote-only appended. Order is observable in the UI, so it is part of the contract.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Local A",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      },
+      {
+        "id": "p2",
+        "name": "Local B",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p3",
+        "name": "Remote C",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Local A",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      },
+      {
+        "id": "p2",
+        "name": "Local B",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      },
+      {
+        "id": "p3",
+        "name": "Remote C",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

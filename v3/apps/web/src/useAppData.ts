@@ -118,28 +118,103 @@ export function saveAiEnabled(value: boolean): void {
   localStorage.setItem(AI_ENABLED_KEY, String(value));
 }
 
+/**
+ * The sync JWTs live here, in module state, and never in localStorage (#299).
+ *
+ * They used to be persisted along with the rest of the sync config, which put a
+ * 30-day refresh token somewhere any injected script could read at leisure — and
+ * since a refresh token silently re-mints access tokens, the shorter access TTL
+ * bounded nothing. This mirrors the deliberate handling in utils/photoToken.ts.
+ *
+ * Staying logged in across a reload is now the httpOnly refresh cookie's job (the
+ * server sets it on login; see #299): on startup the app trades that cookie for a
+ * fresh access token via restoreSession(). A script can trigger that call but
+ * cannot read the cookie, and the cookie path deliberately returns no refresh
+ * token in its body.
+ */
+let sessionTokens: { serverToken?: string; serverRefreshToken?: string } = {};
+
+/** Everything except the credentials — this is the part that is safe to persist. */
+type PersistedSyncConfig = Omit<SyncConfig, 'serverToken' | 'serverRefreshToken'>;
+
 export function loadSyncConfig(): SyncConfig | null {
   try {
     const raw = localStorage.getItem(SYNC_CONFIG_KEY);
-    if (raw) return JSON.parse(raw) as SyncConfig;
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as SyncConfig;
+    // Older installs have tokens sitting in localStorage from before #299. Take them
+    // once so the user is not logged out by upgrading, then scrub them from disk on
+    // the next save below.
+    if (stored.serverToken && !sessionTokens.serverToken) {
+      sessionTokens = { serverToken: stored.serverToken, serverRefreshToken: stored.serverRefreshToken };
+      saveSyncConfig({ ...stored, ...sessionTokens });
+    }
+    return { ...stored, ...sessionTokens };
   } catch { /* empty */ }
   return null;
 }
 
 export function saveSyncConfig(config: SyncConfig | null): void {
-  if (config) localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
-  else localStorage.removeItem(SYNC_CONFIG_KEY);
+  if (!config) {
+    sessionTokens = {};
+    localStorage.removeItem(SYNC_CONFIG_KEY);
+    return;
+  }
+  sessionTokens = { serverToken: config.serverToken, serverRefreshToken: config.serverRefreshToken };
+  const persisted: PersistedSyncConfig & Partial<Pick<SyncConfig, 'serverToken' | 'serverRefreshToken'>> = { ...config };
+  delete persisted.serverToken;
+  delete persisted.serverRefreshToken;
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(persisted));
 }
 
 /**
- * Writes a renewed access/refresh pair back into the stored sync config, so a
- * silent refresh survives a page reload (#109). Re-reads the config rather than
+ * Writes a renewed access/refresh pair into the in-memory session, so a silent
+ * refresh is visible to every later caller (#109). Re-reads the config rather than
  * closing over one, since a refresh can land long after the adapter was built.
+ *
+ * refreshToken is optional because the cookie path deliberately does not return one
+ * — there is nothing to store, and the cookie the browser just updated is what
+ * carries the renewal.
  */
-export function persistRefreshedTokens(token: string, refreshToken: string): void {
+export function persistRefreshedTokens(token: string, refreshToken?: string): void {
   const current = loadSyncConfig();
   if (!current || current.provider !== 'server') return;
-  saveSyncConfig({ ...current, serverToken: token, serverRefreshToken: refreshToken });
+  saveSyncConfig({
+    ...current,
+    serverToken: token,
+    serverRefreshToken: refreshToken ?? current.serverRefreshToken,
+  });
+}
+
+/**
+ * Trades the httpOnly refresh cookie for an access token on startup. Without this a
+ * reload would land on a config that has a server URL but no credential, i.e. an
+ * apparent logout — the price the issue's "keep it in memory" suggestion would have
+ * charged on every reload and every new tab.
+ *
+ * Returns false when there is no usable cookie (never logged in, logged out
+ * elsewhere, cookie expired), which the caller surfaces as "please log in again".
+ */
+export async function restoreSession(): Promise<boolean> {
+  const cfg = loadSyncConfig();
+  if (!cfg || cfg.provider !== 'server' || cfg.serverToken) return !!cfg?.serverToken;
+  try {
+    const res = await fetch(`${(cfg.serverUrl ?? '').replace(/\/$/, '')}/api/auth/refresh`, {
+      method: 'POST',
+      // The cookie is httpOnly and, cross-origin, SameSite=None — it only rides along
+      // when the request explicitly asks for credentials.
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Nagellacke-Refresh': '1' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) return false;
+    const { token } = await res.json() as { token?: string };
+    if (!token) return false;
+    persistRefreshedTokens(token);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function useAppData() {
@@ -396,8 +471,16 @@ export function useAppData() {
     }
   }, [commit]);
 
-  // Auto-sync on load
-  useEffect(() => { void sync(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-sync on load. restoreSession() has to win the race: since #299 the access
+  // token is gone after a reload and only the httpOnly cookie can produce a new one,
+  // so syncing first would build an adapter with no credential and report a spurious
+  // "Sitzung abgelaufen" on every refresh of the page.
+  useEffect(() => {
+    void (async () => {
+      await restoreSession();
+      await sync();
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     data,

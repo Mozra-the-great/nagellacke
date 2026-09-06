@@ -7,9 +7,9 @@ export class ServerAdapter implements SyncAdapter {
   private baseUrl: string;
   private token: string;
   private refreshToken?: string;
-  private onTokensRefreshed?: (token: string, refreshToken: string) => void;
+  private onTokensRefreshed?: (token: string, refreshToken?: string) => void;
 
-  constructor(config: SyncConfig, onTokensRefreshed?: (token: string, refreshToken: string) => void) {
+  constructor(config: SyncConfig, onTokensRefreshed?: (token: string, refreshToken?: string) => void) {
     if (!config.serverToken) {
       throw new Error('ServerAdapter requires serverToken');
     }
@@ -33,18 +33,24 @@ export class ServerAdapter implements SyncAdapter {
    * surfaces the original 401 rather than retrying forever.
    */
   private async refreshAccessToken(): Promise<boolean> {
-    if (!this.refreshToken) return false;
     try {
       const res = await fetch(`${this.baseUrl}/api/auth/refresh`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: this.refreshToken }),
+        // Since #299 the browser's refresh token is an httpOnly cookie rather than
+        // anything this object holds, and a cookie only travels when credentials are
+        // requested. A body token is still sent when one is in hand — a session
+        // predating the cookie, or a non-browser caller — so this works either way.
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Nagellacke-Refresh': '1' },
+        body: JSON.stringify(this.refreshToken ? { refreshToken: this.refreshToken } : {}),
       });
       if (!res.ok) return false;
+      // No refreshToken comes back on the cookie path, by design: handing one to a
+      // script is precisely what #299 set out to stop. Only `token` is required.
       const { token, refreshToken } = await res.json() as { token?: string; refreshToken?: string };
-      if (!token || !refreshToken) return false;
+      if (!token) return false;
       this.token = token;
-      this.refreshToken = refreshToken;
+      if (refreshToken) this.refreshToken = refreshToken;
       this.onTokensRefreshed?.(token, refreshToken);
       return true;
     } catch {

@@ -85,23 +85,28 @@ class ServerAdapter(
     //
     // photoUrl() is a non-suspend interface method and therefore cannot mint one on
     // demand; the token is refreshed from the suspending paths that already run
-    // before photos are displayed (sync, uploadPhoto). Kept in memory only, never
-    // persisted: a photo credential that outlives the process is exactly what #269
-    // set out to remove.
-    @Volatile private var photoToken: String? = null
-    @Volatile private var photoTokenExpiresAt = 0L
+    // before photos are displayed (sync, uploadPhoto).
+    //
+    // The token lives in a process-wide cache rather than on this instance, because
+    // the instance that mints it is never the instance that reads it (#297): sync
+    // runs on the adapter SyncManager builds and discards, while photoUrl() is called
+    // on the throwaway adapter photoResolution() creates for display. See
+    // PhotoTokenCache — still memory-only, still never persisted, per #269.
+    private val photoTokens = PhotoTokenCache.shared
+
+    /** Cache key: a token is only ever valid for the server that signed it. */
+    private val photoTokenKey: String get() = config.serverUrl.trimEnd('/')
 
     /** Re-mint this long before expiry so a screen full of photos never races it. */
     private val photoTokenMarginMs = 60_000L
 
     private suspend fun refreshPhotoTokenIfNeeded() {
-        if (photoToken != null && System.currentTimeMillis() < photoTokenExpiresAt - photoTokenMarginMs) return
+        if (!photoTokens.needsRefresh(photoTokenKey, photoTokenMarginMs)) return
         try {
             val response = withAuthRetry { api.photoToken() }
             val token = response.token
             if (token != null && response.expiresAt > 0) {
-                photoToken = token
-                photoTokenExpiresAt = response.expiresAt
+                photoTokens.put(photoTokenKey, token, response.expiresAt)
             }
         } catch (e: Exception) {
             // A server predating #269 answers 404 and still serves photos without a
@@ -137,7 +142,11 @@ class ServerAdapter(
 
     override fun photoUrl(filename: String): String {
         val base = "${config.serverUrl.trimEnd('/')}/photos/${filename}"
-        val token = photoToken ?: return base
+        // No token yet (first launch before the first sync, or a pre-#269 server that
+        // answers 404 to the mint call) — the bare URL is the right fallback: an older
+        // server still serves it, and a hardened one answers 401, which Coil renders as
+        // a missing image exactly as it would for a genuinely absent file.
+        val token = photoTokens.get(photoTokenKey) ?: return base
         return base + "?t=" + Uri.encode(token)
     }
 

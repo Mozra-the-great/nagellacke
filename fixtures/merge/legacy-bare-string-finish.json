@@ -1,0 +1,58 @@
+{
+  "name": "legacy-bare-string-finish",
+  "description": "Pre-migration payload: `finish` is still a bare string rather than an array. It must become a one-element array, or consumers calling finish.map / finish.some crash on it. TypeScript does this inside mergeData, Kotlin at deserialization — the observable result has to match.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Local",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Legacy",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": "Glitter",
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Legacy",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Glitter"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

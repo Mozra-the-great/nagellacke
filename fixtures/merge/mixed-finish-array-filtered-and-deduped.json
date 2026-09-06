@@ -1,0 +1,50 @@
+{
+  "name": "mixed-finish-array-filtered-and-deduped",
+  "description": "A finish array with unknown entries keeps the valid ones in first-occurrence order and drops the rest, and duplicates collapse. TypeScript uses a Set, Kotlin distinct() — both preserve first occurrence, which this pins.",
+  "local": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Mixed",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Top Coat",
+          "Nope",
+          "Glitter",
+          "Top Coat"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Mixed",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Top Coat",
+          "Glitter"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

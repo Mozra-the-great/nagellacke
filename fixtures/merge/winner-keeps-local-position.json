@@ -1,0 +1,104 @@
+{
+  "name": "winner-keeps-local-position",
+  "description": "A record present on both sides keeps its local slot even when the remote copy wins on updatedAt. Both sides overwrite the map value in place rather than re-inserting, which preserves the position.",
+  "local": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "First",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      },
+      {
+        "id": "p2",
+        "name": "Second",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p2",
+        "name": "Second Updated",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 5000
+      },
+      {
+        "id": "p3",
+        "name": "Third",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": [
+          "Classic"
+        ],
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 1000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "First",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      },
+      {
+        "id": "p2",
+        "name": "Second Updated",
+        "updatedAt": 5000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      },
+      {
+        "id": "p3",
+        "name": "Third",
+        "updatedAt": 1000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}

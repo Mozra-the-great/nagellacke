@@ -50,11 +50,11 @@ class PathSafetyTest {
         }
     }
 
-    // On Windows, File(dir, "C:\\...") produces a path the OS rejects outright and
-    // canonicalFile throws IOException before the prefix check ever runs. Either way the
-    // caller must see a SecurityException: an IOException escaping resolveWithin would
-    // surface from delete()/readBytes() as an unrelated failure type, and exists()'s
-    // fail-closed runCatching is the only place that would absorb it.
+    // This is the one case the prefix check cannot catch on its own, which is why
+    // resolveWithin rejects absolute names up front: File(dir, "/tmp/x/outside.jpg")
+    // silently re-roots to "<dir>/tmp/x/outside.jpg" and looks contained. Windows took a
+    // different route to the same SecurityException - the join throws IOException there -
+    // so this test passed on a Windows dev machine while the case was live on Android.
     @Test
     fun `an absolute path outside the dir is rejected`() {
         val dir = photosDir()

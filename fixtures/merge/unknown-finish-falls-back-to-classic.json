@@ -1,0 +1,44 @@
+{
+  "name": "unknown-finish-falls-back-to-classic",
+  "description": "An unrecognised finish value falls back to ['Classic'] rather than an empty array, so a polish is never left with zero finish tags.",
+  "local": {
+    "polishes": [],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "remote": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Odd",
+        "brand": "OPI",
+        "num": "001",
+        "color": "#0000ff",
+        "finish": "Sparkleponies",
+        "status": "ok",
+        "createdAt": 1000,
+        "updatedAt": 2000
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  },
+  "expected": {
+    "polishes": [
+      {
+        "id": "p1",
+        "name": "Odd",
+        "updatedAt": 2000,
+        "deletedAt": null,
+        "finish": [
+          "Classic"
+        ]
+      }
+    ],
+    "customCats": [],
+    "manicures": [],
+    "stickers": []
+  }
+}
