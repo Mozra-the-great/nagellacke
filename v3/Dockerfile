@@ -20,6 +20,7 @@ RUN mkdir -p server/public && cp -r apps/web/dist/. server/public/
 
 FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
+ENV DATA_DIR=/data
 WORKDIR /app
 
 RUN addgroup -S nagellacke && adduser -S nagellacke -G nagellacke
