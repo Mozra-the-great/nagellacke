@@ -531,8 +531,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   // serverUrl rather than the saved config, because the whole point is the
   // not-yet-configured visitor. A failure (offline, or a server predating this
   // route) leaves the flag null, which hides the option entirely.
+  //
+  // An empty serverUrl is a legitimate case, not a "not configured yet" one —
+  // the field's own hint says "leer = diese Seite", and login()/register()
+  // both already work with an empty base (fetch resolves the relative URL
+  // against the current origin). Requiring serverUrl.trim() here meant a
+  // visitor who followed that hint literally never saw a register option at
+  // all, no matter what the server answered.
   useEffect(() => {
-    if (provider !== 'server' || !serverUrl.trim() || serverToken) {
+    if (provider !== 'server' || serverToken) {
       setRegistrationAllowed(null);
       return;
     }
