@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **`v3/Dockerfile` + `.dockerignore`**: Multi-Stage-Docker-Build (Builder baut core/sync/web/server via `npm ci` + den bestehenden `build:*`-Scripts, Runtime-Stage kopiert nur `node_modules`, `packages/*` und `server/` in ein schlankes `node:20-alpine`-Image, non-root User, `EXPOSE 3000`, `VOLUME /data`). Der bisherige `install.sh`-Weg (systemd, `/opt/nagellacke`) bleibt für self-hosted LAN-Installs unverändert der primäre Weg — das Dockerfile ist für Cloud-/Container-Hosts gedacht, die eigene Instanz eigenständig betreiben (kein Zugriff auf `v3/server/data/` einer nativen Installation).
+
 ## [3.3.0] – 2026-08-15
 
 Finale 3.3.0, promotet von rc.2. Gegenüber rc.2 keine funktionalen Änderungen — nur die Relizenzierung unter GNU GPL v3.0 und eine unter Versionskontrolle gestellte Feature-/QA-Checkliste (`docs/FEATURES.md`).
