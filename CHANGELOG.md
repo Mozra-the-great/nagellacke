@@ -7,8 +7,43 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.4.0] – 2026-09-07
+
 ### Hinzugefügt
-- **`v3/Dockerfile` + `.dockerignore`**: Multi-Stage-Docker-Build (Builder baut core/sync/web/server via `npm ci` + den bestehenden `build:*`-Scripts, Runtime-Stage kopiert nur `node_modules`, `packages/*` und `server/` in ein schlankes `node:20-alpine`-Image, non-root User, `EXPOSE 3000`, `VOLUME /data`). Der bisherige `install.sh`-Weg (systemd, `/opt/nagellacke`) bleibt für self-hosted LAN-Installs unverändert der primäre Weg — das Dockerfile ist für Cloud-/Container-Hosts gedacht, die eigene Instanz eigenständig betreiben (kein Zugriff auf `v3/server/data/` einer nativen Installation).
+- **Self-Registration in der Web-App**: Das Login/Sync-Formular zeigt jetzt ein Registrieren-Feld, sobald der Server das erlaubt. Ob Registrierung offen ist, entscheidet ein zentraler `registrationOpen()`-Helfer auf dem Server (ein in `data/server_settings.json` gespeicherter Wert aus dem Admin-Panel gewinnt, `ALLOW_REGISTRATION` bleibt Fallback) und wird über den bewusst öffentlichen Endpunkt `GET /api/auth/registration-status` (`{ allowed, firstUser }`) abgefragt, bevor überhaupt jemand eingeloggt ist. Antwortet der Server nicht oder mit `allowed: false`, bleibt die Box wie bisher reiner Login — ältere Server verhalten sich also unverändert. (#295)
+- **`v3/Dockerfile` + `.dockerignore`**: Multi-Stage-Docker-Build (Builder baut core/sync/web/server via `npm ci` + den bestehenden `build:*`-Scripts, Runtime-Stage kopiert nur `node_modules`, `packages/*` und `server/` in ein schlankes `node:20-alpine`-Image, non-root User, `EXPOSE 3000`, `VOLUME /data`). Der bisherige `install.sh`-Weg (systemd, `/opt/nagellacke`) bleibt für self-hosted LAN-Installs unverändert der primäre Weg — das Dockerfile ist für Cloud-/Container-Hosts gedacht, die eigene Instanz eigenständig betreiben (kein Zugriff auf `v3/server/data/` einer nativen Installation). (#321)
+- **Fotos verlangen einen signierten, ablaufenden Zugriffs-Token** statt öffentlich unter `/photos/*` erreichbar zu sein. Der Handler sitzt jetzt hinter `requirePhotoAccess`, das `X-Api-Key`, ein Bearer-Access-JWT oder einen signierten `?t=`-Query-Token akzeptiert (HMAC über einen aus `JWT_SECRET` abgeleiteten Schlüssel) — Letzteres, weil `<img>`-Tags und Mail-Clients keine Header mitschicken können. Es gibt einen Session-Token für alle Fotos (`GET /api/photos/token`, Standard-TTL 1 h) und einen dateigebundenen Token für Report-E-Mails (Standard-TTL 30 Tage); beide werden über `token_version` entwertet, sodass `POST /api/auth/logout-all` auch ausgegebene Foto-Links unbrauchbar macht. (#285)
+- **DE/EN-Umschalter auf der GH-Pages-Landingpage.** (#250)
+- CI baut ab sofort das Android-Modul auf jedem Pull Request (`build-android`-Job: `testDebugUnitTest` dann `assembleDebug`, JVM-Unit-Tests ohne Emulator, HTML-Testreport als Artifact bei Fehlschlag) — vorher deckte die Pipeline nur Web/Server ab, ein kaputter Android-Build fiel erst beim Release auf. (#302)
+- **`fixtures/merge/*.json`** ist jetzt der von Web/Server und Android gemeinsam gelesene Testvertrag für `mergeData()`/`Merge.kt`: beide Testsuiten laufen gegen dieselben Rohdaten, damit die beiden Merge-Implementierungen nicht mehr unbemerkt auseinanderdriften können, während auf beiden Seiten weiterhin alle Tests grün sind.
+
+### Geändert
+- **Web: Der Sync-Refresh-Token liegt jetzt in einem httpOnly-Cookie** (`nl_refresh`, `Path=/api/auth`) statt im JSON-Body. Die Web-App hält den Access-Token nur noch im Modulspeicher und persistiert kein Token mehr in `localStorage`; ein Reload holt sich über das Cookie beim Start einen frischen Access-Token, ohne dass das wie ein Logout aussieht. Tokens, die eine ältere Version noch in `localStorage` abgelegt hatte, werden einmalig übernommen und danach entfernt. Ein cookie-authentifizierter Refresh liefert bewusst nur `{ token }` zurück, nie einen neuen Refresh-Token — Android ist unbetroffen, da es weiterhin `refreshToken` im Body sendet und beide Tokens zurückbekommt. (#307)
+- **Android: Der Foto-Zugriffs-Token wird jetzt geräteweit zwischen Adaptern geteilt** (`PhotoTokenCache`, prozessweit, schlüssel nach Server-URL) statt in einem Instanzfeld gehalten zu werden — der Adapter, der den Token mintet (SyncManager), war nie derselbe, der ihn zum Anzeigen braucht, wodurch vorher jedes Thumbnail mit 401 fehlschlug. Wird geleert, sobald sich die angemeldete Identität ändert. (#305)
+- **Android: OAuth-Client-IDs (Google Drive/OneDrive/Dropbox) kommen jetzt aus `BuildConfig`**, gespeist über Umgebungsvariablen bzw. `local.properties`, statt als Platzhalter im Quellcode zu stehen — der eigentliche OAuth-Connect-Flow bleibt weiterhin unimplementiert (Buttons deaktiviert). (#291)
+- **Android: Sync-Netzwerkaufrufe laufen nicht mehr auf dem Main-Thread.** (#290)
+- Landingpage-Hero überarbeitet, totes Lack-Studio-CSS entfernt; Studio-Illustration durch Farbmuster ersetzt. (#303, #296)
+
+### Behoben
+- **Sicherheit:** `GET /api/auth/registration-status` behandelte ein absichtlich leeres Server-URL-Feld wie ein fehlendes und zeigte die Registrierungsoption fälschlich an bzw. verbarg sie fälschlich, je nach Zustand. (#325)
+- **Sicherheit (Android):** `resolveWithin` lehnt jetzt absolute Foto-Dateinamen aus dem Sync ab, statt sie unverändert in die lokale Pfadbildung einfließen zu lassen.
+- **Sicherheit:** `ai_jobs.json` erhält verschärfte Dateiberechtigungen; ein Timing-Seitenkanal beim Login wurde geschlossen. (#292)
+- **Sicherheit:** 2FA-Deaktivierung wird jetzt abgelehnt, wenn 2FA für den Account nie aktiviert war. (#288)
+- **Sicherheit:** Benutzernamen sind jetzt längenbegrenzt, um Accounts vor einem durch überlange Header ausgelösten HTTP-431 zu schützen. (#287)
+- **Sicherheit:** Datei-Rechte, E-Mail-Versand, Login-Lockout und `npm audit`-Funde aus einem gezielten QA-Durchlauf gehärtet. (#262)
+- `POST /api/ai/settings` prüft die String-Felder jetzt zur Laufzeit statt sie ungeprüft anzunehmen. (#306)
+- Doppelt gezählter Untertitel im Header sowie ein Mobile-Overflow in der Admin-Benutzerliste behoben. (#304)
+- Admin-API-Key-Rotation und Benutzer-Löschung schlugen immer mit 400 fehl. (#260)
+- „Speichern"-Button im Sticker-Formular bleibt deaktiviert, solange der Name leer ist. (#261)
+- Standard-Finish eines Stickers folgt jetzt derselben Voreinstellung wie überall sonst. (#293)
+- Ein literaler JSON-`null`-Body wird jetzt mit 4xx statt mit einem 500 beantwortet. (#289)
+- Die Suche nach einer Zahl ließ die Sammlungsansicht abstürzen. (#286)
+- Barrierefreiheit: Color-from-Photo-Werkzeug war per Tastatur nicht bedienbar und hatte keinen Fokus-Trap. (#266)
+- Barrierefreiheit: verschachtelte interaktive Steuerelemente brachen die Screenreader-Navigation in Listenzeilen. (#265)
+- Barrierefreiheit: Lösch-Rückgängig-Snackbar pausiert jetzt ihr automatisches Ausblenden bei Hover/Fokus (WCAG 2.2.1). (#264)
+- Ein beschädigtes lokales Sammlungsobjekt wurde vorher still geleert statt einen Fehler zu melden. (#263)
+- Foto-Upload zeigt jetzt eine klare „Sitzung abgelaufen"-Meldung statt eines nackten 401. (#267)
+- Sechs kleinere UI/UX-Politur-Fixes in der Web-App. (#294)
 
 ## [3.3.0] – 2026-08-15
 
