@@ -841,9 +841,13 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     reply.send({ ok: true });
 
-    setImmediate(() => {
+    // void: the reply is already sent, so nothing awaits this — but runUpdate()
+    // is async since #338 (it no longer blocks the event loop), so the result
+    // has to be awaited *somewhere* or a failing step would surface as an
+    // unhandled rejection instead of a recorded state.
+    setImmediate(() => void (async () => {
       try {
-        const state = runUpdate({
+        const state = await runUpdate({
           appRoot: APP_ROOT,
           dataDir: DATA_DIR,
           publicDir: path.join(process.cwd(), 'public'),
@@ -871,7 +875,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           exitCode: null, error: message,
         });
       }
-    });
+    })());
   });
 
   // POST /api/admin/api-key/rotate — replace the admin API key

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import {
   buildUpdateSteps, updateChildEnv, runUpdate, readUpdateState, writeUpdateState,
-  publishWebBuild, UPDATE_STALE_MS, detectDeployment, parseRepoSlug, DEFAULT_REPO_SLUG,
+  publishWebBuild, UPDATE_STALE_MS, detectDeployment, parseRepoSlug, DEFAULT_REPO_SLUG, spawnStep,
 } from './update';
 import type { SpawnFn, UpdateStep, GitProbeFn } from './update';
 
@@ -36,7 +36,7 @@ function recordingSpawn(failAt?: string, stderr = 'boom'): { spawn: SpawnFn; cal
   const calls: { step: UpdateStep; env: NodeJS.ProcessEnv }[] = [];
   const spawn: SpawnFn = (step, env) => {
     calls.push({ step, env });
-    return step.label === failAt ? { status: 1, stderr } : { status: 0, stderr: '' };
+    return Promise.resolve(step.label === failAt ? { status: 1, stderr } : { status: 0, stderr: '' });
   };
   return { spawn, calls };
 }
@@ -189,19 +189,19 @@ describe('runUpdate', () => {
     };
   }
 
-  it('runs every step with an environment free of NODE_ENV=production', () => {
+  it('runs every step with an environment free of NODE_ENV=production', async () => {
     const dir = tmp();
     const { spawn, calls } = recordingSpawn();
-    const state = runUpdate(options(dir, spawn));
+    const state = await runUpdate(options(dir, spawn));
     expect(state.phase).toBe('success');
     expect(calls).toHaveLength(buildUpdateSteps('/opt/nagellacke').length);
     for (const call of calls) expect(call.env.NODE_ENV).toBeUndefined();
   });
 
-  it('stops at the first failing step and records which one it was', () => {
+  it('stops at the first failing step and records which one it was', async () => {
     const dir = tmp();
     const { spawn, calls } = recordingSpawn('Paket core bauen', 'sh: 1: tsup: not found');
-    const state = runUpdate(options(dir, spawn));
+    const state = await runUpdate(options(dir, spawn));
 
     expect(state.phase).toBe('failed');
     expect(state.step).toBe('Paket core bauen');
@@ -213,10 +213,10 @@ describe('runUpdate', () => {
     ]);
   });
 
-  it('persists the failure so a later GET /api/update/status can report it', () => {
+  it('persists the failure so a later GET /api/update/status can report it', async () => {
     const dir = tmp();
     const { spawn } = recordingSpawn('Quellcode holen', 'fatal: could not read from remote');
-    runUpdate(options(dir, spawn));
+    await runUpdate(options(dir, spawn));
 
     const persisted = readUpdateState(dir);
     expect(persisted?.phase).toBe('failed');
@@ -224,23 +224,38 @@ describe('runUpdate', () => {
     expect(persisted?.error).toContain('could not read from remote');
   });
 
-  it('reports progress while it runs', () => {
+  it('reports progress while it runs', async () => {
     const dir = tmp();
     const seen: (string | undefined)[] = [];
     const spawn: SpawnFn = () => {
       // What a client polling mid-update would see.
       seen.push(readUpdateState(dir)?.step);
-      return { status: 0, stderr: '' };
+      return Promise.resolve({ status: 0, stderr: '' });
     };
-    runUpdate(options(dir, spawn));
+    await runUpdate(options(dir, spawn));
     expect(seen[0]).toBe('Quellcode holen');
     expect(seen).toContain('Web-App bauen');
   });
 
-  it('counts publishing as a step and fails visibly when it throws', () => {
+  it('lets a concurrent poller see more than one step go by (#338)', async () => {
+    const dir = tmp();
+    // Steps that finish on a macrotask, the way a real child process does.
+    const spawn: SpawnFn = () => new Promise(resolve => setTimeout(() => resolve({ status: 0, stderr: '' }), 2));
+    const seen: (string | undefined)[] = [];
+    const poller = setInterval(() => { seen.push(readUpdateState(dir)?.step); }, 1);
+    const state = await runUpdate(options(dir, spawn));
+    clearInterval(poller);
+
+    expect(state.phase).toBe('success');
+    // The per-step display in AdminPage/SettingsPage was unreachable before:
+    // no poll could land between two steps.
+    expect(new Set(seen.filter(Boolean)).size).toBeGreaterThan(1);
+  });
+
+  it('counts publishing as a step and fails visibly when it throws', async () => {
     const dir = tmp();
     const { spawn } = recordingSpawn();
-    const state = runUpdate(options(dir, spawn, () => { throw new Error('Web-Build fehlt'); }));
+    const state = await runUpdate(options(dir, spawn, () => { throw new Error('Web-Build fehlt'); }));
 
     expect(state.phase).toBe('failed');
     expect(state.step).toBe('Web-App veröffentlichen');
@@ -248,25 +263,65 @@ describe('runUpdate', () => {
     expect(state.totalSteps).toBe(buildUpdateSteps('/opt/nagellacke').length + 1);
   });
 
-  it('falls back to the command line when a step fails without stderr', () => {
+  it('falls back to the command line when a step fails without stderr', async () => {
     const dir = tmp();
-    // spawnSync reports a missing binary as status null with empty stderr.
-    const spawn: SpawnFn = () => ({ status: null, stderr: '' });
-    const state = runUpdate(options(dir, spawn));
+    // A missing binary arrives as status null with empty stderr.
+    const spawn: SpawnFn = () => Promise.resolve({ status: null, stderr: '' });
+    const state = await runUpdate(options(dir, spawn));
     expect(state.phase).toBe('failed');
     expect(state.exitCode).toBeNull();
     expect(state.error).toBe('git fetch origin main fehlgeschlagen');
   });
 
-  it('marks success only after publishing', () => {
+  it('marks success only after publishing', async () => {
     const dir = tmp();
     const { spawn } = recordingSpawn();
     let published = false;
-    const state = runUpdate(options(dir, spawn, () => { published = true; }));
+    const state = await runUpdate(options(dir, spawn, () => { published = true; }));
     expect(published).toBe(true);
     expect(state.phase).toBe('success');
     expect(state.stepIndex).toBe(state.totalSteps);
     expect(readUpdateState(dir)?.phase).toBe('success');
+  });
+});
+
+describe('spawnStep', () => {
+  /** Runs node itself rather than git/npm — real process, no side effects. */
+  function nodeStep(script: string, timeout = 10_000): UpdateStep {
+    return { label: 'test', cmd: process.execPath, args: ['-e', script], cwd: process.cwd(), timeout };
+  }
+
+  it('resolves with the exit code and the captured stderr', async () => {
+    const result = await spawnStep(nodeStep('process.stderr.write("kaputt"); process.exit(3);'), process.env);
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain('kaputt');
+  });
+
+  it('does not block the event loop while the child runs (#338)', async () => {
+    // The whole point of the change: under spawnSync nothing else could run
+    // for the duration of a step, so GET /api/update/status — and every other
+    // request — went unanswered for the entire update.
+    let ticked = false;
+    const timer = setTimeout(() => { ticked = true; }, 10);
+    const result = await spawnStep(nodeStep('setTimeout(() => {}, 200);'), process.env);
+    clearTimeout(timer);
+    expect(result.status).toBe(0);
+    expect(ticked).toBe(true);
+  });
+
+  it('reports a missing binary as status null with the reason', async () => {
+    const step: UpdateStep = {
+      label: 'test', cmd: 'definitely-not-a-real-binary-nagellacke', args: [], cwd: process.cwd(), timeout: 5_000,
+    };
+    const result = await spawnStep(step, process.env);
+    expect(result.status).toBeNull();
+    expect(result.stderr).toContain('ENOENT');
+  });
+
+  it('kills a step that outruns its timeout and says so', async () => {
+    const result = await spawnStep(nodeStep('setTimeout(() => {}, 30_000);', 150), process.env);
+    expect(result.status).toBeNull();
+    expect(result.stderr).toContain('abgebrochen');
   });
 });
 
