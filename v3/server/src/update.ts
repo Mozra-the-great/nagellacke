@@ -11,7 +11,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 export interface UpdateStep {
   /** Shown in the status endpoint and the UI, so it is German like the rest of the surface. */
@@ -220,15 +220,54 @@ export interface SpawnResult {
   stderr: string;
 }
 
-export type SpawnFn = (step: UpdateStep, env: NodeJS.ProcessEnv) => SpawnResult;
+/**
+ * Async on purpose (#338). The steps used to run through `spawnSync`, which
+ * blocks the Node event loop for the entire update — so the server could not
+ * answer *any* request while one ran, including the `GET /api/update/status`
+ * that #335 added specifically so the client could watch. Measured on the test
+ * instance: 30.5 s between startedAt and finishedAt, and not one poll in that
+ * window got a response. The per-step progress display was not wrong, it was
+ * unreachable. The blast radius is larger than the UI, too: the whole server is
+ * down for the duration, which on a slower box with a cold node_modules is
+ * minutes rather than the few seconds the restart alone costs.
+ */
+export type SpawnFn = (step: UpdateStep, env: NodeJS.ProcessEnv) => Promise<SpawnResult>;
 
-const defaultSpawn: SpawnFn = (step, env) => {
-  const r = spawnSync(step.cmd, step.args, { cwd: step.cwd, stdio: 'pipe', timeout: step.timeout, env });
-  // A timeout or a missing binary sets `error` and leaves status null with an
-  // empty stderr, so the message is the only thing that says what happened.
-  const stderr = r.stderr?.toString() ?? '';
-  return { status: r.status, stderr: r.error ? `${stderr}${r.error.message}` : stderr };
-};
+/**
+ * Enough to hold any build tool's failure output without letting a runaway
+ * step grow the buffer without bound; stderrTail() trims it further for the
+ * status file.
+ */
+const STDERR_CAP = 64 * 1024;
+
+export const spawnStep: SpawnFn = (step, env) => new Promise<SpawnResult>(resolve => {
+  const child = spawn(step.cmd, step.args, {
+    cwd: step.cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: step.timeout,
+    killSignal: 'SIGKILL',
+  });
+
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-STDERR_CAP); });
+  // Drained and discarded: nothing reads a step's stdout, but leaving the pipe
+  // unread stalls a child that produces more than the pipe buffer holds.
+  child.stdout.resume();
+
+  // A missing binary (`spawn git ENOENT` — the container case in #340) arrives
+  // here, not as an exit code, so the message is the only thing that says what
+  // happened.
+  child.on('error', (e: Error) => resolve({ status: null, stderr: `${stderr}${e.message}` }));
+
+  child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+    if (signal) {
+      resolve({ status: null, stderr: `${stderr}${step.cmd} nach ${step.timeout} ms abgebrochen (${signal})` });
+      return;
+    }
+    resolve({ status: code, stderr });
+  });
+});
 
 /** Last ~2000 characters, which is where a build tool puts the actual error. */
 function stderrTail(stderr: string): string {
@@ -272,10 +311,10 @@ const PUBLISH_LABEL = 'Web-App veröffentlichen';
  * stops at the first failure. Returns the terminal state; the caller decides
  * what to do with it (index.ts restarts the process on success).
  */
-export function runUpdate(options: RunUpdateOptions): UpdateState {
+export async function runUpdate(options: RunUpdateOptions): Promise<UpdateState> {
   const {
     appRoot, dataDir, publicDir,
-    spawn = defaultSpawn,
+    spawn = spawnStep,
     env = process.env,
     now = Date.now,
     publish = publishWebBuild,
@@ -304,7 +343,12 @@ export function runUpdate(options: RunUpdateOptions): UpdateState {
     state = { ...state, step: step.label, stepIndex: index, updatedAt: now() };
     writeUpdateState(dataDir, state);
 
-    const result = spawn(step, childEnv);
+    // Also to the journal: an operator without the admin UI (or during the
+    // window in which the server is restarting) has no other way to follow a
+    // run, and the status file is admin-gated.
+    console.log(`Update ${index + 1}/${totalSteps}: ${step.label}`);
+
+    const result = await spawn(step, childEnv);
     if (result.status !== 0) {
       return fail(step.label, result.status, stderrTail(result.stderr) || `${step.cmd} ${step.args.join(' ')} fehlgeschlagen`);
     }
