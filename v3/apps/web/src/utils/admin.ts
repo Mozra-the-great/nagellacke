@@ -127,9 +127,34 @@ export function checkUpdate(): Promise<UpdateInfo> {
  * POST /api/update/apply keeps its extra bar under the admin-JWT path (§6):
  * it is a documented RCE surface, so a fresh password re-confirmation is
  * required even though the caller already holds a valid admin session.
+ *
+ * Resolving means the update *started*, nothing more — the server answers
+ * before the first step runs. Poll getUpdateStatus() for the outcome (#335).
  */
 export function applyUpdate(password: string): Promise<{ ok: true }> {
   return request('/api/update/apply', { method: 'POST', body: JSON.stringify({ password }) });
+}
+
+export interface UpdateProgress {
+  phase: 'running' | 'success' | 'failed';
+  step: string;
+  stepIndex: number;
+  totalSteps: number;
+  startedAt: number;
+  updatedAt: number;
+  finishedAt?: number;
+  exitCode?: number | null;
+  error?: string;
+}
+
+export interface UpdateStatus {
+  /** Version currently running — the new one once the server has restarted. */
+  version: string;
+  update: UpdateProgress | null;
+}
+
+export function getUpdateStatus(): Promise<UpdateStatus> {
+  return request('/api/update/status');
 }
 
 /**
