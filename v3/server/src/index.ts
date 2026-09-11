@@ -377,25 +377,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
   // advertised those three methods, so a browser refused to send the real
-  // GET /api/photos/token - mint a short-lived signed token the client appends
-  // to /photos/<file>?t=... . An <img> tag cannot send an Authorization header,
-  // so this is how an authenticated browser session reaches its own photos (#269).
-  app.get('/api/photos/token', {
-    preHandler: requireApiKeyOrJwt,
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async (request) => {
-    const exp = Math.floor(Date.now() / 1000) + PHOTO_TOKEN_TTL;
-    const key = request.headers['x-api-key'];
-    if (typeof key === 'string' && key) {
-      return { token: signPhotoToken({ exp, u: '', k: true }, JWT_SECRET, API_KEY), expiresAt: exp * 1000 };
-    }
-    const { username } = request.user as { username: string };
-    return {
-      token: signPhotoToken({ exp, u: username, tv: getUser(username)?.token_version ?? 0 }, JWT_SECRET),
-      expiresAt: exp * 1000,
-    };
-  });
-
   // DELETE /api/photos/:filename or PATCH /api/auth/me whenever the web app was
   // served from a different origin than the API (GitHub Pages, or a "Eigener
   // Server" URL pointing elsewhere). Invisible in the same-origin install.sh
@@ -692,6 +673,32 @@ export async function buildApp(): Promise<FastifyInstance> {
   }
 
   // ── Photo endpoints ────────────────────────────────────────────────────────────
+
+  // GET /api/photos/token - mint a short-lived signed token the client appends
+  // to /photos/<file>?t=... . An <img> tag cannot send an Authorization header,
+  // so this is how an authenticated browser session reaches its own photos (#269).
+  //
+  // Must stay below `register(rateLimitPlugin, ...)`: @fastify/rate-limit reads a
+  // route's `config.rateLimit` in an onRoute hook, which only fires for routes
+  // registered after the plugin. This route used to sit above it — spliced into
+  // the middle of the CORS comment above — so the limit below was silently inert
+  // (#332). CORS was unaffected there, since those hooks are global and Fastify
+  // builds each route's chain at ready(), which is what made it easy to miss.
+  app.get('/api/photos/token', {
+    preHandler: requireApiKeyOrJwt,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const exp = Math.floor(Date.now() / 1000) + PHOTO_TOKEN_TTL;
+    const key = request.headers['x-api-key'];
+    if (typeof key === 'string' && key) {
+      return { token: signPhotoToken({ exp, u: '', k: true }, JWT_SECRET, API_KEY), expiresAt: exp * 1000 };
+    }
+    const { username } = request.user as { username: string };
+    return {
+      token: signPhotoToken({ exp, u: username, tv: getUser(username)?.token_version ?? 0 }, JWT_SECRET),
+      expiresAt: exp * 1000,
+    };
+  });
 
   // POST /api/photos — Foto hochladen (base64 body)
   app.post('/api/photos', {
