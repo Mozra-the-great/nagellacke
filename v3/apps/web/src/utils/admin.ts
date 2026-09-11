@@ -1,4 +1,6 @@
 import { loadSyncConfig } from '../useAppData';
+import { serverBase } from './serverBase';
+import { setStoredApiKey, storedApiKey } from './apiKey';
 
 export type Role = 'admin' | 'user';
 
@@ -46,11 +48,6 @@ export interface AuditEntry {
   action: string;
   target?: string;
   meta?: Record<string, unknown>;
-}
-
-function serverBase(): string {
-  const config = loadSyncConfig();
-  return config?.provider === 'server' ? (config.serverUrl ?? '').replace(/\/$/, '') : '';
 }
 
 function bearerHeaders(hasBody: boolean): Record<string, string> {
@@ -135,11 +132,26 @@ export function applyUpdate(password: string): Promise<{ ok: true }> {
   return request('/api/update/apply', { method: 'POST', body: JSON.stringify({ password }) });
 }
 
-export function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
-  return request('/api/admin/api-key/rotate', { method: 'POST' });
+/**
+ * Rotates the server's root API key and drops this browser's now-dead copy.
+ *
+ * The browser doing the rotation is precisely the one holding the key the call
+ * just invalidated; leaving it behind made photo upload, display and delete
+ * 401 forever against a key the server no longer knows (#330).
+ *
+ * It is *removed*, not replaced with the fresh key. Rotation exists to burn a
+ * leaked copy, and if the leak was persistent XSS or a shared browser profile,
+ * writing the new key straight back into localStorage would hand the same
+ * vector the same root credential again — one that skips the password
+ * re-confirmation guarding /api/update/apply. Nothing is lost by dropping it:
+ * reaching this call already required an admin JWT session, which is the
+ * credential everything here keeps using.
+ */
+export async function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
+  const result = await request<{ apiKey: string; rotatedAt: number }>('/api/admin/api-key/rotate', { method: 'POST' });
+  if (storedApiKey()) setStoredApiKey(null);
+  return result;
 }
-
-const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
 /**
  * Exchanges the root X-Api-Key for an admin session, once (#173 §3.3).
@@ -163,6 +175,6 @@ export async function bootstrapAdmin(serverUrl: string, apiKey: string, username
   });
   const data = await res.json().catch(() => ({})) as { token?: string; refreshToken?: string; error?: string };
   if (!res.ok || !data.token) throw new Error(data.error ?? `Fehler ${res.status}`);
-  localStorage.removeItem(APIKEY_STORAGE);
+  setStoredApiKey(null);
   return { token: data.token, refreshToken: data.refreshToken };
 }
