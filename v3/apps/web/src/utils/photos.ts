@@ -1,4 +1,6 @@
 import { loadSyncConfig, persistRefreshedTokens } from '../useAppData';
+import { markApiKeyRejected, usableApiKey } from './apiKey';
+import { serverUrl } from './serverBase';
 
 /**
  * Thrown when a token-authenticated request still comes back 401 after
@@ -15,12 +17,35 @@ export class AuthExpiredError extends Error {
   }
 }
 
-function authHeaders(): Record<string, string> {
-  const apiKey = localStorage.getItem('nagellacke_v3_apikey');
-  if (apiKey) return { 'X-Api-Key': apiKey };
+/**
+ * Thrown when the stored X-Api-Key is the thing the server rejects and there is
+ * no server session to fall back on (#330). The other half of the bare-401
+ * problem #252 fixed: a key left behind by an admin-panel rotation, or by a
+ * server whose data directory was recreated, is not an expired session and
+ * logging in again does not help — the key has to go.
+ */
+export class ApiKeyInvalidError extends Error {
+  constructor(sessionAlsoDead = false) {
+    super(sessionAlsoDead
+      ? 'API-Schlüssel ist ungültig und die Sitzung ist abgelaufen — in den Einstellungen den Schlüssel entfernen und neu anmelden'
+      : 'API-Schlüssel ist ungültig — in den Einstellungen entfernen oder erneuern');
+    this.name = 'ApiKeyInvalidError';
+  }
+}
+
+/** The server-sync access token, if a server session exists. */
+function serverToken(): string | undefined {
   const cfg = loadSyncConfig();
-  if (cfg?.serverToken) return { 'Authorization': `Bearer ${cfg.serverToken}` };
-  return {};
+  return cfg?.provider === 'server' ? cfg.serverToken : undefined;
+}
+
+function authHeaders(opts: { skipApiKey?: boolean } = {}): Record<string, string> {
+  if (!opts.skipApiKey) {
+    const apiKey = usableApiKey();
+    if (apiKey) return { 'X-Api-Key': apiKey };
+  }
+  const token = serverToken();
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
 /**
@@ -34,7 +59,7 @@ async function refreshAccessToken(): Promise<boolean> {
   const cfg = loadSyncConfig();
   if (!cfg || cfg.provider !== 'server') return false;
   try {
-    const res = await fetch('/api/auth/refresh', {
+    const res = await fetch(serverUrl('/api/auth/refresh'), {
       method: 'POST',
       // The refresh token is normally the httpOnly cookie now (#299), which only
       // travels when credentials are requested. serverRefreshToken is sent when one
@@ -56,13 +81,32 @@ async function refreshAccessToken(): Promise<boolean> {
   }
 }
 
-/** fetch + one transparent retry after refreshing on a 401 (no-op when an
- *  X-Api-Key is in use, since that never expires and can't be refreshed). */
+/**
+ * fetch against the configured server, with the credentials this install has
+ * and one recovery attempt on a 401:
+ *
+ *  - keyed request rejected -> the key is dead (rotated away, or minted by a
+ *    different instance). It cannot be refreshed, so stop sending it and retry
+ *    on the server session instead. Before #330 this branch simply gave up,
+ *    letting one stale key permanently veto a perfectly valid login.
+ *  - token request rejected -> refresh the access token once and retry.
+ */
 export async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(url, { ...init, headers: { ...init.headers, ...authHeaders() } });
-  if (res.status !== 401 || localStorage.getItem('nagellacke_v3_apikey')) return res;
+  const target = serverUrl(url);
+  const sentKey = usableApiKey();
+
+  let res = await fetch(target, { ...init, headers: { ...init.headers, ...authHeaders() } });
+  if (res.status !== 401) return res;
+
+  if (sentKey) {
+    markApiKeyRejected(sentKey);
+    if (!serverToken()) return res;
+    res = await fetch(target, { ...init, headers: { ...init.headers, ...authHeaders({ skipApiKey: true }) } });
+    if (res.status !== 401) return res;
+  }
+
   if (!(await refreshAccessToken())) return res;
-  return fetch(url, { ...init, headers: { ...init.headers, ...authHeaders() } });
+  return fetch(target, { ...init, headers: { ...init.headers, ...authHeaders({ skipApiKey: true }) } });
 }
 
 /**
@@ -71,9 +115,7 @@ export async function authedFetch(url: string, init: RequestInit = {}): Promise<
  * gate the upload button instead of letting it fail with a raw 401.
  */
 export function hasPhotoUploadAuth(): boolean {
-  if (localStorage.getItem('nagellacke_v3_apikey')) return true;
-  const cfg = loadSyncConfig();
-  return !!(cfg?.provider === 'server' && cfg.serverToken);
+  return !!usableApiKey() || !!serverToken();
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -88,20 +130,31 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/**
+ * Turns a still-401 response into the error that names what the user has to do.
+ * authedFetch has already exhausted every automatic recovery by this point, so
+ * the only question left is which credential is the broken one.
+ */
+function authFailure(sentKey: string | null, hadSession: boolean): Error {
+  // The key was the credential in play and it was refused: say so, because
+  // "log in again" is the one piece of advice that cannot help here. When the
+  // session was tried too and died as well, name both — otherwise removing the
+  // key only earns a second error message and a second round of diagnosis.
+  if (sentKey) return new ApiKeyInvalidError(hadSession);
+  return new AuthExpiredError();
+}
+
 export async function uploadPhoto(file: File): Promise<string> {
   const data = await fileToBase64(file);
+  const sentKey = usableApiKey();
+  const hadSession = !!serverToken();
   const res = await authedFetch('/api/photos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, mimeType: file.type }),
   });
   if (!res.ok) {
-    // A 401 that's *not* using an API key (which never expires) means
-    // authedFetch already tried refreshing and it still failed - the
-    // session itself is dead, not just this one request.
-    if (res.status === 401 && !localStorage.getItem('nagellacke_v3_apikey')) {
-      throw new AuthExpiredError();
-    }
+    if (res.status === 401) throw authFailure(sentKey, hadSession);
     throw new Error(`Upload fehlgeschlagen (${res.status})`);
   }
   const json = await res.json() as { filename: string };

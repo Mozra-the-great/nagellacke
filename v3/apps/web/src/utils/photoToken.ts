@@ -1,5 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { authedFetch, hasPhotoUploadAuth } from './photos';
+import { serverUrl } from './serverBase';
+import { onApiKeyInvalidated } from './apiKey';
 
 /**
  * Client side of the signed photo tokens (#269).
@@ -50,14 +52,17 @@ export function hasPhotoToken(): boolean {
  * which is the same failure mode as a missing file and needs no extra UI.
  */
 export function photoUrl(filename: string): string {
-  const base = `/photos/${encodeURIComponent(filename)}`;
+  // serverUrl() so a cross-origin "Eigener Server" install points `<img>` tags
+  // at the server holding the files rather than at the web origin (#330).
+  const base = serverUrl(`/photos/${encodeURIComponent(filename)}`);
   return token ? `${base}?t=${encodeURIComponent(token)}` : base;
 }
 
 /**
  * Absolute variant of photoUrl(). The generated report is opened as a `blob:`
  * document, where a root-relative `/photos/...` would resolve against the blob
- * URL instead of the app's origin.
+ * URL instead of the app's origin. A cross-origin photoUrl() is already
+ * absolute, and URL() leaves it untouched.
  */
 export function absolutePhotoUrl(filename: string): string {
   return new URL(photoUrl(filename), window.location.origin).toString();
@@ -98,6 +103,11 @@ export function clearPhotoToken(): void {
   expiresAt = 0;
   notify();
 }
+
+// A token minted from an API key is signed with that key, so it dies with it.
+// Re-mint on the surviving credential instead of serving a dead `?t=` for the
+// rest of the token's hour-long TTL (#330).
+onApiKeyInvalidated(clearPhotoToken);
 
 /**
  * Returns `photoUrl` and makes the calling component re-render once the token
