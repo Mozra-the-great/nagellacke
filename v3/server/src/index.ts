@@ -29,7 +29,7 @@ import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 import { signPhotoToken, verifyPhotoToken } from './photoToken';
-import { runUpdate, readUpdateState, writeUpdateState } from './update';
+import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
@@ -72,6 +72,16 @@ if (ALLOWED_ORIGIN === '*') {
 }
 const SERVICE_NAME = process.env.SERVICE_NAME ?? 'nagellacke-v3';
 const APP_ROOT     = path.resolve(process.cwd(), '..', '..');  // /opt/nagellacke
+
+// Probed once: neither git's presence nor whether APP_ROOT is a checkout can
+// change while the process runs, and /api/update/check would otherwise spawn
+// three git processes per call. See detectDeployment() for why the update
+// check must not depend on git succeeding (#340).
+let deploymentInfo: DeploymentInfo | null = null;
+function deployment(): DeploymentInfo {
+  deploymentInfo ??= detectDeployment({ appRoot: APP_ROOT });
+  return deploymentInfo;
+}
 
 // ── Validate SERVICE_NAME (prevent injection) ─────────────────────────────────
 if (!/^[a-zA-Z0-9_.-]+$/.test(SERVICE_NAME)) {
@@ -748,13 +758,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     preHandler: requireApiKeyOrAdminJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
   }, async () => {
-    const remoteUrl = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: APP_ROOT, stdio: 'pipe' })
-      .stdout?.toString().trim() ?? '';
-    const match = remoteUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
+    // Deliberately independent of git: a deployment that cannot update itself
+    // must still be able to see that a new version exists. Deriving owner/repo
+    // from `git remote` and bailing out with updateAvailable: false when that
+    // failed is what made the container instance report "aktuell" while it was
+    // three releases behind (#340).
+    const { repoSlug, selfUpdate, selfUpdateReason } = deployment();
+    const [owner, repo] = repoSlug.split('/');
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')) as { version: string };
     const current = pkg.version;
-    if (!match) return { current, latestVersion: null, updateAvailable: false };
-    const [owner, repo] = match[1].split('/');
 
     // Harter Gesamt-Timeout: antwortet spätestens nach 8s um Nginx-Timeout zu vermeiden
     const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000));
@@ -789,7 +801,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return aMaj !== bMaj ? aMaj > bMaj : aMin !== bMin ? aMin > bMin : aPat > bPat;
     };
     const updateAvailable = latestVersion ? semverGt(latestVersion, current) : false;
-    return { current, latestVersion, updateAvailable };
+    return { current, latestVersion, updateAvailable, selfUpdate, selfUpdateReason };
   });
 
   // GET /api/update/status — Fortschritt/Ergebnis des letzten Update-Laufs
@@ -819,6 +831,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     preHandler: requireApiKeyOrAdminReconfirm,
     config: { rateLimit: { max: 3, timeWindow: '5 minutes' } },
   }, async (request, reply) => {
+    // Refuse up front rather than starting a run whose first `git fetch` is
+    // guaranteed to die with ENOENT. The client hides the button on this
+    // signal too; this is the backstop for API-key callers (#340).
+    const { selfUpdate, selfUpdateReason } = deployment();
+    if (selfUpdate === 'unsupported') {
+      return reply.code(409).send({ error: selfUpdateReason ?? 'Dieses Deployment kann sich nicht selbst aktualisieren.' });
+    }
+
     reply.send({ ok: true });
 
     setImmediate(() => {

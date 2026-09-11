@@ -86,6 +86,9 @@ interface UpdateInfo {
   current: string;
   latestVersion: string | null;
   updateAvailable: boolean;
+  /** See utils/admin.ts — containers can see updates but not install them (#340). */
+  selfUpdate?: 'supported' | 'unsupported';
+  selfUpdateReason?: string;
 }
 
 export default function SettingsPage({ appData, role, onAuthChange }: SettingsPageProps) {
@@ -1765,6 +1768,12 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               : ' — aktuell'}
           </div>
         )}
+        {/* See AdminPage — containers see updates but cannot install them (#340). */}
+        {updateInfo?.selfUpdate === 'unsupported' && updateStatus !== 'error' && (
+          <div className={styles.infoText}>
+            {updateInfo.selfUpdateReason ?? 'Dieses Deployment aktualisiert über das Container-Image.'}
+          </div>
+        )}
         {updateStatus === 'updating' && (
           <div className={styles.infoText}>
             {updateProgress
@@ -1787,7 +1796,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           >
             {updateStatus === 'checking' ? 'Prüfe…' : 'Update prüfen'}
           </button>
-          {updateInfo?.updateAvailable && updateStatus !== 'done' && !updateConfirmVisible && (
+          {updateInfo?.updateAvailable && updateInfo.selfUpdate !== 'unsupported' && updateStatus !== 'done' && !updateConfirmVisible && (
             <button
               className={styles.saveBtn}
               onClick={() => setUpdateConfirmVisible(true)}

@@ -112,6 +112,15 @@ export interface UpdateInfo {
   current: string;
   latestVersion: string | null;
   updateAvailable: boolean;
+  /**
+   * Whether POST /api/update/apply can do anything on this deployment (#340).
+   * Containers have no git and no checkout, so they see new versions but
+   * cannot install them — the button has to say so instead of failing.
+   * Optional because a server older than 3.4.3 does not send it.
+   */
+  selfUpdate?: 'supported' | 'unsupported';
+  /** German, user-facing; only sent when selfUpdate is 'unsupported'. */
+  selfUpdateReason?: string;
 }
 
 /**

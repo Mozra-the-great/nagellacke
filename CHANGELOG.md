@@ -7,6 +7,13 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Behoben
+- **Das Container-Deployment meldete sich als „aktuell", obwohl es drei Releases zurücklag.** `GET /api/update/check` leitete Owner/Repo aus `git remote get-url origin` ab und kehrte bei einem Fehlschlag früh mit `updateAvailable: false` zurück. Im Image (`v3/Dockerfile`) scheitert dieser Aufruf zwangsläufig: `node:20-alpine` enthält kein `git`, und `APP_ROOT` ist dort kein Checkout, sondern `/`. Beide Oberflächen rendern `updateAvailable: false` als „Version 3.3.0 — aktuell", also ununterscheidbar von „du bist auf dem neuesten Stand" — so blieb `nailvault.de` monatelang unbemerkt veraltet. Welches Repository geprüft wird, ist statische Information und braucht kein git: `detectDeployment()` ermittelt es jetzt aus `NAGELLACKE_REPO`, sonst aus `git remote`, sonst aus einer Konstanten. Eine Container-Instanz sieht neue Versionen damit korrekt. (#340)
+
+### Geändert
+- **Die Update-Prüfung sagt jetzt, ob dieses Deployment sich überhaupt selbst aktualisieren kann.** Neu in der Antwort von `GET /api/update/check`: `selfUpdate: 'supported' | 'unsupported'` samt Begründung. Fehlt `git` oder ist `APP_ROOT` kein Checkout, blenden Admin-Bereich und Einstellungen → Sync den Knopf „Update installieren" aus und zeigen stattdessen an, worüber dieses Deployment aktualisiert wird — ein Knopf, der nur in Schritt 1 scheitern kann, ist schlechter als gar keiner. `POST /api/update/apply` antwortet in dem Fall mit **409**, statt einen Lauf zu starten, dessen erstes `git fetch` garantiert mit `ENOENT` stirbt; das ist der Rückhalt für Aufrufer mit API-Schlüssel, die die Oberfläche nicht benutzen. Die Erkennung wird pro Prozess einmal geprüft — weder die Verfügbarkeit von git noch der Checkout-Status können sich zur Laufzeit ändern. Ältere Server senden das Feld nicht; die Oberflächen behandeln es als optional und verhalten sich dann wie bisher. (#340)
+- **`docs/installation.md` dokumentiert den Update-Weg für das Container-Deployment** (`git -C src fetch` + `reset --hard` + `docker compose up -d --build`) und die Variable `NAGELLACKE_REPO` für Forks. (#340)
+
 ## [3.4.2] – 2026-09-11
 
 ### Behoben
