@@ -5,9 +5,9 @@ import * as path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import {
   buildUpdateSteps, updateChildEnv, runUpdate, readUpdateState, writeUpdateState,
-  publishWebBuild, UPDATE_STALE_MS,
+  publishWebBuild, UPDATE_STALE_MS, detectDeployment, parseRepoSlug, DEFAULT_REPO_SLUG,
 } from './update';
-import type { SpawnFn, UpdateStep } from './update';
+import type { SpawnFn, UpdateStep, GitProbeFn } from './update';
 
 /**
  * The bugs in #335 were all environment-shaped: every step of the update ran
@@ -40,6 +40,93 @@ function recordingSpawn(failAt?: string, stderr = 'boom'): { spawn: SpawnFn; cal
   };
   return { spawn, calls };
 }
+
+/**
+ * A git that behaves like the one in the container image: not installed, so
+ * every spawn fails before the arguments matter (`spawn git ENOENT` leaves
+ * status null). Overrides let a single probe be answered differently.
+ */
+function gitProbe(answers: Record<string, { status: number | null; stdout?: string }> = {}): GitProbeFn {
+  return (args) => {
+    const key = args.join(' ');
+    const answer = answers[key] ?? { status: null };
+    return { status: answer.status, stdout: answer.stdout ?? '' };
+  };
+}
+
+describe('parseRepoSlug', () => {
+  it('reads owner/repo from both the SSH and the HTTPS remote form', () => {
+    expect(parseRepoSlug('https://github.com/Mozra-the-great/nagellacke.git')).toBe('Mozra-the-great/nagellacke');
+    expect(parseRepoSlug('git@github.com:Mozra-the-great/nagellacke.git')).toBe('Mozra-the-great/nagellacke');
+    expect(parseRepoSlug('  https://github.com/Mozra-the-great/nagellacke  ')).toBe('Mozra-the-great/nagellacke');
+  });
+
+  it('rejects anything that is not a github owner/repo', () => {
+    expect(parseRepoSlug('')).toBeNull();
+    expect(parseRepoSlug('https://gitlab.com/owner/repo.git')).toBeNull();
+    // Extra path segments are dropped rather than folded into the slug: the
+    // GitHub API path is /repos/<owner>/<repo>, so a third segment would build
+    // a URL that 404s.
+    expect(parseRepoSlug('https://github.com/owner/repo/extra')).toBe('owner/repo');
+  });
+});
+
+describe('detectDeployment', () => {
+  it('falls back to the constant repo when git is missing, instead of giving up', () => {
+    // The #340 regression in one assertion: the container has no git, and the
+    // old code answered that with latestVersion: null / updateAvailable: false,
+    // which the UI renders as "aktuell". The repo is static information.
+    const info = detectDeployment({ appRoot: '/', env: {}, gitProbe: gitProbe() });
+    expect(info.repoSlug).toBe(DEFAULT_REPO_SLUG);
+    expect(info.selfUpdate).toBe('unsupported');
+    expect(info.selfUpdateReason).toMatch(/git/);
+  });
+
+  it('reports unsupported when git exists but APP_ROOT is not a checkout', () => {
+    const info = detectDeployment({
+      appRoot: '/app',
+      env: {},
+      gitProbe: gitProbe({ '--version': { status: 0, stdout: 'git version 2.43.0' } }),
+    });
+    expect(info.selfUpdate).toBe('unsupported');
+    expect(info.selfUpdateReason).toContain('/app');
+  });
+
+  it('reports supported and the discovered repo on a real checkout', () => {
+    const info = detectDeployment({
+      appRoot: '/opt/nagellacke',
+      env: {},
+      gitProbe: gitProbe({
+        'remote get-url origin': { status: 0, stdout: 'https://github.com/someone/fork.git' },
+        '--version': { status: 0, stdout: 'git version 2.43.0' },
+        'rev-parse --git-dir': { status: 0, stdout: '.git' },
+      }),
+    });
+    expect(info).toEqual({ repoSlug: 'someone/fork', selfUpdate: 'supported' });
+  });
+
+  it('lets NAGELLACKE_REPO win over the discovered remote', () => {
+    const info = detectDeployment({
+      appRoot: '/opt/nagellacke',
+      env: { NAGELLACKE_REPO: 'someone/fork' },
+      gitProbe: gitProbe({
+        'remote get-url origin': { status: 0, stdout: 'https://github.com/Mozra-the-great/nagellacke.git' },
+        '--version': { status: 0, stdout: 'git version 2.43.0' },
+        'rev-parse --git-dir': { status: 0, stdout: '.git' },
+      }),
+    });
+    expect(info.repoSlug).toBe('someone/fork');
+  });
+
+  it('ignores a malformed NAGELLACKE_REPO rather than building a broken API URL', () => {
+    const info = detectDeployment({
+      appRoot: '/',
+      env: { NAGELLACKE_REPO: 'https://github.com/owner/repo' },
+      gitProbe: gitProbe(),
+    });
+    expect(info.repoSlug).toBe(DEFAULT_REPO_SLUG);
+  });
+});
 
 describe('buildUpdateSteps', () => {
   it('syncs the checkout with fetch + reset instead of pull', () => {

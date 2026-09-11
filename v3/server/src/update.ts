@@ -125,6 +125,96 @@ export function buildUpdateSteps(appRoot: string): UpdateStep[] {
   ];
 }
 
+/**
+ * Where the update check looks for releases when it cannot ask git (#340).
+ *
+ * `GET /api/update/check` used to derive owner/repo from `git remote get-url
+ * origin` and, when that failed, return `updateAvailable: false` — which the
+ * admin panel renders as "Version 3.3.0 — aktuell". In the container image
+ * (v3/Dockerfile) that spawn *always* fails: `git` is not in node:20-alpine
+ * and APP_ROOT is not a checkout. nailvault.de therefore reported itself
+ * current for three releases running.
+ *
+ * The repository is static information, so it does not need git at all. This
+ * constant is the fallback; NAGELLACKE_REPO overrides it for forks.
+ */
+export const DEFAULT_REPO_SLUG = 'Mozra-the-great/nagellacke';
+
+/** owner/repo, the only shape the GitHub API paths below accept. */
+const REPO_SLUG_RE = /^[\w.-]+\/[\w.-]+$/;
+
+export function parseRepoSlug(remoteUrl: string): string | null {
+  const match = remoteUrl.trim().match(/github\.com[:/](.+?)(?:\.git)?$/);
+  if (!match) return null;
+  const [owner, repo] = match[1].split('/');
+  const slug = `${owner}/${repo}`;
+  return owner && repo && REPO_SLUG_RE.test(slug) ? slug : null;
+}
+
+/**
+ * Whether POST /api/update/apply can do anything on this deployment.
+ *
+ * 'unsupported' is not a failure — the container image updates by rebuilding,
+ * which is a perfectly good deployment model. What it must not do is offer an
+ * "Update installieren" button that can only ever fail at step 1.
+ */
+export type SelfUpdateSupport = 'supported' | 'unsupported';
+
+export interface DeploymentInfo {
+  repoSlug: string;
+  selfUpdate: SelfUpdateSupport;
+  /** German, user-facing; only set when selfUpdate is 'unsupported'. */
+  selfUpdateReason?: string;
+}
+
+/** status is null when the binary is missing or the probe timed out. */
+export type GitProbeFn = (args: string[], cwd: string) => { status: number | null; stdout: string };
+
+const defaultGitProbe: GitProbeFn = (args, cwd) => {
+  const r = spawnSync('git', args, { cwd, stdio: 'pipe', timeout: 5_000 });
+  return { status: r.error ? null : r.status, stdout: r.stdout?.toString().trim() ?? '' };
+};
+
+export interface DetectDeploymentOptions {
+  appRoot: string;
+  env?: NodeJS.ProcessEnv;
+  gitProbe?: GitProbeFn;
+}
+
+/**
+ * Resolves the repository to check *and* whether this deployment can update
+ * itself. The two are deliberately separate: not being able to run the update
+ * says nothing about not being able to see that one exists.
+ *
+ * Cache the result — nothing it probes can change while the process runs.
+ */
+export function detectDeployment(options: DetectDeploymentOptions): DeploymentInfo {
+  const { appRoot, env = process.env, gitProbe = defaultGitProbe } = options;
+
+  const configured = env.NAGELLACKE_REPO?.trim();
+  const fromEnv = configured && REPO_SLUG_RE.test(configured) ? configured : null;
+  const remote = gitProbe(['remote', 'get-url', 'origin'], appRoot);
+  const fromGit = remote.status === 0 ? parseRepoSlug(remote.stdout) : null;
+  // Explicit operator intent beats discovery, discovery beats the constant.
+  const repoSlug = fromEnv ?? fromGit ?? DEFAULT_REPO_SLUG;
+
+  if (gitProbe(['--version'], appRoot).status !== 0) {
+    return {
+      repoSlug,
+      selfUpdate: 'unsupported',
+      selfUpdateReason: 'git ist in diesem Deployment nicht verfügbar — Updates laufen über das Container-Image.',
+    };
+  }
+  if (gitProbe(['rev-parse', '--git-dir'], appRoot).status !== 0) {
+    return {
+      repoSlug,
+      selfUpdate: 'unsupported',
+      selfUpdateReason: `${appRoot} ist kein git-Checkout — Updates laufen über das Deployment, nicht über die App.`,
+    };
+  }
+  return { repoSlug, selfUpdate: 'supported' };
+}
+
 export interface SpawnResult {
   status: number | null;
   stderr: string;

@@ -540,6 +540,13 @@ export default function AdminPage() {
             Version {updateInfo.current}{updateInfo.updateAvailable ? ` → ${updateInfo.latestVersion} verfügbar` : ' — aktuell'}
           </div>
         )}
+        {/* A deployment that can see the update but not install it says so here
+            instead of offering a button that can only fail at step 1 (#340). */}
+        {updateInfo?.selfUpdate === 'unsupported' && updateStatus !== 'error' && (
+          <div className={styles.infoText}>
+            {updateInfo.selfUpdateReason ?? 'Dieses Deployment aktualisiert über das Container-Image.'}
+          </div>
+        )}
         {updateStatus === 'updating' && (
           <div className={styles.infoText}>
             {updateProgress
@@ -558,7 +565,7 @@ export default function AdminPage() {
           <button className={styles.syncBtn} onClick={() => void doCheckUpdate()} disabled={updateStatus === 'checking' || updateStatus === 'updating'}>
             {updateStatus === 'checking' ? 'Prüfe…' : 'Update prüfen'}
           </button>
-          {updateInfo?.updateAvailable && updateStatus !== 'done' && updateStatus !== 'confirming' && (
+          {updateInfo?.updateAvailable && updateInfo.selfUpdate !== 'unsupported' && updateStatus !== 'done' && updateStatus !== 'confirming' && (
             <button className={styles.saveBtn} onClick={() => setUpdateStatus('confirming')}>Update installieren</button>
           )}
         </div>
