@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Behoben
+- **Sicherheit: Das Rate-Limit auf `GET /api/photos/token` war wirkungslos.** Die Route stand rund 20 Zeilen *über* `register(rateLimitPlugin, …)` — mitten in den CORS-Kommentar gespleißt, der dadurch im Satz abbrach —, und `@fastify/rate-limit` liest die `config.rateLimit` einer Route in einem `onRoute`-Hook, der nur für danach registrierte Routen feuert. Die Deklaration stand also da und tat nichts: 70 Requests, kein einziger 429. Die Route liegt jetzt bei den übrigen `/api/photos*`-Endpunkten unterhalb der Plugins, beide Kommentare sind wieder ganz, und ein Regressionstest fährt den Limiter über sein Maximum — bisher deckte kein einziger Test einen Limiter ab, weshalb eine tote Konfiguration unbemerkt bleiben konnte. CORS war entgegen erstem Verdacht nie betroffen (globale Hooks, und Fastify baut die Route-Kette erst bei `ready()`), was das Übersehen erklärt. (#332)
+
 ## [3.4.0] – 2026-09-07
 
 ### Hinzugefügt

@@ -207,4 +207,29 @@ describe('GET /photos/* access control (#269)', () => {
     const after = await app.inject({ method: 'GET', url: `/photos/${filename}?t=${encodeURIComponent(photoToken)}` });
     expect(after.statusCode).toBe(401);
   });
+
+  /**
+   * #332: the route used to be registered above `register(rateLimitPlugin, ...)`,
+   * where @fastify/rate-limit never saw its `config.rateLimit` — the plugin reads
+   * that in an onRoute hook, which only fires for routes registered after it. The
+   * declaration was there and did nothing, and nothing in the suite would have
+   * noticed. This asserts the limiter actually engages, so re-introducing the
+   * ordering mistake fails instead of silently removing the protection.
+   */
+  it('rate-limits GET /api/photos/token at its declared maximum (#332)', async () => {
+    const { token } = await register(freshUsername());
+    const MAX = 60;   // must match the route's config.rateLimit.max
+
+    let limitedAt: number | null = null;
+    for (let i = 1; i <= MAX + 5; i++) {
+      const res = await app.inject({
+        method: 'GET', url: '/api/photos/token',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (res.statusCode === 429) { limitedAt = i; break; }
+      expect(res.statusCode).toBe(200);
+    }
+
+    expect(limitedAt).toBe(MAX + 1);
+  });
 });
