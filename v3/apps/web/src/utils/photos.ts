@@ -25,8 +25,10 @@ export class AuthExpiredError extends Error {
  * logging in again does not help — the key has to go.
  */
 export class ApiKeyInvalidError extends Error {
-  constructor() {
-    super('API-Schlüssel ist ungültig — in den Einstellungen entfernen oder erneuern');
+  constructor(sessionAlsoDead = false) {
+    super(sessionAlsoDead
+      ? 'API-Schlüssel ist ungültig und die Sitzung ist abgelaufen — in den Einstellungen den Schlüssel entfernen und neu anmelden'
+      : 'API-Schlüssel ist ungültig — in den Einstellungen entfernen oder erneuern');
     this.name = 'ApiKeyInvalidError';
   }
 }
@@ -133,23 +135,26 @@ function fileToBase64(file: File): Promise<string> {
  * authedFetch has already exhausted every automatic recovery by this point, so
  * the only question left is which credential is the broken one.
  */
-function authFailure(sentKey: string | null): Error {
+function authFailure(sentKey: string | null, hadSession: boolean): Error {
   // The key was the credential in play and it was refused: say so, because
-  // "log in again" is the one piece of advice that cannot help here.
-  if (sentKey) return new ApiKeyInvalidError();
+  // "log in again" is the one piece of advice that cannot help here. When the
+  // session was tried too and died as well, name both — otherwise removing the
+  // key only earns a second error message and a second round of diagnosis.
+  if (sentKey) return new ApiKeyInvalidError(hadSession);
   return new AuthExpiredError();
 }
 
 export async function uploadPhoto(file: File): Promise<string> {
   const data = await fileToBase64(file);
   const sentKey = usableApiKey();
+  const hadSession = !!serverToken();
   const res = await authedFetch('/api/photos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, mimeType: file.type }),
   });
   if (!res.ok) {
-    if (res.status === 401) throw authFailure(sentKey);
+    if (res.status === 401) throw authFailure(sentKey, hadSession);
     throw new Error(`Upload fehlgeschlagen (${res.status})`);
   }
   const json = await res.json() as { filename: string };

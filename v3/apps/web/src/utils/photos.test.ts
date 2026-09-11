@@ -3,10 +3,9 @@ import type { Mock } from 'vitest';
 import type { SyncConfig } from '@nagellacke/sync';
 import { saveSyncConfig } from '../useAppData';
 import { uploadPhoto, AuthExpiredError, ApiKeyInvalidError } from './photos';
-import { setStoredApiKey } from './apiKey';
+import { APIKEY_STORAGE, setStoredApiKey } from './apiKey';
 
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
-const API_KEY_KEY = 'nagellacke_v3_apikey';
 
 // Minimal in-memory Storage polyfill - this workspace's vitest config runs in
 // the default `node` environment (no jsdom), so `localStorage` isn't defined
@@ -93,7 +92,7 @@ describe('uploadPhoto', () => {
   });
 
   it('names the API key as the problem when a keyed 401 has no session to fall back on', async () => {
-    localStorage.setItem(API_KEY_KEY, 'rotated-away');
+    localStorage.setItem(APIKEY_STORAGE, 'rotated-away');
 
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -105,7 +104,7 @@ describe('uploadPhoto', () => {
   });
 
   it('falls back to the server session when the stored API key is stale (#330)', async () => {
-    localStorage.setItem(API_KEY_KEY, 'rotated-away');
+    localStorage.setItem(APIKEY_STORAGE, 'rotated-away');
     const config: SyncConfig = { provider: 'server', serverToken: 'valid', serverRefreshToken: 'valid-refresh' };
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
 
@@ -122,7 +121,7 @@ describe('uploadPhoto', () => {
   });
 
   it('stops sending a key the server already rejected', async () => {
-    localStorage.setItem(API_KEY_KEY, 'rotated-away');
+    localStorage.setItem(APIKEY_STORAGE, 'rotated-away');
     const config: SyncConfig = { provider: 'server', serverToken: 'valid', serverRefreshToken: 'valid-refresh' };
     localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
 

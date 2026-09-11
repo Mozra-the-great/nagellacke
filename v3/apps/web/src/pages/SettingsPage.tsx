@@ -15,7 +15,7 @@ import type { AiProvider } from '../utils/ai';
 import { bootstrapAdmin } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
-import { setStoredApiKey, storedApiKey } from '../utils/apiKey';
+import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
 
@@ -248,6 +248,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
   const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
   const [apiKey, setApiKey] = useState(() => storedApiKey() ?? '');
+  // Rejection is discovered by whatever request hit the 401 first (a photo
+  // upload, typically), so it is read at mount rather than owned here.
+  const [apiKeyRejected, setApiKeyRejected] = useState(isStoredApiKeyRejected);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
@@ -258,6 +261,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const saveApiKey = (key: string) => {
     setApiKey(key);
     setStoredApiKey(key || null);
+    setApiKeyRejected(false);
   };
 
   // Bare relative fetches broke in the cross-origin "Eigener Server" mode —
@@ -1704,6 +1708,18 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             placeholder="Aus data/.api_key auf dem Server"
           />
         </label>
+
+        {/* The one place the user can act on a key the server has rejected — e.g.
+            one left over from a rotation or a recreated data directory (#330).
+            Without this the app just falls back to the session and the dead key
+            sits here looking fine. */}
+        {apiKeyRejected && (
+          <div className={styles.warningBanner}>
+            Dieser API-Schlüssel wurde vom Server abgelehnt. Ersetze ihn durch den aktuellen
+            Schlüssel aus <code>data/.api_key</code> oder leere das Feld — die normale Anmeldung
+            oben reicht für alles außer den Admin-Endpunkten.
+          </div>
+        )}
 
         {updateInfo && updateStatus !== 'error' && (
           <div className={styles.infoText}>

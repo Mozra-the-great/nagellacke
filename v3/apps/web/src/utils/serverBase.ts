@@ -14,7 +14,12 @@ export function serverBase(): string {
   return config?.provider === 'server' ? (config.serverUrl ?? '').replace(/\/$/, '') : '';
 }
 
-/** Resolves an API path against the configured server. */
+/**
+ * Resolves an API path against the configured server. An already-absolute URL
+ * is returned untouched, so a caller passing one cannot silently produce a
+ * mangled `https://a.test https://b.test/...`.
+ */
 export function serverUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
   return `${serverBase()}${path}`;
 }

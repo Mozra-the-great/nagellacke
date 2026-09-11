@@ -133,17 +133,23 @@ export function applyUpdate(password: string): Promise<{ ok: true }> {
 }
 
 /**
- * Rotates the server's root API key and keeps this browser's copy in step.
+ * Rotates the server's root API key and drops this browser's now-dead copy.
  *
- * The browser doing the rotation is precisely the one holding the key that the
- * call just invalidated; leaving it in localStorage left photo upload, display
- * and delete permanently 401-ing against a key the server no longer knows
- * (#330). Only replaced when a key was actually stored — rotating from a
- * JWT-only admin session must not newly plant a root credential in storage.
+ * The browser doing the rotation is precisely the one holding the key the call
+ * just invalidated; leaving it behind made photo upload, display and delete
+ * 401 forever against a key the server no longer knows (#330).
+ *
+ * It is *removed*, not replaced with the fresh key. Rotation exists to burn a
+ * leaked copy, and if the leak was persistent XSS or a shared browser profile,
+ * writing the new key straight back into localStorage would hand the same
+ * vector the same root credential again — one that skips the password
+ * re-confirmation guarding /api/update/apply. Nothing is lost by dropping it:
+ * reaching this call already required an admin JWT session, which is the
+ * credential everything here keeps using.
  */
 export async function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
   const result = await request<{ apiKey: string; rotatedAt: number }>('/api/admin/api-key/rotate', { method: 'POST' });
-  if (storedApiKey()) setStoredApiKey(result.apiKey);
+  if (storedApiKey()) setStoredApiKey(null);
   return result;
 }
 

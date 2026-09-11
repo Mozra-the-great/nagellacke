@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { authedFetch, hasPhotoUploadAuth } from './photos';
 import { serverUrl } from './serverBase';
+import { onApiKeyInvalidated } from './apiKey';
 
 /**
  * Client side of the signed photo tokens (#269).
@@ -102,6 +103,11 @@ export function clearPhotoToken(): void {
   expiresAt = 0;
   notify();
 }
+
+// A token minted from an API key is signed with that key, so it dies with it.
+// Re-mint on the surviving credential instead of serving a dead `?t=` for the
+// rest of the token's hour-long TTL (#330).
+onApiKeyInvalidated(clearPhotoToken);
 
 /**
  * Returns `photoUrl` and makes the calling component re-render once the token
