@@ -29,6 +29,7 @@ import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 import { signPhotoToken, verifyPhotoToken } from './photoToken';
+import { runUpdate, readUpdateState, writeUpdateState } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
 
@@ -791,10 +792,25 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { current, latestVersion, updateAvailable };
   });
 
-  // POST /api/update/apply — git pull + rebuild + restart
-  // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout).
-  // TRUST BOUNDARY: this pulls whatever HEAD of origin/main currently is - no
-  // signature/tag pinning - and npm install runs arbitrary postinstall
+  // GET /api/update/status — Fortschritt/Ergebnis des letzten Update-Laufs
+  // POST /api/update/apply answers before it has done anything, so this is the
+  // only way a client can tell a finished update from one that died at step 1
+  // — which is how the tsup/NODE_ENV failure stayed invisible for a month
+  // (#335). Survives the restart at the end of a successful update because the
+  // state file lives in DATA_DIR, so the UI still finds the result afterwards.
+  app.get('/api/update/status', {
+    preHandler: requireApiKeyOrAdminJwt,
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')) as { version: string };
+    return { version: pkg.version, update: readUpdateState(DATA_DIR) };
+  });
+
+  // POST /api/update/apply — fetch + reset + rebuild + restart
+  // Antwortet sofort, Build läuft im Hintergrund (verhindert Nginx-Timeout);
+  // der Fortschritt ist über GET /api/update/status abrufbar.
+  // TRUST BOUNDARY: this resets to whatever HEAD of origin/main currently is -
+  // no signature/tag pinning - and npm install runs arbitrary postinstall
   // scripts. requireApiKey is therefore a de facto root/RCE credential, not
   // a normal API key (see #73). Treat API_KEY accordingly; the alternative
   // (pinning to signed release tags) is a deliberate product decision, not
@@ -807,30 +823,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     setImmediate(() => {
       try {
-        const v3Dir = path.join(APP_ROOT, 'v3');
-        const steps = [
-          { cmd: 'git', args: ['pull', 'origin', 'main'],    cwd: APP_ROOT,      timeout: 30_000 },
-          { cmd: 'npm', args: ['install'],                    cwd: v3Dir,         timeout: 120_000 },
-          { cmd: 'npm', args: ['run', 'build:core'],          cwd: v3Dir, timeout: 60_000 },
-          { cmd: 'npm', args: ['run', 'build:sync'],          cwd: v3Dir, timeout: 60_000 },
-          { cmd: 'npm', args: ['run', 'build:server'],        cwd: v3Dir, timeout: 60_000 },
-          { cmd: 'npm', args: ['run', 'build:web'],           cwd: v3Dir, timeout: 120_000 },
-        ];
-
-        for (const { cmd, args, cwd, timeout } of steps) {
-          const r = spawnSync(cmd, args, { cwd, stdio: 'pipe', timeout });
-          if (r.status !== 0) {
-            console.error('Update step failed:', r.stderr?.toString());
-            return;
-          }
-        }
-
-        // v3-Web-App nach public/ kopieren
-        const v3WebDist = path.join(v3Dir, 'apps', 'web', 'dist');
-        const v3Public  = path.join(process.cwd(), 'public');
-        if (fs.existsSync(v3WebDist)) {
-          if (fs.existsSync(v3Public)) fs.rmSync(v3Public, { recursive: true, force: true });
-          fs.cpSync(v3WebDist, v3Public, { recursive: true });
+        const state = runUpdate({
+          appRoot: APP_ROOT,
+          dataDir: DATA_DIR,
+          publicDir: path.join(process.cwd(), 'public'),
+        });
+        if (state.phase !== 'success') {
+          console.error(`Update step failed — "${state.step}" (exit ${state.exitCode}):`, state.error);
+          return;
         }
 
         setTimeout(() => {
@@ -841,7 +841,15 @@ export async function buildApp(): Promise<FastifyInstance> {
           process.exit(0);
         }, 300);
       } catch (e: unknown) {
-        console.error('Update failed:', e instanceof Error ? e.message : e);
+        // runUpdate() records its own failures; this only catches something
+        // unforeseen around it, so the state file gets the news too.
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('Update failed:', message);
+        writeUpdateState(DATA_DIR, {
+          phase: 'failed', step: 'Update', stepIndex: 0, totalSteps: 0,
+          startedAt: Date.now(), updatedAt: Date.now(), finishedAt: Date.now(),
+          exitCode: null, error: message,
+        });
       }
     });
   });

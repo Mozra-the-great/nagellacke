@@ -13,6 +13,7 @@ import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
 import { bootstrapAdmin } from '../utils/admin';
+import type { UpdateProgress } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
@@ -253,6 +254,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [apiKeyRejected, setApiKeyRejected] = useState(isStoredApiKeyRejected);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
   const [updateError, setUpdateError] = useState('');
   const [updateConfirmVisible, setUpdateConfirmVisible] = useState(false);
   const [importMessage, setImportMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
@@ -286,9 +288,18 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const applyUpdate = async () => {
     setUpdateStatus('updating');
     setUpdateError('');
+    setUpdateProgress(null);
     try {
-      await fetch(`${serverBase}/api/update/apply`, { method: 'POST', headers: { 'X-Api-Key': apiKey } });
-      setUpdateStatus('done');
+      const res = await fetch(`${serverBase}/api/update/apply`, { method: 'POST', headers: { 'X-Api-Key': apiKey } });
+      // A rejected key, an exhausted rate limit — none of that used to be
+      // looked at, so every one of them rendered as "Update gestartet" (#335).
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setUpdateError(data.error ?? `Fehler ${res.status}`);
+        setUpdateStatus('error');
+        return;
+      }
+      // Accepted, not finished — the poll below reports what actually happens.
     } catch (e) {
       setUpdateError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setUpdateStatus('error');
@@ -527,6 +538,31 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
   const bearerHeaders = (): Record<string, string> =>
     serverToken ? { 'Authorization': `Bearer ${serverToken}` } : {};
+
+  // Poll the server for the outcome while an update runs — POST /api/update/apply
+  // only reports that the job was accepted (#335). Lives down here rather than
+  // next to applyUpdate() because it reads serverBase during render, and that
+  // const is declared just above. Requests fail for a few seconds around the
+  // restart at the end; that is expected and ignored.
+  useEffect(() => {
+    if (updateStatus !== 'updating') return;
+    const id = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`${serverBase}/api/update/status`, { headers: { 'X-Api-Key': apiKey } });
+          if (!res.ok) return;
+          const { update } = await res.json() as { version: string; update: UpdateProgress | null };
+          setUpdateProgress(update);
+          if (update?.phase === 'success') setUpdateStatus('done');
+          if (update?.phase === 'failed') {
+            setUpdateError(`${update.step}: ${update.error ?? 'Fehlgeschlagen'}`);
+            setUpdateStatus('error');
+          }
+        } catch { /* Server startet gerade neu */ }
+      })();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [updateStatus, serverBase, apiKey]);
 
   // Asks the server whether self-registration is open, so the register option
   // is only offered when it would actually succeed (#278). Runs on the typed
@@ -1729,8 +1765,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               : ' — aktuell'}
           </div>
         )}
+        {updateStatus === 'updating' && (
+          <div className={styles.infoText}>
+            {updateProgress
+              ? `Update läuft — Schritt ${updateProgress.stepIndex + 1}/${updateProgress.totalSteps}: ${updateProgress.step}`
+              : 'Update gestartet…'}
+          </div>
+        )}
         {updateStatus === 'done' && (
-          <div className={styles.infoText}>Update gestartet — Server startet in ~2 Min. neu.</div>
+          <div className={styles.successBanner}>Update abgeschlossen — der Server startet jetzt neu.</div>
         )}
         {updateStatus === 'error' && (
           <div className={styles.errorBanner}>{updateError}</div>

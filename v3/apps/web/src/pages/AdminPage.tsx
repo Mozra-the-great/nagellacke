@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import {
   listUsers, createUser, setUserRole, deleteUser,
   getSettings, saveSettings, testSmtp, testAi,
-  getAuditLog, checkUpdate, applyUpdate, rotateApiKey,
+  getAuditLog, checkUpdate, applyUpdate, getUpdateStatus, rotateApiKey,
 } from '../utils/admin';
-import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo } from '../utils/admin';
+import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo, UpdateProgress } from '../utils/admin';
 import { saveAiSettings } from '../utils/ai';
 import type { AiProvider, SearchBackend } from '../utils/ai';
 import styles from './SettingsPage.module.css';
@@ -212,6 +212,8 @@ export default function AdminPage() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'confirming' | 'updating' | 'done' | 'error'>('idle');
   const [updateError, setUpdateError] = useState('');
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null);
+  const [runningVersion, setRunningVersion] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [rotatedKey, setRotatedKey] = useState<string | null>(null);
   const [rotateStatus, setRotateStatus] = useState<Status>('idle');
@@ -232,15 +234,51 @@ export default function AdminPage() {
   const doApplyUpdate = async () => {
     setUpdateStatus('updating');
     setUpdateError('');
+    setUpdateProgress(null);
     try {
       await applyUpdate(confirmPassword);
       setConfirmPassword('');
-      setUpdateStatus('done');
+      // Deliberately *not* 'done': the server accepted the job, it has not run
+      // it. The poll below decides whether this ends in 'done' or 'error'.
     } catch (e) {
       setUpdateError(e instanceof Error ? e.message : 'Fehler');
       setUpdateStatus('error');
     }
   };
+
+  // Adopt whatever the server knows about the last update on mount — an update
+  // started in another tab, or the one that just restarted this server, would
+  // otherwise leave no trace in the UI at all (#335).
+  useEffect(() => {
+    getUpdateStatus()
+      .then((status) => {
+        setRunningVersion(status.version);
+        setUpdateProgress(status.update);
+        if (status.update?.phase === 'running') setUpdateStatus('updating');
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // While an update runs, poll for its outcome. Around the restart at the end
+  // the request simply fails for a few seconds — expected, so it is swallowed
+  // rather than turned into an error banner.
+  useEffect(() => {
+    if (updateStatus !== 'updating') return;
+    const id = setInterval(() => {
+      getUpdateStatus()
+        .then((status) => {
+          setRunningVersion(status.version);
+          setUpdateProgress(status.update);
+          if (status.update?.phase === 'success') setUpdateStatus('done');
+          if (status.update?.phase === 'failed') {
+            setUpdateError(`${status.update.step}: ${status.update.error ?? 'Fehlgeschlagen'}`);
+            setUpdateStatus('error');
+          }
+        })
+        .catch(() => { /* Server startet gerade neu */ });
+    }, 4000);
+    return () => clearInterval(id);
+  }, [updateStatus]);
 
   const doRotateApiKey = async () => {
     setRotateStatus('loading');
@@ -491,7 +529,18 @@ export default function AdminPage() {
             Version {updateInfo.current}{updateInfo.updateAvailable ? ` → ${updateInfo.latestVersion} verfügbar` : ' — aktuell'}
           </div>
         )}
-        {updateStatus === 'done' && <div className={styles.infoText}>Update gestartet — Server startet in ~2 Min. neu.</div>}
+        {updateStatus === 'updating' && (
+          <div className={styles.infoText}>
+            {updateProgress
+              ? `Update läuft — Schritt ${updateProgress.stepIndex + 1}/${updateProgress.totalSteps}: ${updateProgress.step}`
+              : 'Update gestartet…'}
+          </div>
+        )}
+        {updateStatus === 'done' && (
+          <div className={styles.successBanner}>
+            Update auf Version {runningVersion} abgeschlossen — der Server startet jetzt neu.
+          </div>
+        )}
         {updateStatus === 'error' && <div className={styles.errorBanner}>{updateError}</div>}
 
         <div className={styles.btnRow} style={{ marginBottom: 12 }}>
