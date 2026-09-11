@@ -249,12 +249,23 @@ export default function AdminPage() {
   // Adopt whatever the server knows about the last update on mount — an update
   // started in another tab, or the one that just restarted this server, would
   // otherwise leave no trace in the UI at all (#335).
+  //
+  // A finished-and-failed update has to be adopted here too, not just a running
+  // one: the realistic way to miss a failure is to start the update, close the
+  // tab, and come back after it died — the poll below never runs in that case,
+  // because it only starts once this page is already in 'updating'. The banner
+  // stays until the next attempt overwrites the state file, which is the point:
+  // it means "you are still on the old version and here is why".
   useEffect(() => {
     getUpdateStatus()
       .then((status) => {
         setRunningVersion(status.version);
         setUpdateProgress(status.update);
         if (status.update?.phase === 'running') setUpdateStatus('updating');
+        if (status.update?.phase === 'failed') {
+          setUpdateError(`Letzter Update-Versuch fehlgeschlagen — ${status.update.step}: ${status.update.error ?? 'Fehlgeschlagen'}`);
+          setUpdateStatus('error');
+        }
       })
       .catch(() => { /* ignore */ });
   }, []);
