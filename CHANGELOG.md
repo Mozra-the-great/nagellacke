@@ -7,6 +7,10 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Behoben
+- **Foto-Upload scheiterte dauerhaft mit einem nackten `401`, sobald ein veralteter API-Schlüssel im Browser lag.** `authHeaders()` bevorzugte `X-Api-Key` bedingungslos, und serverseitig betrachtet `requireApiKeyOrJwt` einen mitgeschickten Schlüssel als die einzige Anmeldung, die es prüft — ein toter Schlüssel konnte damit eine völlig gültige Server-Session überstimmen, ohne Fallback, ohne Refresh und ohne verwertbare Fehlermeldung. Ein 401 auf einen schlüssel-authentifizierten Foto-Request wird jetzt auf dem JWT wiederholt; der abgelehnte Schlüssel wird für den Rest der Sitzung nicht mehr gesendet, statt bei jedem Request eine Runde zu verbrennen. Bleibt nur der Schlüssel übrig, nennt die neue `ApiKeyInvalidError` den tatsächlichen Auslöser („API-Schlüssel ist ungültig — in den Einstellungen entfernen oder erneuern"), weil „Sitzung abgelaufen" hier aktiv in die Irre führt: ein Schlüssel läuft nicht ab und neu anmelden hilft nicht. Ursache für den veralteten Schlüssel war meist die Rotation im Admin-Panel — `rotateApiKey()` hält den `localStorage` des rotierenden Browsers jetzt nach, statt genau den Schlüssel liegen zu lassen, den der Aufruf gerade entwertet hat. (#330)
+- **Fotos zielten im Cross-Origin-Betrieb („Eigener Server", Container-Deployment) auf den Web-Origin statt auf den Server.** `photos.ts`/`photoToken.ts` waren die letzten Module mit nackten relativen Pfaden; Upload, Token-Abruf, Refresh und die `<img>`-Quellen laufen jetzt wie `admin.ts` und `SettingsPage.tsx` über die konfigurierte `serverUrl`. Der API-Schlüssel im Browser hat mit `utils/apiKey.ts` außerdem genau einen Besitzer, statt an vier Stellen direkt aus dem `localStorage` gelesen zu werden. (#330)
+
 ## [3.4.0] – 2026-09-07
 
 ### Hinzugefügt

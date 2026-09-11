@@ -15,6 +15,7 @@ import type { AiProvider } from '../utils/ai';
 import { bootstrapAdmin } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
+import { setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
 
@@ -79,8 +80,6 @@ function remapPhotoRefs(data: CoreAppData, map: Map<string, string>): CoreAppDat
     })),
   };
 }
-
-const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
 interface UpdateInfo {
   current: string;
@@ -248,7 +247,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
   const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(APIKEY_STORAGE) ?? '');
+  const [apiKey, setApiKey] = useState(() => storedApiKey() ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'done' | 'error'>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateError, setUpdateError] = useState('');
@@ -258,8 +257,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
 
   const saveApiKey = (key: string) => {
     setApiKey(key);
-    if (key) localStorage.setItem(APIKEY_STORAGE, key);
-    else localStorage.removeItem(APIKEY_STORAGE);
+    setStoredApiKey(key || null);
   };
 
   // Bare relative fetches broke in the cross-origin "Eigener Server" mode —

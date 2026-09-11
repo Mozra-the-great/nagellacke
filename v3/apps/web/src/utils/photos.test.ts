@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { Mock } from 'vitest';
 import type { SyncConfig } from '@nagellacke/sync';
-import { uploadPhoto, AuthExpiredError } from './photos';
+import { saveSyncConfig } from '../useAppData';
+import { uploadPhoto, AuthExpiredError, ApiKeyInvalidError } from './photos';
+import { setStoredApiKey } from './apiKey';
 
 const SYNC_CONFIG_KEY = 'nagellacke_v3_sync';
 const API_KEY_KEY = 'nagellacke_v3_apikey';
@@ -18,6 +21,11 @@ function makeMockStorage(): Storage {
     key: () => null,
     get length() { return store.size; },
   } as Storage;
+}
+
+/** Request headers of the nth fetch call, as a plain lookup. */
+function headersOf(mock: Mock, n: number): Record<string, string> {
+  return (mock.mock.calls[n][1] as RequestInit).headers as Record<string, string>;
 }
 
 function makeFile(): File {
@@ -42,6 +50,11 @@ describe('uploadPhoto', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', makeMockStorage());
     vi.stubGlobal('FileReader', MockFileReader);
+    // Both modules keep credentials in module state, which outlives a single
+    // test - reset them so cases reusing the same key/token values stay
+    // independent of whatever ran before them.
+    saveSyncConfig(null);
+    setStoredApiKey(null);
   });
 
   afterEach(() => {
@@ -79,12 +92,64 @@ describe('uploadPhoto', () => {
     await expect(uploadPhoto(makeFile())).resolves.toBe('abc.jpg');
   });
 
-  it('does not throw AuthExpiredError for a 401 while using an API key (never expires, so a different failure)', async () => {
-    localStorage.setItem(API_KEY_KEY, 'some-key');
+  it('names the API key as the problem when a keyed 401 has no session to fall back on', async () => {
+    localStorage.setItem(API_KEY_KEY, 'rotated-away');
 
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(uploadPhoto(makeFile())).rejects.toThrow('Upload fehlgeschlagen (401)');
+    // A key cannot expire and cannot be refreshed, so "session expired" would be
+    // actively misleading here - the key is what has to go (#330).
+    await expect(uploadPhoto(makeFile())).rejects.toBeInstanceOf(ApiKeyInvalidError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the server session when the stored API key is stale (#330)', async () => {
+    localStorage.setItem(API_KEY_KEY, 'rotated-away');
+    const config: SyncConfig = { provider: 'server', serverToken: 'valid', serverRefreshToken: 'valid-refresh' };
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+
+    const fetchMock = vi.fn()
+      // 1) keyed attempt -> the server rejects the key outright
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      // 2) same request, retried on the JWT
+      .mockResolvedValueOnce(new Response(JSON.stringify({ filename: 'abc.jpg' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(uploadPhoto(makeFile())).resolves.toBe('abc.jpg');
+    expect(headersOf(fetchMock, 0)['X-Api-Key']).toBe('rotated-away');
+    expect(headersOf(fetchMock, 1).Authorization).toBe('Bearer valid');
+  });
+
+  it('stops sending a key the server already rejected', async () => {
+    localStorage.setItem(API_KEY_KEY, 'rotated-away');
+    const config: SyncConfig = { provider: 'server', serverToken: 'valid', serverRefreshToken: 'valid-refresh' };
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+      // A fresh Response per call - a body can only be read once.
+      .mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ filename: 'abc.jpg' }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(uploadPhoto(makeFile())).resolves.toBe('abc.jpg');
+    await expect(uploadPhoto(makeFile())).resolves.toBe('abc.jpg');
+
+    // Three calls, not four: the second upload goes straight to the JWT instead
+    // of burning another round trip on the dead key.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(headersOf(fetchMock, 2)['X-Api-Key']).toBeUndefined();
+    expect(headersOf(fetchMock, 2).Authorization).toBe('Bearer valid');
+  });
+
+  it('targets the configured server in cross-origin mode instead of the web origin', async () => {
+    const config: SyncConfig = { provider: 'server', serverUrl: 'https://api.example.test/', serverToken: 'valid' };
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ filename: 'abc.jpg' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(uploadPhoto(makeFile())).resolves.toBe('abc.jpg');
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.test/api/photos');
   });
 });

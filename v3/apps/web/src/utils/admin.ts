@@ -1,4 +1,6 @@
 import { loadSyncConfig } from '../useAppData';
+import { serverBase } from './serverBase';
+import { setStoredApiKey, storedApiKey } from './apiKey';
 
 export type Role = 'admin' | 'user';
 
@@ -46,11 +48,6 @@ export interface AuditEntry {
   action: string;
   target?: string;
   meta?: Record<string, unknown>;
-}
-
-function serverBase(): string {
-  const config = loadSyncConfig();
-  return config?.provider === 'server' ? (config.serverUrl ?? '').replace(/\/$/, '') : '';
 }
 
 function bearerHeaders(hasBody: boolean): Record<string, string> {
@@ -135,11 +132,20 @@ export function applyUpdate(password: string): Promise<{ ok: true }> {
   return request('/api/update/apply', { method: 'POST', body: JSON.stringify({ password }) });
 }
 
-export function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
-  return request('/api/admin/api-key/rotate', { method: 'POST' });
+/**
+ * Rotates the server's root API key and keeps this browser's copy in step.
+ *
+ * The browser doing the rotation is precisely the one holding the key that the
+ * call just invalidated; leaving it in localStorage left photo upload, display
+ * and delete permanently 401-ing against a key the server no longer knows
+ * (#330). Only replaced when a key was actually stored — rotating from a
+ * JWT-only admin session must not newly plant a root credential in storage.
+ */
+export async function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
+  const result = await request<{ apiKey: string; rotatedAt: number }>('/api/admin/api-key/rotate', { method: 'POST' });
+  if (storedApiKey()) setStoredApiKey(result.apiKey);
+  return result;
 }
-
-const APIKEY_STORAGE = 'nagellacke_v3_apikey';
 
 /**
  * Exchanges the root X-Api-Key for an admin session, once (#173 §3.3).
@@ -163,6 +169,6 @@ export async function bootstrapAdmin(serverUrl: string, apiKey: string, username
   });
   const data = await res.json().catch(() => ({})) as { token?: string; refreshToken?: string; error?: string };
   if (!res.ok || !data.token) throw new Error(data.error ?? `Fehler ${res.status}`);
-  localStorage.removeItem(APIKEY_STORAGE);
+  setStoredApiKey(null);
   return { token: data.token, refreshToken: data.refreshToken };
 }
