@@ -938,6 +938,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     setServerToken('');
                     saveSyncConfig(null);
                     setConfig(null);
+                    // Mirrors applyLoginTokens() below — without this, `role` in
+                    // App.tsx goes stale and the Admin tab/page keep rendering
+                    // with previously-loaded data until a manual reload (#345).
+                    onAuthChange();
                   }}
                 >Abmelden</button>
               </div>
