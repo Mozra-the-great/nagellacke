@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
-  getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
+  getData, setData, userOwnsPhoto, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin, getScheduleConfig, setScheduleConfig,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
@@ -741,6 +741,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     const photosRoot = path.resolve(PHOTOS_DIR);
     const p = path.resolve(photosRoot, filename);
     if (!p.startsWith(photosRoot + path.sep)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
+    // requireApiKeyOrJwt accepts either X-Api-Key (already a root-level
+    // credential, same trust level as the POST above) or *any* user's JWT — the
+    // JWT branch must not let one account delete another's photo (#343).
+    const key = request.headers['x-api-key'];
+    if (!(typeof key === 'string' && key)) {
+      const { username } = request.user as { username: string };
+      if (!isAdmin(username) && !userOwnsPhoto(username, filename)) {
+        return reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
+      }
+    }
     if (fs.existsSync(p)) fs.unlinkSync(p);
     return { ok: true };
   });

@@ -75,6 +75,24 @@ export function setData(username: string, data: AppData): void {
 }
 
 /**
+ * Whether `filename` appears anywhere in `username`'s own AppData — the
+ * ownership check DELETE /api/photos/:filename needs since photos have no
+ * owner record of their own, just references from polishes/stickers/manicures
+ * (#343). Soft-deleted records still count: the web app's undo-snackbar flow
+ * only calls the delete after the `deletedAt` marker has already been
+ * committed and synced, so the record is still present with `photo` intact at
+ * the moment this runs.
+ */
+export function userOwnsPhoto(username: string, filename: string): boolean {
+  const data = getData(username);
+  if (data.polishes.some((p) => p.photo === filename)) return true;
+  if (data.stickers.some((s) => s.photo === filename)) return true;
+  return data.manicures.some((m) =>
+    m.photo === filename || (m.photos != null && Object.values(m.photos).includes(filename))
+  );
+}
+
+/**
  * One-time migration of the pre-#87 global data.json into the first-registered
  * user's private collection. Runs at startup, before any request is served.
  *

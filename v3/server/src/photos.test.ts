@@ -233,3 +233,77 @@ describe('GET /photos/* access control (#269)', () => {
     expect(limitedAt).toBe(MAX + 1);
   });
 });
+
+/**
+ * #343: DELETE /api/photos/:filename had no ownership check at all — any
+ * authenticated user could delete any other user's photo by filename.
+ */
+describe('DELETE /api/photos/:filename ownership (#343)', () => {
+  async function pushPolishWithPhoto(token: string, photo: string): Promise<void> {
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [{ id: 'p1', name: 'x', brand: 'x', num: '1', color: '#fff', finish: [], status: 'ok', updatedAt: Date.now() }], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(200);
+    // Attach the photo in a second push, mirroring how the client references an
+    // already-uploaded filename from a record rather than sending it inline.
+    const attach = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [{ id: 'p1', name: 'x', brand: 'x', num: '1', color: '#fff', finish: [], status: 'ok', photo, updatedAt: Date.now() + 1 }], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(attach.statusCode).toBe(200);
+  }
+
+  it('rejects deleting another user\'s photo', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const { token: bobToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    await pushPolishWithPhoto(aliceToken, filename);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${bobToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(fs.existsSync(path.join(process.env.DATA_DIR as string, 'photos', filename))).toBe(true);
+  });
+
+  it('allows deleting a photo referenced by the caller\'s own data', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    await pushPolishWithPhoto(token, filename);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(process.env.DATA_DIR as string, 'photos', filename))).toBe(false);
+  });
+
+  it('rejects deleting an uploaded-but-unreferenced photo', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('still allows deletion via X-Api-Key regardless of ownership', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    await pushPolishWithPhoto(token, filename);
+    const apiKey = fs.readFileSync(path.join(process.env.DATA_DIR as string, '.api_key'), 'utf-8').trim();
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { 'x-api-key': apiKey },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
