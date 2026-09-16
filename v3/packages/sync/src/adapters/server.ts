@@ -20,11 +20,13 @@ export class ServerAdapter implements SyncAdapter {
     this.onTokensRefreshed = onTokensRefreshed;
   }
 
-  private headers(): HeadersInit {
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.token}`,
-    };
+  // Fastify's JSON body parser 400s on an empty body whenever Content-Type is
+  // application/json, so a bodyless call (the DELETE in deletePhoto) must omit
+  // it rather than send a header that describes a body that isn't there.
+  private headers(withContentType: boolean): HeadersInit {
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.token}` };
+    if (withContentType) headers['Content-Type'] = 'application/json';
+    return headers;
   }
 
   /**
@@ -63,10 +65,11 @@ export class ServerAdapter implements SyncAdapter {
    * access token renews itself instead of surfacing as a sync error.
    */
   private async authedFetch(url: string, init: RequestInit): Promise<Response> {
-    const res = await fetch(url, { ...init, headers: this.headers() });
+    const withContentType = init.body !== undefined;
+    const res = await fetch(url, { ...init, headers: this.headers(withContentType) });
     if (res.status !== 401) return res;
     if (!(await this.refreshAccessToken())) return res;
-    return fetch(url, { ...init, headers: this.headers() });
+    return fetch(url, { ...init, headers: this.headers(withContentType) });
   }
 
   async sync(local: AppData): Promise<SyncResult> {

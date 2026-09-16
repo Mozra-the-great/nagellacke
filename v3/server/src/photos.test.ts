@@ -233,3 +233,39 @@ describe('GET /photos/* access control (#269)', () => {
     expect(limitedAt).toBe(MAX + 1);
   });
 });
+
+/**
+ * #344: `ServerAdapter.deletePhoto()` sent `Content-Type: application/json` on
+ * its bodyless DELETE, which Fastify's JSON body parser 400s on an empty body -
+ * so every deleted polish/sticker/manicure left its photo on disk forever, and
+ * the web app swallowed the error as best-effort. These exercise the route
+ * itself the way a fixed and an unfixed client would call it.
+ */
+describe('DELETE /api/photos/:filename (#344)', () => {
+  it('deletes the file and answers 200 for a bodyless request with no Content-Type', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    const p = path.join(process.env.DATA_DIR as string, 'photos', filename);
+    expect(fs.existsSync(p)).toBe(true);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(p)).toBe(false);
+  });
+
+  it('400s when Content-Type: application/json is sent with an empty body (the pre-fix client)', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});
