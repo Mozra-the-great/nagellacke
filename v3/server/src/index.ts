@@ -19,7 +19,7 @@ import {
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
   recordLoginFailure, clearLoginFailures, loginLockedUntil,
-  isAdmin, setUserRole, listUsers, deleteUser, countAdmins,
+  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, userOwnsPhoto,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -741,6 +741,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     const photosRoot = path.resolve(PHOTOS_DIR);
     const p = path.resolve(photosRoot, filename);
     if (!p.startsWith(photosRoot + path.sep)) return reply.code(400).send({ error: 'Ungültiger Dateiname' });
+    // requireApiKeyOrJwt returns early on the X-Api-Key path without setting
+    // request.user — that credential is already root-level (same trust as
+    // upload/GET /api/photos/token), so it bypasses the ownership check
+    // below. On the JWT path, only an admin or the owner of the record that
+    // references this filename may delete it (#343).
+    if (!request.headers['x-api-key']) {
+      const { username } = request.user as { username: string };
+      if (!isAdmin(username) && !userOwnsPhoto(username, filename)) {
+        return reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
+      }
+    }
     if (fs.existsSync(p)) fs.unlinkSync(p);
     return { ok: true };
   });
