@@ -233,3 +233,95 @@ describe('GET /photos/* access control (#269)', () => {
     expect(limitedAt).toBe(MAX + 1);
   });
 });
+
+/**
+ * #343: DELETE /api/photos/:filename had no ownership check at all — any
+ * authenticated user could delete any other user's photo just by knowing its
+ * (randomly generated, but not otherwise validated) filename.
+ */
+describe('DELETE /api/photos/:filename ownership (#343)', () => {
+  async function attachPhotoToPolish(token: string, filename: string): Promise<void> {
+    const polish = {
+      id: 'p1', name: 'Test', brand: 'Brand', num: '001', color: '#ffffff',
+      finish: 'Classic', status: 'ok', photo: filename, createdAt: 1, updatedAt: 1,
+    };
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [polish], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
+  it('rejects deleting another user\'s photo', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    await attachPhotoToPolish(aliceToken, filename);
+
+    const { token: bobToken } = await register(freshUsername());
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${bobToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(fs.existsSync(path.join(process.env.DATA_DIR as string, 'photos', filename))).toBe(true);
+  });
+
+  it('allows deleting a photo referenced by the caller\'s own data', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    await attachPhotoToPolish(token, filename);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(process.env.DATA_DIR as string, 'photos', filename))).toBe(false);
+  });
+
+  it('rejects deleting an uploaded-but-never-referenced photo', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    // Never attached to any polish/sticker/manicure.
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('lets an admin delete a photo they do not own', async () => {
+    const adminUsername = freshUsername();
+    const { token: adminToken } = await register(adminUsername);
+    // freshUsername() is a running counter across the whole file, so this
+    // isn't necessarily the first-ever registered user; promote explicitly
+    // instead of relying on first-user auto-admin.
+    const db = await import('./db');
+    db.setUserRole(adminUsername, 'admin');
+
+    const { token: userToken } = await register(freshUsername());
+    const filename = await uploadPhoto(userToken);
+    await attachPhotoToPolish(userToken, filename);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('still lets X-Api-Key delete any photo, unchanged, since it is already a root-level credential', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    await attachPhotoToPolish(token, filename);
+
+    const apiKey = fs.readFileSync(path.join(process.env.DATA_DIR as string, '.api_key'), 'utf-8').trim();
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { 'x-api-key': apiKey },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+});
