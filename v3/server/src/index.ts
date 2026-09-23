@@ -14,7 +14,8 @@ import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
   getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
-  bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin, getScheduleConfig, setScheduleConfig,
+  bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
+  getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, migrateScheduleToPerUser,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
@@ -374,9 +375,10 @@ function httpsGet(url: string): Promise<string> {
  * handles behind every test that calls this function.
  */
 export async function buildApp(): Promise<FastifyInstance> {
-  // Must run before any request is served (#87, #173).
+  // Must run before any request is served (#87, #173, #353).
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
+  migrateScheduleToPerUser();
 
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
@@ -1065,13 +1067,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(409).send({ error: 'Der letzte Admin kann nicht gelöscht werden' });
     }
     deleteUser(username);
-    // Orphan cleanup: a schedule still pointing at the deleted user would
-    // otherwise silently fall back to getFirstUsername() (see the scheduler
-    // below) and mail a *different* account's collection to the old toEmail.
-    const schedule = getScheduleConfig();
-    if (schedule?.username === username) {
-      setScheduleConfig({ ...schedule, enabled: false });
-    }
+    // Orphan cleanup: schedules are keyed by username since #353, so the
+    // deleted user's own schedule (if any) simply goes with it — nothing else
+    // can be pointing at it.
+    deleteScheduleConfig(username);
     logAdminAction(actor, 'user.deleted', username);
     return { ok: true };
   });
@@ -1320,15 +1319,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  // GET /api/reports/schedule
+  // GET /api/reports/schedule — scoped to the caller's own schedule (#353:
+  // schedule.json used to be one record shared by every account).
   app.get('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-  }, async () => {
-    return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { config: getScheduleConfig(username), smtpConfigured: isEmailConfigured() };
   });
 
-  // POST /api/reports/schedule
+  // POST /api/reports/schedule — likewise scoped to the caller (#353).
   app.post('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
@@ -1339,17 +1340,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
-    const current = getScheduleConfig();
+    const current = getScheduleConfig(username);
     const config: ScheduleConfig = {
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
-      // Whoever last saved the schedule owns the collection it reports on —
-      // collections are per-user since #87, so the hourly job needs to know.
+      // The caller owns the collection this reports on — collections are
+      // per-user since #87, so the hourly job needs to know which one.
       username,
     };
-    setScheduleConfig(config);
+    setScheduleConfig(username, config);
     return { ok: true, config };
   });
 
@@ -1976,53 +1977,58 @@ async function main() {
   const app = await buildApp();
 
   // ── Report scheduler ──────────────────────────────────────────────────────────
-  // Checks every hour whether a scheduled report should be sent.
+  // Checks every hour whether any user's scheduled report should be sent.
+  // Schedules are per-user since #353 — each is independent, so one user's
+  // config being broken (bad email, send failure) must not block the rest.
   setInterval(async () => {
-    const cfg = getScheduleConfig();
-    if (!cfg?.enabled || !cfg.toEmail || !isEmailConfigured()) return;
+    if (!isEmailConfigured()) return;
 
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
-    const dayOfMonth = now.getUTCDate();
+    for (const cfg of getAllScheduleConfigs()) {
+      if (!cfg.enabled || !cfg.toEmail) continue;
 
-    const shouldSend = cfg.frequency === 'weekly'
-      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
-      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+      const dayOfMonth = now.getUTCDate();
 
-    if (!shouldSend) return;
+      const shouldSend = cfg.frequency === 'weekly'
+        ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+        : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
 
-    // Avoid sending twice in the same hour window
-    if (cfg.lastSentAt) {
-      const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
-      if (hoursSinceLast < 2) return;
-    }
+      if (!shouldSend) continue;
 
-    const refDate = new Date(now);
-    if (cfg.frequency === 'weekly') {
-      refDate.setUTCDate(now.getUTCDate() - 7);
-    } else {
-      refDate.setUTCMonth(now.getUTCMonth() - 1);
-    }
+      // Avoid sending twice in the same hour window
+      if (cfg.lastSentAt) {
+        const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
+        if (hoursSinceLast < 2) continue;
+      }
 
-    // Configs written before per-user isolation carry no username; the account
-    // that bootstrapped the server owns the migrated collection (#87).
-    const reportUser = cfg.username ?? getFirstUsername();
-    if (!reportUser) {
-      console.warn('[reports] Scheduled report skipped: no user to report on.');
-      return;
-    }
+      const refDate = new Date(now);
+      if (cfg.frequency === 'weekly') {
+        refDate.setUTCDate(now.getUTCDate() - 7);
+      } else {
+        refDate.setUTCMonth(now.getUTCMonth() - 1);
+      }
 
-    try {
-      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
-      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-      const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
-      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-      setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
-      console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
-    } catch (e: unknown) {
-      console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+      // Configs written before per-user isolation carry no username; the account
+      // that bootstrapped the server owns the migrated collection (#87).
+      const reportUser = cfg.username ?? getFirstUsername();
+      if (!reportUser) {
+        console.warn('[reports] Scheduled report skipped: no user to report on.');
+        continue;
+      }
+
+      try {
+        const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+        const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+        const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
+        const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
+        await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+        setScheduleConfig(reportUser, { ...cfg, lastSentAt: Date.now() });
+        console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
+      } catch (e: unknown) {
+        console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+      }
     }
   }, 60 * 60 * 1000); // every hour
 
