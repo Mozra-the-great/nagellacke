@@ -64,6 +64,19 @@ async function mintSessionToken(token: string): Promise<string> {
   return body.token;
 }
 
+async function attachPhotoToPolish(token: string, filename: string): Promise<void> {
+  const polish = {
+    id: 'p1', name: 'Test', brand: 'Brand', num: '001', color: '#ffffff',
+    finish: 'Classic', status: 'ok', photo: filename, createdAt: 1, updatedAt: 1,
+  };
+  const res = await app.inject({
+    method: 'POST', url: '/api/sync/push',
+    headers: { authorization: `Bearer ${token}` },
+    payload: { data: { polishes: [polish], customCats: [], manicures: [], stickers: [] } },
+  });
+  expect(res.statusCode).toBe(200);
+}
+
 /**
  * #269: /photos/* used to be served with no authentication at all — the
  * unguessable UUID filename was the only protection and a leaked URL granted
@@ -78,9 +91,10 @@ describe('GET /photos/* access control (#269)', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('serves the photo for a bearer access token', async () => {
+  it('serves the photo for a bearer access token that owns it', async () => {
     const { token } = await register(freshUsername());
     const filename = await uploadPhoto(token);
+    await attachPhotoToPolish(token, filename);
 
     const res = await app.inject({
       method: 'GET', url: `/photos/${filename}`,
@@ -93,6 +107,7 @@ describe('GET /photos/* access control (#269)', () => {
   it('rejects a refresh token used as a bearer credential', async () => {
     const { token, refreshToken } = await register(freshUsername());
     const filename = await uploadPhoto(token);
+    await attachPhotoToPolish(token, filename);
 
     const res = await app.inject({
       method: 'GET', url: `/photos/${filename}`,
@@ -235,24 +250,79 @@ describe('GET /photos/* access control (#269)', () => {
 });
 
 /**
+ * #352: GET /photos/:filename via the bearer-JWT path performed no ownership
+ * check at all — a verified access JWT for *any* account served *any* file,
+ * bypassing the per-user isolation the signed `?t=` token model (used by both
+ * UIs' own photo previews, see photoUrl()) is supposed to enforce. Mirrors the
+ * check DELETE already had (#343).
+ */
+describe('GET /photos/:filename ownership on the bearer-JWT path (#352)', () => {
+  it('rejects reading another user\'s photo with own bearer token', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    await attachPhotoToPolish(aliceToken, filename);
+
+    const { token: bobToken } = await register(freshUsername());
+    const res = await app.inject({
+      method: 'GET', url: `/photos/${filename}`,
+      headers: { authorization: `Bearer ${bobToken}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects reading an uploaded-but-never-referenced photo via bearer token, even for the uploader', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    // Never attached to any polish/sticker/manicure — the web/Android UIs never
+    // read a freshly-uploaded photo through this path, they use the signed
+    // `?t=` token instead (photoUrl()/PhotoTokenCache), so this doesn't affect
+    // the upload-preview flow.
+
+    const res = await app.inject({
+      method: 'GET', url: `/photos/${filename}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('lets an admin read a photo they do not own via bearer token', async () => {
+    const adminUsername = freshUsername();
+    const { token: adminToken } = await register(adminUsername);
+    // freshUsername() is a running counter across the whole file, so this
+    // isn't necessarily the first-ever registered user; promote explicitly
+    // instead of relying on first-user auto-admin.
+    const db = await import('./db');
+    db.setUserRole(adminUsername, 'admin');
+
+    const { token: userToken } = await register(freshUsername());
+    const filename = await uploadPhoto(userToken);
+    await attachPhotoToPolish(userToken, filename);
+
+    const res = await app.inject({
+      method: 'GET', url: `/photos/${filename}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('the signed ?t= session token path remains unaffected — it covers every one of the caller\'s photos by design', async () => {
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    // Deliberately not attached to any record — this is the immediate
+    // upload-preview case the session token has to keep serving.
+    const photoToken = await mintSessionToken(token);
+
+    const res = await app.inject({ method: 'GET', url: `/photos/${filename}?t=${encodeURIComponent(photoToken)}` });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+/**
  * #343: DELETE /api/photos/:filename had no ownership check at all — any
  * authenticated user could delete any other user's photo just by knowing its
  * (randomly generated, but not otherwise validated) filename.
  */
 describe('DELETE /api/photos/:filename ownership (#343)', () => {
-  async function attachPhotoToPolish(token: string, filename: string): Promise<void> {
-    const polish = {
-      id: 'p1', name: 'Test', brand: 'Brand', num: '001', color: '#ffffff',
-      finish: 'Classic', status: 'ok', photo: filename, createdAt: 1, updatedAt: 1,
-    };
-    const res = await app.inject({
-      method: 'POST', url: '/api/sync/push',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { data: { polishes: [polish], customCats: [], manicures: [], stickers: [] } },
-    });
-    expect(res.statusCode).toBe(200);
-  }
-
   it('rejects deleting another user\'s photo', async () => {
     const { token: aliceToken } = await register(freshUsername());
     const filename = await uploadPhoto(aliceToken);

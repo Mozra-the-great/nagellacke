@@ -536,11 +536,16 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   /**
    * Gate for /photos/* (#269). Accepts, in order:
-   *  1. `X-Api-Key` or a `Authorization: Bearer <access JWT>` header - what the
-   *     Android app and scripted clients can send.
+   *  1. `X-Api-Key` or a `Authorization: Bearer <access JWT>` header - what
+   *     scripted/API clients send directly. A non-admin bearer JWT additionally
+   *     has to own the requested file (isAdmin || userOwnsPhoto), the same
+   *     check DELETE already applies (#343) - a verified JWT only proves some
+   *     account is logged in, not that it owns this particular photo (#352).
    *  2. a signed `?t=` photo token - the only option for an <img> tag or a mail
-   *     client, which cannot set headers. A token bound to a filename (`f`, as
-   *     embedded in report emails) is rejected for any other photo.
+   *     client, which cannot set headers, and what both UIs' own photo previews
+   *     actually use (see photoUrl()/PhotoTokenCache). A session token
+   *     deliberately covers every one of its account's photos; a token bound to
+   *     a filename (`f`, as embedded in report emails) is rejected for any other.
    *
    * Deliberately an onRequest hook rather than a preHandler: it must reject
    * before @fastify/static gets a chance to stream the file.
@@ -560,6 +565,19 @@ export async function buildApp(): Promise<FastifyInstance> {
         return unauthorized();
       }
       if (!tokenTypeValid(request) || !tokenVersionValid(request)) return unauthorized();
+      // A verified access JWT only proves *some* account is logged in, not that
+      // it owns this file - mirrors the ownership check DELETE already applies
+      // (#343). Neither UI's own photo preview uses this path (both mint a
+      // signed `?t=` token instead, see photoUrl()/PhotoTokenCache); this
+      // branch is reached by scripted/API clients sending a bearer token
+      // directly, which is exactly what #352 showed could read across accounts.
+      const { username } = request.user as { username: string };
+      if (!isAdmin(username)) {
+        const requested = requestedPhotoName(request.url);
+        if (requested === null || !userOwnsPhoto(username, requested)) {
+          return reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
+        }
+      }
       return;
     }
 
