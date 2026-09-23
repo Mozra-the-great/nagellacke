@@ -330,7 +330,7 @@ describe('last-admin and self-delete protection', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('deleting a scheduled user clears (disables) the schedule', async () => {
+  it('deleting a scheduled user removes their own schedule', async () => {
     const { app, dir } = await createTestApp();
     tmpDirs.push(dir);
     const { token: ownerToken } = await register(app, 'owner');
@@ -343,7 +343,37 @@ describe('last-admin and self-delete protection', () => {
     const del = await app.inject({ method: 'DELETE', url: '/api/admin/users/bob', headers: { authorization: `Bearer ${ownerToken}` } });
     expect(del.statusCode).toBe(200);
     const db = await import('./db');
-    expect(db.getScheduleConfig()?.enabled).toBe(false);
+    expect(db.getScheduleConfig('bob')).toBeNull();
+  });
+});
+
+describe('GET/POST /api/reports/schedule — per-user isolation (#353)', () => {
+  it('a user cannot read or overwrite another user\'s schedule', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const { token: aliceToken } = await register(app, 'alice');
+    process.env.ALLOW_REGISTRATION = 'true';
+    const { token: bobToken } = await register(app, 'bob');
+
+    const setAlice = await app.inject({
+      method: 'POST', url: '/api/reports/schedule', headers: { authorization: `Bearer ${aliceToken}` },
+      payload: { enabled: true, frequency: 'weekly', toEmail: 'alice-private@example.com' },
+    });
+    expect(setAlice.statusCode).toBe(200);
+
+    // bob must not see alice's config on his own GET.
+    const bobGet = await app.inject({ method: 'GET', url: '/api/reports/schedule', headers: { authorization: `Bearer ${bobToken}` } });
+    expect(bobGet.json().config).toBeNull();
+
+    // bob saving his own schedule must not touch alice's.
+    const setBob = await app.inject({
+      method: 'POST', url: '/api/reports/schedule', headers: { authorization: `Bearer ${bobToken}` },
+      payload: { enabled: true, frequency: 'monthly', toEmail: 'bob@example.com' },
+    });
+    expect(setBob.statusCode).toBe(200);
+
+    const aliceGet = await app.inject({ method: 'GET', url: '/api/reports/schedule', headers: { authorization: `Bearer ${aliceToken}` } });
+    expect(aliceGet.json().config).toMatchObject({ toEmail: 'alice-private@example.com', frequency: 'weekly', username: 'alice' });
   });
 });
 
