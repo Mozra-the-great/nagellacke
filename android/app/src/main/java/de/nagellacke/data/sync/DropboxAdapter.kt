@@ -1,5 +1,6 @@
 package de.nagellacke.data.sync
 
+import android.net.Uri
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.ui.settings.OAuthClientIds
@@ -150,5 +151,11 @@ class DropboxAdapter(
         ).execute().close()
     }
 
-    override fun photoUrl(filename: String) = "$content/files/download?path=/nagellacke/photos/$filename"
+    // Coil issues a plain GET for this URL with no custom headers, so the request
+    // can't carry Dropbox-API-Arg the way fetchRemote()/syncBlocking() do - the
+    // argument has to travel as the `arg` query parameter instead, and (unlike a
+    // bare `path` param, which Dropbox silently ignores) its value must be the
+    // same URL-encoded JSON object the header would otherwise carry.
+    override fun photoUrl(filename: String) =
+        "$content/files/download?arg=" + Uri.encode("""{"path":"/nagellacke/photos/$filename"}""")
 }
