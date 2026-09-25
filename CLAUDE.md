@@ -36,7 +36,7 @@ npm run build:core      # build @nagellacke/core
 npm run build:sync      # build @nagellacke/sync
 npm run build:server    # tsc → dist/
 npm run build:web       # tsc + vite build
-npm run test            # vitest across all workspaces (core, server, web)
+npm run test            # vitest across all workspaces (core, sync, server, web)
 ```
 
 **Server (`v3/server/`):**

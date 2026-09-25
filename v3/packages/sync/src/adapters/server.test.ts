@@ -42,4 +42,10 @@ describe('ServerAdapter', () => {
     const headers = new Headers(init.headers);
     expect(headers.get('Content-Type')).toBe('application/json');
   });
+
+  it('rejects when the server refuses the delete', async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: 'x' }), { status: 403 }));
+
+    await expect(adapter().deletePhoto('photo-123.jpg')).rejects.toThrow('403');
+  });
 });

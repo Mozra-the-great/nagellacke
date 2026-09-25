@@ -10,7 +10,11 @@ async function deletePhotoFromServer(filename: string): Promise<void> {
   try {
     const adapter = createAdapter(config, persistRefreshedTokens);
     await adapter.deletePhoto(filename);
-  } catch { /* best-effort: local deletion still proceeds */ }
+  } catch (e) {
+    // Best-effort: the local deletion stands either way. Logged rather than
+    // swallowed, because a silent failure here is how #344 went unnoticed.
+    console.warn(`[photos] Could not delete ${filename} on the sync target:`, e);
+  }
 }
 
 export const STORAGE_KEY = 'nagellacke_v3_data';

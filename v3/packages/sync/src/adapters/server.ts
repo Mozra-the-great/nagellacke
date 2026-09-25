@@ -115,9 +115,11 @@ export class ServerAdapter implements SyncAdapter {
   }
 
   async deletePhoto(filename: string): Promise<void> {
-    await this.authedFetch(`${this.baseUrl}/api/photos/${encodeURIComponent(filename)}`, {
+    const res = await this.authedFetch(`${this.baseUrl}/api/photos/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
     });
+    // Unchecked, a rejected delete looked exactly like a successful one (#344).
+    if (!res.ok) throw new Error(`Photo delete failed: ${res.status}`);
   }
 
   photoUrl(filename: string): string {
