@@ -280,14 +280,35 @@ describe('DELETE /api/photos/:filename ownership (#343)', () => {
     expect(fs.existsSync(path.join(process.env.DATA_DIR as string, 'photos', filename))).toBe(false);
   });
 
-  it('rejects deleting an uploaded-but-never-referenced photo', async () => {
+  it('lets the uploader delete a photo no record references yet, and nobody else (#352)', async () => {
     const { token } = await register(freshUsername());
     const filename = await uploadPhoto(token);
-    // Never attached to any polish/sticker/manicure.
+    // Never attached to any polish/sticker/manicure. Before #352 nobody but an
+    // admin could remove such a file, because references were the only notion
+    // of ownership; the recorded uploader now is one.
+    const { token: bobToken } = await register(freshUsername());
+    const bobRes = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${bobToken}` },
+    });
+    expect(bobRes.statusCode).toBe(403);
 
     const res = await app.inject({
       method: 'DELETE', url: `/api/photos/${filename}`,
       headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects deleting another user\'s photo even after referencing it from one\'s own records (#352)', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    const { token: bobToken } = await register(freshUsername());
+    await attachPhotoToPolish(bobToken, filename);
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/photos/${filename}`,
+      headers: { authorization: `Bearer ${bobToken}` },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -323,5 +344,127 @@ describe('DELETE /api/photos/:filename ownership (#343)', () => {
       headers: { 'x-api-key': apiKey },
     });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+/**
+ * #352: every credential that names an account used to reach every photo -
+ * a bearer JWT for any account, or a session token any account could mint.
+ */
+describe('GET /photos/* ownership (#352)', () => {
+  async function pushPolish(token: string, filename: string, createdAt = 1): Promise<void> {
+    const polish = {
+      id: `p-${filename}`, name: 'Test', brand: 'Brand', num: '001', color: '#ffffff',
+      finish: 'Classic', status: 'ok', photo: filename, createdAt, updatedAt: createdAt,
+    };
+    const res = await app.inject({
+      method: 'POST', url: '/api/sync/push',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { data: { polishes: [polish], customCats: [], manicures: [], stickers: [] } },
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
+  async function get(filename: string, opts: { bearer?: string; t?: string; apiKey?: string }) {
+    return app.inject({
+      method: 'GET',
+      url: `/photos/${filename}${opts.t ? `?t=${encodeURIComponent(opts.t)}` : ''}`,
+      headers: {
+        ...(opts.bearer ? { authorization: `Bearer ${opts.bearer}` } : {}),
+        ...(opts.apiKey ? { 'x-api-key': opts.apiKey } : {}),
+      },
+    });
+  }
+
+  const apiKey = () => fs.readFileSync(path.join(process.env.DATA_DIR as string, '.api_key'), 'utf-8').trim();
+
+  it('rejects another account\'s bearer token', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    await pushPolish(aliceToken, filename);
+    const { token: bobToken } = await register(freshUsername());
+
+    expect((await get(filename, { bearer: bobToken })).statusCode).toBe(403);
+    expect((await get(filename, { bearer: aliceToken })).statusCode).toBe(200);
+  });
+
+  it('rejects another account\'s session token', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    const { token: bobToken } = await register(freshUsername());
+    const bobPhotoToken = await mintSessionToken(bobToken);
+
+    expect((await get(filename, { t: bobPhotoToken })).statusCode).toBe(403);
+  });
+
+  it('serves the uploader\'s own photo before any record references it', async () => {
+    // The preview right after picking a photo, in both apps.
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    expect((await get(filename, { t: await mintSessionToken(token) })).statusCode).toBe(200);
+    expect((await get(filename, { bearer: token })).statusCode).toBe(200);
+  });
+
+  it('does not let a planted reference claim another account\'s photo', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const filename = await uploadPhoto(aliceToken);
+    const { token: bobToken } = await register(freshUsername());
+    await pushPolish(bobToken, filename);
+
+    expect((await get(filename, { bearer: bobToken })).statusCode).toBe(403);
+    expect((await get(filename, { t: await mintSessionToken(bobToken) })).statusCode).toBe(403);
+  });
+
+  it('does not sign another account\'s photo into a report', async () => {
+    const { token: aliceToken } = await register(freshUsername());
+    const alicePhoto = await uploadPhoto(aliceToken);
+    const bobName = freshUsername();
+    const { token: bobToken } = await register(bobName);
+    const bobPhoto = await uploadPhoto(bobToken);
+    await pushPolish(bobToken, alicePhoto, Date.now());
+    await pushPolish(bobToken, bobPhoto, Date.now());
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/reports/preview?period=week',
+      headers: { authorization: `Bearer ${bobToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = res.body;
+    expect(html).toContain(`/photos/${bobPhoto}?t=`);
+    expect(html).toContain(`/photos/${alicePhoto}"`);
+    expect(html).not.toContain(`/photos/${alicePhoto}?t=`);
+    // And a per-file token forged for it is refused at the gate as well.
+    const forged = signPhotoToken({ exp: Math.floor(Date.now() / 1000) + 600, u: bobName, tv: 0, f: alicePhoto }, JWT_SECRET);
+    expect((await get(alicePhoto, { t: forged })).statusCode).toBe(403);
+  });
+
+  it('keeps the reference rule for a photo uploaded via X-Api-Key, which names no account', async () => {
+    const upload = await app.inject({
+      method: 'POST', url: '/api/photos',
+      headers: { 'x-api-key': apiKey() },
+      payload: { data: PNG_BYTES.toString('base64'), mimeType: 'image/png' },
+    });
+    expect(upload.statusCode).toBe(200);
+    const { filename } = upload.json() as { filename: string };
+
+    const { token: aliceToken } = await register(freshUsername());
+    await pushPolish(aliceToken, filename);
+    const { token: bobToken } = await register(freshUsername());
+
+    expect((await get(filename, { bearer: aliceToken })).statusCode).toBe(200);
+    expect((await get(filename, { bearer: bobToken })).statusCode).toBe(403);
+    expect((await get(filename, { apiKey: apiKey() })).statusCode).toBe(200);
+  });
+
+  it('lets an admin read any photo', async () => {
+    const adminName = freshUsername();
+    const { token: adminToken } = await register(adminName);
+    const db = await import('./db');
+    db.setUserRole(adminName, 'admin');
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+
+    expect((await get(filename, { bearer: adminToken })).statusCode).toBe(200);
+    expect((await get(filename, { t: await mintSessionToken(adminToken) })).statusCode).toBe(200);
   });
 });

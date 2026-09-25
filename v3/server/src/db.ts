@@ -76,10 +76,10 @@ export function setData(username: string, data: AppData): void {
 
 /**
  * Whether `filename` is referenced by one of the user's own records —
- * polishes, stickers, or a manicure photo/photo slot. There is no separate
- * photo-ownership table (photos live in one shared PHOTOS_DIR with no owner
- * metadata of their own), so this is the ownership check DELETE
- * /api/photos/:filename relies on instead (#343).
+ * polishes, stickers, or a manicure photo/photo slot. Since #352 only the
+ * fallback inside canAccessPhoto() for photos with no recorded uploader: a
+ * reference is something any account can push, so on its own it proves
+ * nothing about who uploaded the file.
  *
  * Deliberately checks soft-deleted records too (deletedAt set): the web
  * app's undo-snackbar flow marks a record deleted and syncs it *before* it
@@ -95,6 +95,110 @@ export function userOwnsPhoto(username: string, filename: string): boolean {
     if (m.photo === filename) return true;
     return Object.values(m.photos ?? {}).some((f) => f === filename);
   });
+}
+
+// ── Photo ownership (#352) ───────────────────────────────────────────────────
+//
+// Photos share one PHOTOS_DIR, so who may read or delete one used to be
+// decided by userOwnsPhoto() alone: "some record of yours references it". That
+// is a claim anyone can make — pushing a record whose `photo` is another
+// account's filename was enough to pass it. The uploader is now recorded at
+// upload time and is authoritative; references only decide for photos that
+// have no recorded uploader (uploaded via X-Api-Key, which carries no account,
+// or referenced by more than one account when the table was first built).
+
+const PHOTO_OWNERS_FILE = path.join(DATA_DIR, 'photo_owners.json');
+
+// Cached: /photos/* consults this on every thumbnail, and this process is the
+// only writer.
+let photoOwnersCache: Map<string, string> | null = null;
+
+function photoOwners(): Map<string, string> {
+  if (photoOwnersCache) return photoOwnersCache;
+  try {
+    const raw: unknown = fs.existsSync(PHOTO_OWNERS_FILE)
+      ? JSON.parse(fs.readFileSync(PHOTO_OWNERS_FILE, 'utf-8'))
+      : {};
+    photoOwnersCache = new Map(
+      Object.entries(raw && typeof raw === 'object' ? raw : {})
+        .filter((e): e is [string, string] => typeof e[1] === 'string'),
+    );
+  } catch (e) {
+    console.error('photo_owners.json corrupt — falling back to record references:', e);
+    photoOwnersCache = new Map();
+  }
+  return photoOwnersCache;
+}
+
+function writePhotoOwners(owners: Map<string, string>): void {
+  const tmp = `${PHOTO_OWNERS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(owners)));
+  fs.renameSync(tmp, PHOTO_OWNERS_FILE);
+  photoOwnersCache = owners;
+}
+
+export function recordPhotoOwner(filename: string, username: string): void {
+  const owners = new Map(photoOwners());
+  owners.set(filename, username);
+  writePhotoOwners(owners);
+}
+
+export function forgetPhotoOwner(filename: string): void {
+  const owners = photoOwners();
+  if (!owners.has(filename)) return;
+  const next = new Map(owners);
+  next.delete(filename);
+  writePhotoOwners(next);
+}
+
+export function photoOwner(filename: string): string | undefined {
+  return photoOwners().get(filename);
+}
+
+/**
+ * Whether `username` may read or delete `filename`: admins always, otherwise
+ * the recorded uploader — or, only for a photo without one, an account whose
+ * records reference it. The single check behind GET /photos/*, DELETE
+ * /api/photos/:filename and the per-file tokens in report emails.
+ */
+export function canAccessPhoto(username: string, filename: string): boolean {
+  if (isAdmin(username)) return true;
+  const owner = photoOwner(filename);
+  if (owner !== undefined) return owner === username;
+  return userOwnsPhoto(username, filename);
+}
+
+function referencedPhotos(data: AppData): Set<string> {
+  const files = new Set<string>();
+  for (const p of data.polishes) if (p.photo) files.add(p.photo);
+  for (const st of data.stickers) if (st.photo) files.add(st.photo);
+  for (const m of data.manicures) {
+    if (m.photo) files.add(m.photo);
+    for (const f of Object.values(m.photos ?? {})) if (f) files.add(f);
+  }
+  return files;
+}
+
+/**
+ * One-time startup backfill of photo_owners.json from what each account's
+ * records reference, so photos uploaded before #352 get an owner too. A photo
+ * referenced by more than one account is left without one: there is no way to
+ * tell which of them uploaded it, so it keeps the old reference-based rule.
+ * Runs only while the file does not exist yet; afterwards uploads maintain it.
+ */
+export function migratePhotoOwners(): void {
+  if (fs.existsSync(PHOTO_OWNERS_FILE)) return;
+  const seen = new Map<string, string | null>();
+  for (const { username } of readUsers()) {
+    for (const f of referencedPhotos(getData(username))) {
+      const prev = seen.get(f);
+      seen.set(f, prev === undefined || prev === username ? username : null);
+    }
+  }
+  const owners = new Map<string, string>();
+  for (const [f, u] of seen) if (u !== null) owners.set(f, u);
+  writePhotoOwners(owners);
+  if (owners.size) console.log(`[migration] Recorded owners for ${owners.size} existing photo(s) (#352).`);
 }
 
 /**
@@ -529,6 +633,12 @@ export function deleteUser(username: string): void {
   if (fs.existsSync(dataFile)) {
     fs.renameSync(dataFile, `${dataFile}.deleted-${Date.now()}`);
   }
+  // Otherwise a later account registered under the same name would inherit
+  // this one's photos (#352).
+  const owners = photoOwners();
+  if ([...owners.values()].includes(username)) {
+    writePhotoOwners(new Map([...owners].filter(([, u]) => u !== username)));
+  }
 }
 
 // ── Audit log (#173) ──────────────────────────────────────────────────────────
@@ -636,6 +746,11 @@ export function setServerSettings(settings: ServerSettings): void {
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────
+//
+// One schedule per user since #353. Before that, schedule.json held a single
+// record shared by every account, so any logged-in user could read another
+// account's report email via GET /api/reports/schedule and take the schedule
+// over with a POST.
 
 export interface ScheduleConfig {
   enabled: boolean;
@@ -643,31 +758,132 @@ export interface ScheduleConfig {
   toEmail: string;
   lastSentAt?: number;
   /**
-   * Whose collection the scheduled report renders. There is still a single
-   * schedule for the server, but collections are per-user since #87, so it has
-   * to record which one it reports on — otherwise the hourly job would have no
-   * way to pick, and could mail out an account's private collection under
-   * another account's schedule. Absent on configs written before #87; those
-   * fall back to the first-registered user.
+   * Whose collection the scheduled report renders. Since #353 this always
+   * equals the key the config is stored under, and the scheduler goes by the
+   * key; the field stays because the API has always returned it.
    */
   username?: string;
 }
 
+/**
+ * On-disk shape since #353. Wrapped and versioned rather than a bare
+ * username-keyed object, because usernames are free-form (usernameError() in
+ * index.ts only rejects control characters and length): a bare map could not
+ * be told apart from the legacy single record for an account named `enabled`,
+ * and a key like `__proto__` must not be looked up through a plain object.
+ * In memory the schedules are therefore always a Map.
+ */
+interface ScheduleFile {
+  v: 2;
+  schedules: Record<string, ScheduleConfig>;
+}
+
 const SCHEDULE_FILE = path.join(DATA_DIR, 'schedule.json');
 
-export function getScheduleConfig(): ScheduleConfig | null {
+function isScheduleFile(raw: unknown): raw is ScheduleFile {
+  return !!raw && typeof raw === 'object' && (raw as { v?: unknown }).v === 2
+    && !!(raw as { schedules?: unknown }).schedules
+    && typeof (raw as { schedules?: unknown }).schedules === 'object';
+}
+
+function readScheduleStore(): Map<string, ScheduleConfig> {
   try {
-    if (!fs.existsSync(SCHEDULE_FILE)) return null;
-    return JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8')) as ScheduleConfig;
+    if (!fs.existsSync(SCHEDULE_FILE)) return new Map();
+    const raw: unknown = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
+    // A pre-#353 file is converted by migrateScheduleToPerUser() at startup;
+    // anything else unreadable counts as "no schedules" rather than being
+    // attributed to whoever happens to ask.
+    if (!isScheduleFile(raw)) return new Map();
+    return new Map(Object.entries(raw.schedules));
   } catch {
-    return null;
+    return new Map();
   }
 }
 
-export function setScheduleConfig(config: ScheduleConfig): void {
+function writeScheduleStore(store: Map<string, ScheduleConfig>): void {
+  // Object.fromEntries defines own properties, so even `__proto__` survives as
+  // an ordinary key.
+  const file: ScheduleFile = { v: 2, schedules: Object.fromEntries(store) };
   const tmp = `${SCHEDULE_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(config), { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify(file), { mode: 0o600 });
   fs.renameSync(tmp, SCHEDULE_FILE);
+}
+
+export function getScheduleConfig(username: string): ScheduleConfig | null {
+  return readScheduleStore().get(username) ?? null;
+}
+
+export function setScheduleConfig(username: string, config: ScheduleConfig): void {
+  const store = readScheduleStore();
+  store.set(username, { ...config, username });
+  writeScheduleStore(store);
+}
+
+/**
+ * Records a sent report on a fresh read, touching nothing but lastSentAt: the
+ * scheduler awaits the SMTP send in between, and writing back the copy it read
+ * before that would undo a change the user saved in the meantime.
+ */
+export function markScheduleSent(username: string, at: number): void {
+  const store = readScheduleStore();
+  const current = store.get(username);
+  if (!current) return;
+  store.set(username, { ...current, lastSentAt: at });
+  writeScheduleStore(store);
+}
+
+/** Drops a user's schedule; DELETE /api/admin/users/:username calls this. */
+export function deleteScheduleConfig(username: string): void {
+  const store = readScheduleStore();
+  if (!store.delete(username)) return;
+  writeScheduleStore(store);
+}
+
+/** Every user's schedule, keyed by username; the hourly report job iterates this. */
+export function getAllScheduleConfigs(): Map<string, ScheduleConfig> {
+  return readScheduleStore();
+}
+
+/**
+ * One-time migration of the pre-#353 single schedule.json into the per-user
+ * store. Runs at startup, before any request is served, next to the other
+ * migrate*() functions. The old record goes to the account that last saved it
+ * (its `username`, recorded since #87), else to the first-registered user,
+ * which is who the scheduler already fell back to for such a record.
+ */
+export function migrateScheduleToPerUser(): void {
+  if (!fs.existsSync(SCHEDULE_FILE)) return;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
+  } catch (e) {
+    console.error('[migration] schedule.json is not valid JSON — leaving it in place:', e);
+    return;
+  }
+  if (isScheduleFile(raw)) return;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const old = raw as Partial<ScheduleConfig>;
+  const owner = old.username ?? getFirstUsername();
+  if (!owner) {
+    console.warn('[migration] schedule.json exists but no user is registered — leaving it in place.');
+    return;
+  }
+  const store = new Map<string, ScheduleConfig>();
+  // A schedule whose owner no longer exists is dropped rather than migrated:
+  // the report would render an empty collection to a stale address.
+  if (getUser(owner)) {
+    store.set(owner, {
+      enabled: !!old.enabled,
+      frequency: old.frequency === 'monthly' ? 'monthly' : 'weekly',
+      toEmail: typeof old.toEmail === 'string' ? old.toEmail : '',
+      lastSentAt: typeof old.lastSentAt === 'number' ? old.lastSentAt : undefined,
+      username: owner,
+    });
+  }
+  writeScheduleStore(store);
+  console.log(store.size
+    ? `[migration] Report schedule assigned to "${owner}" (#353). Every other account starts without one.`
+    : `[migration] Report schedule belonged to "${owner}", who no longer exists — dropped (#353).`);
 }
 
 // ── AI config (KI-Assistenz) ──────────────────────────────────────────────────

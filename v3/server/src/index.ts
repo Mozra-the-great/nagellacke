@@ -13,13 +13,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
-  getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
-  bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin, getScheduleConfig, setScheduleConfig,
+  getData, setData, getUser, getUserCount, createUser, updateUserEmail,
+  bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
+  getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
+  migrateScheduleToPerUser,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
   recordLoginFailure, clearLoginFailures, loginLockedUntil,
-  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, userOwnsPhoto,
+  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
+  forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -320,7 +323,13 @@ function safeEqual(a: string, b: string): boolean {
 function reportPhotoSigner(username: string): (filename: string) => string {
   const exp = Math.floor(Date.now() / 1000) + REPORT_PHOTO_TOKEN_TTL;
   const tv = getUser(username)?.token_version ?? 0;
-  return (filename: string) => signPhotoToken({ exp, u: username, tv, f: filename }, JWT_SECRET);
+  // Only photos the account may read get a token (#352): a report renders
+  // whatever the account's records reference, and a reference to another
+  // account's filename is something any user can push. An unsigned URL simply
+  // does not load.
+  return (filename: string) => canAccessPhoto(username, filename)
+    ? signPhotoToken({ exp, u: username, tv, f: filename }, JWT_SECRET)
+    : '';
 }
 
 // ── Sync payload validation ───────────────────────────────────────────────────
@@ -374,9 +383,11 @@ function httpsGet(url: string): Promise<string> {
  * handles behind every test that calls this function.
  */
 export async function buildApp(): Promise<FastifyInstance> {
-  // Must run before any request is served (#87, #173).
+  // Must run before any request is served (#87, #173, #352, #353).
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
+  migrateScheduleToPerUser();
+  migratePhotoOwners();
 
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
@@ -542,11 +553,24 @@ export async function buildApp(): Promise<FastifyInstance> {
    *     client, which cannot set headers. A token bound to a filename (`f`, as
    *     embedded in report emails) is rejected for any other photo.
    *
+   * Every credential that names an account - a bearer JWT or a user photo
+   * token, session-wide or per-file - additionally has to pass
+   * canAccessPhoto() for the requested file (#352). Before that, being logged
+   * in as *anyone* was enough to read any photo whose filename one knew, and a
+   * session token did not help: any account could mint one. Only X-Api-Key and
+   * tokens minted from it (`k`) still reach every photo; that key is the
+   * server's root credential anyway.
+   *
    * Deliberately an onRequest hook rather than a preHandler: it must reject
    * before @fastify/static gets a chance to stream the file.
    */
   async function requirePhotoAccess(request: FastifyRequest, reply: FastifyReply) {
     const unauthorized = () => reply.code(401).send({ error: 'Unauthorized' });
+    const forbidden = () => reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
+    const mayRead = (username: string) => {
+      const requested = requestedPhotoName(request.url);
+      return requested !== null && canAccessPhoto(username, requested);
+    };
 
     const key = request.headers['x-api-key'];
     if (typeof key === 'string' && key) {
@@ -560,6 +584,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         return unauthorized();
       }
       if (!tokenTypeValid(request) || !tokenVersionValid(request)) return unauthorized();
+      const { username } = request.user as { username: string };
+      if (!mayRead(username)) return forbidden();
       return;
     }
 
@@ -584,6 +610,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         return reply.code(403).send({ error: 'Forbidden' });
       }
     }
+    if (!payload.k && !mayRead(payload.u)) return forbidden();
   }
 
   // Self-contained (does not compose requireJwt) rather than relying on
@@ -726,6 +753,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     const tmp      = path.join(PHOTOS_DIR, `${filename}.tmp`);
     fs.writeFileSync(tmp, buf);
     fs.renameSync(tmp, path.join(PHOTOS_DIR, filename));
+    // The uploader owns the file from here on (#352), which is also what lets
+    // a client preview it before any record references it. An X-Api-Key
+    // upload names no account, so its photo stays governed by references.
+    if (!request.headers['x-api-key']) {
+      recordPhotoOwner(filename, (request.user as { username: string }).username);
+    }
     return { filename };
   });
 
@@ -744,15 +777,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     // requireApiKeyOrJwt returns early on the X-Api-Key path without setting
     // request.user — that credential is already root-level (same trust as
     // upload/GET /api/photos/token), so it bypasses the ownership check
-    // below. On the JWT path, only an admin or the owner of the record that
-    // references this filename may delete it (#343).
+    // below. On the JWT path the same rule as reading applies (#343, #352).
     if (!request.headers['x-api-key']) {
       const { username } = request.user as { username: string };
-      if (!isAdmin(username) && !userOwnsPhoto(username, filename)) {
+      if (!canAccessPhoto(username, filename)) {
         return reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
       }
     }
     if (fs.existsSync(p)) fs.unlinkSync(p);
+    forgetPhotoOwner(filename);
     return { ok: true };
   });
 
@@ -1065,13 +1098,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(409).send({ error: 'Der letzte Admin kann nicht gelöscht werden' });
     }
     deleteUser(username);
-    // Orphan cleanup: a schedule still pointing at the deleted user would
-    // otherwise silently fall back to getFirstUsername() (see the scheduler
-    // below) and mail a *different* account's collection to the old toEmail.
-    const schedule = getScheduleConfig();
-    if (schedule?.username === username) {
-      setScheduleConfig({ ...schedule, enabled: false });
-    }
+    // Orphan cleanup: schedules are keyed by username since #353, so the
+    // deleted user's own schedule (if any) simply goes with it — nothing else
+    // can be pointing at it.
+    deleteScheduleConfig(username);
     logAdminAction(actor, 'user.deleted', username);
     return { ok: true };
   });
@@ -1320,15 +1350,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { ok: true };
   });
 
-  // GET /api/reports/schedule
+  // GET /api/reports/schedule — scoped to the caller's own schedule (#353:
+  // schedule.json used to be one record shared by every account).
   app.get('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-  }, async () => {
-    return { config: getScheduleConfig(), smtpConfigured: isEmailConfigured() };
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    return { config: getScheduleConfig(username), smtpConfigured: isEmailConfigured() };
   });
 
-  // POST /api/reports/schedule
+  // POST /api/reports/schedule — likewise scoped to the caller (#353).
   app.post('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
@@ -1339,17 +1371,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
-    const current = getScheduleConfig();
+    const current = getScheduleConfig(username);
     const config: ScheduleConfig = {
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail:     toEmail || current?.toEmail || '',
       lastSentAt:  current?.lastSentAt,
-      // Whoever last saved the schedule owns the collection it reports on —
-      // collections are per-user since #87, so the hourly job needs to know.
+      // The caller owns the collection this reports on — collections are
+      // per-user since #87, so the hourly job needs to know which one.
       username,
     };
-    setScheduleConfig(config);
+    setScheduleConfig(username, config);
     return { ok: true, config };
   });
 
@@ -1976,53 +2008,50 @@ async function main() {
   const app = await buildApp();
 
   // ── Report scheduler ──────────────────────────────────────────────────────────
-  // Checks every hour whether a scheduled report should be sent.
+  // Checks every hour whether any user's scheduled report should be sent.
+  // Schedules are per-user since #353 — each is independent, so one user's
+  // config being broken (bad email, send failure) must not block the rest.
   setInterval(async () => {
-    const cfg = getScheduleConfig();
-    if (!cfg?.enabled || !cfg.toEmail || !isEmailConfigured()) return;
+    if (!isEmailConfigured()) return;
 
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
-    const dayOfMonth = now.getUTCDate();
+    for (const [reportUser, cfg] of getAllScheduleConfigs()) {
+      if (!cfg.enabled || !cfg.toEmail) continue;
 
-    const shouldSend = cfg.frequency === 'weekly'
-      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
-      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+      const dayOfMonth = now.getUTCDate();
 
-    if (!shouldSend) return;
+      const shouldSend = cfg.frequency === 'weekly'
+        ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+        : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
 
-    // Avoid sending twice in the same hour window
-    if (cfg.lastSentAt) {
-      const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
-      if (hoursSinceLast < 2) return;
-    }
+      if (!shouldSend) continue;
 
-    const refDate = new Date(now);
-    if (cfg.frequency === 'weekly') {
-      refDate.setUTCDate(now.getUTCDate() - 7);
-    } else {
-      refDate.setUTCMonth(now.getUTCMonth() - 1);
-    }
+      // Avoid sending twice in the same hour window
+      if (cfg.lastSentAt) {
+        const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
+        if (hoursSinceLast < 2) continue;
+      }
 
-    // Configs written before per-user isolation carry no username; the account
-    // that bootstrapped the server owns the migrated collection (#87).
-    const reportUser = cfg.username ?? getFirstUsername();
-    if (!reportUser) {
-      console.warn('[reports] Scheduled report skipped: no user to report on.');
-      return;
-    }
+      const refDate = new Date(now);
+      if (cfg.frequency === 'weekly') {
+        refDate.setUTCDate(now.getUTCDate() - 7);
+      } else {
+        refDate.setUTCMonth(now.getUTCMonth() - 1);
+      }
 
-    try {
-      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
-      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-      const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
-      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
-      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-      setScheduleConfig({ ...cfg, lastSentAt: Date.now() });
-      console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
-    } catch (e: unknown) {
-      console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+      try {
+        const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+        const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+        const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
+        const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
+        await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+        markScheduleSent(reportUser, Date.now());
+        console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
+      } catch (e: unknown) {
+        console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
+      }
     }
   }, 60 * 60 * 1000); // every hour
 

@@ -240,3 +240,151 @@ describe('AI jobs file permissions (#274)', () => {
     expect(mode).toBe(0o600);
   });
 });
+
+describe('report schedules (#353)', () => {
+  const cfg = { enabled: true, frequency: 'weekly' as const, toEmail: 'x@example.com' };
+
+  it('keeps one schedule per user', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.setScheduleConfig('alice', { ...cfg, toEmail: 'alice@example.com' });
+    db.setScheduleConfig('bob', { ...cfg, toEmail: 'bob@example.com', frequency: 'monthly' });
+    expect(db.getScheduleConfig('alice')).toMatchObject({ toEmail: 'alice@example.com', username: 'alice' });
+    expect(db.getScheduleConfig('bob')).toMatchObject({ toEmail: 'bob@example.com', frequency: 'monthly' });
+    expect(db.getScheduleConfig('carol')).toBeNull();
+    db.deleteScheduleConfig('alice');
+    expect(db.getScheduleConfig('alice')).toBeNull();
+    expect([...db.getAllScheduleConfigs().keys()]).toEqual(['bob']);
+  });
+
+  it('stores usernames that collide with the legacy shape or with Object.prototype', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    // Free-form usernames: an account literally called "enabled" must not make
+    // the store look like the pre-#353 single record, and "__proto__" or
+    // "constructor" must be ordinary keys.
+    for (const name of ['enabled', '__proto__', 'constructor']) {
+      db.setScheduleConfig(name, { ...cfg, toEmail: `${name}@example.com` });
+    }
+    db.migrateScheduleToPerUser(); // must recognise the file as already migrated
+    for (const name of ['enabled', '__proto__', 'constructor']) {
+      expect(db.getScheduleConfig(name)).toMatchObject({ toEmail: `${name}@example.com` });
+    }
+    expect(db.getScheduleConfig('toString')).toBeNull();
+    expect(db.getAllScheduleConfigs().size).toBe(3);
+  });
+
+  it('markScheduleSent only touches lastSentAt', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.setScheduleConfig('alice', cfg);
+    // The user changes their address while a send is in flight...
+    db.setScheduleConfig('alice', { ...cfg, toEmail: 'new@example.com' });
+    db.markScheduleSent('alice', 1234);
+    expect(db.getScheduleConfig('alice')).toMatchObject({ toEmail: 'new@example.com', lastSentAt: 1234 });
+    db.markScheduleSent('nobody', 1234);
+    expect(db.getScheduleConfig('nobody')).toBeNull();
+  });
+
+  it('migrates the pre-#353 single record onto the account that saved it', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('owner', 'hash');
+    db.createUser('bob', 'hash');
+    fs.writeFileSync(path.join(dir, 'schedule.json'), JSON.stringify({ ...cfg, toEmail: 'bob@example.com', lastSentAt: 5, username: 'bob' }));
+    db.migrateScheduleToPerUser();
+    expect(db.getScheduleConfig('bob')).toEqual({ ...cfg, toEmail: 'bob@example.com', lastSentAt: 5, username: 'bob' });
+    expect(db.getScheduleConfig('owner')).toBeNull();
+    // Idempotent.
+    db.migrateScheduleToPerUser();
+    expect(db.getAllScheduleConfigs().size).toBe(1);
+  });
+
+  it('gives a record without username to the first-registered user', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('owner', 'hash');
+    db.createUser('bob', 'hash');
+    fs.writeFileSync(path.join(dir, 'schedule.json'), JSON.stringify(cfg));
+    db.migrateScheduleToPerUser();
+    expect(db.getScheduleConfig('owner')).toMatchObject({ toEmail: 'x@example.com', username: 'owner' });
+  });
+
+  it('drops a legacy record whose owner no longer exists', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('owner', 'hash');
+    fs.writeFileSync(path.join(dir, 'schedule.json'), JSON.stringify({ ...cfg, username: 'gone' }));
+    db.migrateScheduleToPerUser();
+    expect(db.getAllScheduleConfigs().size).toBe(0);
+    expect(db.getScheduleConfig('owner')).toBeNull();
+  });
+
+  it('leaves a legacy file alone while no user exists', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    const file = path.join(dir, 'schedule.json');
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    db.migrateScheduleToPerUser();
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8'))).toEqual(cfg);
+    // Unmigrated data is never handed to whoever asks.
+    expect(db.getAllScheduleConfigs().size).toBe(0);
+  });
+});
+
+describe('photo ownership (#352)', () => {
+  const polish = (id: string, photo: string) => ({
+    id, name: 'n', brand: 'b', num: '1', color: '#fff', finish: 'Classic', status: 'ok',
+    photo, createdAt: 1, updatedAt: 1,
+  });
+  const data = (photos: string[]) => ({
+    polishes: photos.map((f, i) => polish(`p${i}`, f)), customCats: [], manicures: [], stickers: [],
+  }) as unknown as import('@nagellacke/core').AppData;
+
+  it('backfills owners from references, leaving shared references unowned', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.createUser('bob', 'hash');
+    db.setData('alice', data(['a.png', 'shared.png']));
+    db.setData('bob', data(['b.png', 'shared.png']));
+
+    db.migratePhotoOwners();
+    expect(db.photoOwner('a.png')).toBe('alice');
+    expect(db.photoOwner('b.png')).toBe('bob');
+    expect(db.photoOwner('shared.png')).toBeUndefined();
+    // Unowned falls back to references, so both keep access to it.
+    expect(db.canAccessPhoto('alice', 'shared.png')).toBe(true);
+    expect(db.canAccessPhoto('bob', 'shared.png')).toBe(true);
+    expect(db.canAccessPhoto('bob', 'a.png')).toBe(false);
+
+    // Runs once: a later reference does not re-assign anything.
+    db.setData('bob', data(['b.png', 'shared.png', 'a.png']));
+    db.migratePhotoOwners();
+    expect(db.canAccessPhoto('bob', 'a.png')).toBe(false);
+  });
+
+  it('forgets a deleted account\'s photos so a namesake does not inherit them', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.recordPhotoOwner('a.png', 'alice');
+    db.recordPhotoOwner('x.png', 'someone-else');
+    db.deleteUser('alice');
+    db.createUser('alice', 'hash');
+    expect(db.photoOwner('a.png')).toBeUndefined();
+    expect(db.canAccessPhoto('alice', 'a.png')).toBe(false);
+    expect(db.photoOwner('x.png')).toBe('someone-else');
+  });
+
+  it('survives a module reload (persisted, not just cached)', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.recordPhotoOwner('a.png', 'alice');
+    vi.resetModules();
+    const again = await import('./db');
+    expect(again.photoOwner('a.png')).toBe('alice');
+    again.forgetPhotoOwner('a.png');
+    expect(again.photoOwner('a.png')).toBeUndefined();
+  });
+});
