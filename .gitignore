@@ -9,3 +9,6 @@ android/local.properties
 *.log
 CLAUDE.local.md
 ToFixFehler.md
+
+# Python bytecode from scripts/ci
+__pycache__/

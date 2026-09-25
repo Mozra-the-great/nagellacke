@@ -13,6 +13,10 @@ on:
       # a commit that only edits this file matches no path, so a broken job
       # definition would land on main unverified
       - '.github/workflows/ci.yml'
+      # the label script's tests run in `build` below, and they also check
+      # that every tracked path is matched by a rule in labels.json
+      - 'scripts/ci/**'
+      - '.github/labels.json'
   # Deliberately unfiltered, unlike the push trigger above: `build` and
   # `build-android` are required status checks on main, and a required check that
   # never runs is reported as pending forever rather than skipped — a docs-only PR
@@ -69,6 +73,14 @@ jobs:
         # Not core only, despite the old label: the root script is
         # `--workspaces --if-present`, so this covers core, server and web.
         run: npm run test
+
+      - name: Test label script
+        # scripts/ci/labels.py (see labels.yml) gates nothing, but a rule that
+        # never matches leaves PRs unlabelled with a green run. Standard library
+        # only, so the runner's python3 is enough. Runs from the repo root; the
+        # job default is v3/.
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/ci -p "test_*.py"
 
   build-android:
     runs-on: ubuntu-latest
