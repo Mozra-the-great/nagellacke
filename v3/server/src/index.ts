@@ -414,6 +414,24 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
   await app.register(cookie);
   await app.register(jwt, { secret: JWT_SECRET });
+  // Hardening headers on every response, the SPA and its assets included (#355).
+  // In the install.sh deployment this server serves the web app itself, and
+  // nothing stopped another site from framing the logged-in UI and overlaying
+  // it (clickjacking). Deliberately no script/style CSP: the frame and
+  // plugin/base-URI directives cost nothing, a full policy would need auditing
+  // against the Vite build first. No HSTS either — install.sh serves plain HTTP
+  // on the LAN, and HSTS belongs to whatever terminates TLS in front of it.
+  // Registered as a root onRequest hook ahead of the plugins below, so the
+  // encapsulated /photos/ plugin and the static SPA handler inherit it and even
+  // a 401/404/429 carries the headers.
+  app.addHook('onRequest', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    // Page URLs carry nothing secret, but ?t= photo tokens do travel in URLs;
+    // there is no reason to hand any of them to a third party.
+    reply.header('Referrer-Policy', 'no-referrer');
+  });
   // global: false — each /api/* route below opts in via its own `config.rateLimit`.
   // A global default would also throttle /photos/ and the SPA static assets,
   // and the gallery renders its full photo list unpaginated/unlazy on load, so a
