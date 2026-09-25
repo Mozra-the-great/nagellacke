@@ -637,9 +637,10 @@ export function setServerSettings(settings: ServerSettings): void {
 
 // ── Report schedule config ────────────────────────────────────────────────────
 //
-// One schedule per user, keyed by username — before #353, schedule.json held a
-// single record shared by every account, so any logged-in user could read and
-// overwrite anyone else's report email via GET/POST /api/reports/schedule.
+// One schedule per user since #353. Before that, schedule.json held a single
+// record shared by every account, so any logged-in user could read another
+// account's report email via GET /api/reports/schedule and take the schedule
+// over with a POST.
 
 export interface ScheduleConfig {
   enabled: boolean;
@@ -647,69 +648,98 @@ export interface ScheduleConfig {
   toEmail: string;
   lastSentAt?: number;
   /**
-   * Whose collection the scheduled report renders. Always equal to the key
-   * this config is stored under — kept as a field too because the hourly
-   * scheduler job (index.ts) iterates every user's config via
-   * getAllScheduleConfigs() and needs the username without a second lookup.
-   * Absent on configs written before #87 (per-user collections); those were
-   * migrated onto the first-registered user by migrateScheduleToPerUser().
+   * Whose collection the scheduled report renders. Since #353 this always
+   * equals the key the config is stored under, and the scheduler goes by the
+   * key; the field stays because the API has always returned it.
    */
   username?: string;
 }
 
-type ScheduleStore = Record<string, ScheduleConfig>;
+/**
+ * On-disk shape since #353. Wrapped and versioned rather than a bare
+ * username-keyed object, because usernames are free-form (usernameError() in
+ * index.ts only rejects control characters and length): a bare map could not
+ * be told apart from the legacy single record for an account named `enabled`,
+ * and a key like `__proto__` must not be looked up through a plain object.
+ * In memory the schedules are therefore always a Map.
+ */
+interface ScheduleFile {
+  v: 2;
+  schedules: Record<string, ScheduleConfig>;
+}
 
 const SCHEDULE_FILE = path.join(DATA_DIR, 'schedule.json');
 
-function readScheduleStore(): ScheduleStore {
+function isScheduleFile(raw: unknown): raw is ScheduleFile {
+  return !!raw && typeof raw === 'object' && (raw as { v?: unknown }).v === 2
+    && !!(raw as { schedules?: unknown }).schedules
+    && typeof (raw as { schedules?: unknown }).schedules === 'object';
+}
+
+function readScheduleStore(): Map<string, ScheduleConfig> {
   try {
-    if (!fs.existsSync(SCHEDULE_FILE)) return {};
-    const raw = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
-    // Pre-#353 servers wrote one global ScheduleConfig directly, not keyed by
-    // username. migrateScheduleToPerUser() converts that shape at startup;
-    // this is just a defensive fallback so a stray read before migration
-    // (or a corrupt file) can't crash on `Object.values()`.
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || 'enabled' in raw) return {};
-    return raw as ScheduleStore;
+    if (!fs.existsSync(SCHEDULE_FILE)) return new Map();
+    const raw: unknown = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
+    // A pre-#353 file is converted by migrateScheduleToPerUser() at startup;
+    // anything else unreadable counts as "no schedules" rather than being
+    // attributed to whoever happens to ask.
+    if (!isScheduleFile(raw)) return new Map();
+    return new Map(Object.entries(raw.schedules));
   } catch {
-    return {};
+    return new Map();
   }
 }
 
-function writeScheduleStore(store: ScheduleStore): void {
+function writeScheduleStore(store: Map<string, ScheduleConfig>): void {
+  // Object.fromEntries defines own properties, so even `__proto__` survives as
+  // an ordinary key.
+  const file: ScheduleFile = { v: 2, schedules: Object.fromEntries(store) };
   const tmp = `${SCHEDULE_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(store), { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify(file), { mode: 0o600 });
   fs.renameSync(tmp, SCHEDULE_FILE);
 }
 
 export function getScheduleConfig(username: string): ScheduleConfig | null {
-  return readScheduleStore()[username] ?? null;
+  return readScheduleStore().get(username) ?? null;
 }
 
 export function setScheduleConfig(username: string, config: ScheduleConfig): void {
   const store = readScheduleStore();
-  store[username] = config;
+  store.set(username, { ...config, username });
   writeScheduleStore(store);
-}
-
-/** Used by DELETE /api/admin/users/:username to drop the deleted user's own schedule. */
-export function deleteScheduleConfig(username: string): void {
-  const store = readScheduleStore();
-  if (!(username in store)) return;
-  delete store[username];
-  writeScheduleStore(store);
-}
-
-/** Every user's schedule — the hourly report-scheduler job iterates this. */
-export function getAllScheduleConfigs(): ScheduleConfig[] {
-  return Object.values(readScheduleStore());
 }
 
 /**
- * One-time migration of the pre-#353 single global schedule.json (one record
- * shared by every account) into the keyed-by-username store. Runs at startup,
- * before any request is served, in the same slot as the other
- * migrate*() functions in this file.
+ * Records a sent report on a fresh read, touching nothing but lastSentAt: the
+ * scheduler awaits the SMTP send in between, and writing back the copy it read
+ * before that would undo a change the user saved in the meantime.
+ */
+export function markScheduleSent(username: string, at: number): void {
+  const store = readScheduleStore();
+  const current = store.get(username);
+  if (!current) return;
+  store.set(username, { ...current, lastSentAt: at });
+  writeScheduleStore(store);
+}
+
+/** Drops a user's schedule; DELETE /api/admin/users/:username calls this. */
+export function deleteScheduleConfig(username: string): void {
+  const store = readScheduleStore();
+  if (!store.delete(username)) return;
+  writeScheduleStore(store);
+}
+
+/** Every user's schedule, keyed by username; the hourly report job iterates this. */
+export function getAllScheduleConfigs(): Map<string, ScheduleConfig> {
+  return readScheduleStore();
+}
+
+/**
+ * One-time migration of the pre-#353 single schedule.json into the per-user
+ * store. Runs at startup, before any request is served, next to the other
+ * migrate*() functions. The old record goes to the account that last saved it
+ * (its `username`, recorded since #87), else to the first-registered user,
+ * which is who the scheduler already fell back to for such a record.
  */
 export function migrateScheduleToPerUser(): void {
   if (!fs.existsSync(SCHEDULE_FILE)) return;
@@ -717,20 +747,33 @@ export function migrateScheduleToPerUser(): void {
   try {
     raw = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
   } catch (e) {
-    console.error('[migration] schedule.json corrupt — leaving in place:', e);
+    console.error('[migration] schedule.json is not valid JSON — leaving it in place:', e);
     return;
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('enabled' in raw)) return; // already migrated / empty
-  const old = raw as ScheduleConfig;
+  if (isScheduleFile(raw)) return;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const old = raw as Partial<ScheduleConfig>;
   const owner = old.username ?? getFirstUsername();
   if (!owner) {
-    console.warn('[migration] schedule.json exists but no users are registered — leaving it in place.');
+    console.warn('[migration] schedule.json exists but no user is registered — leaving it in place.');
     return;
   }
-  writeScheduleStore({ [owner]: { ...old, username: owner } });
-  console.log(
-    `[migration] Report schedule assigned to "${owner}" (#353). Every other account starts unscheduled.`,
-  );
+  const store = new Map<string, ScheduleConfig>();
+  // A schedule whose owner no longer exists is dropped rather than migrated:
+  // the report would render an empty collection to a stale address.
+  if (getUser(owner)) {
+    store.set(owner, {
+      enabled: !!old.enabled,
+      frequency: old.frequency === 'monthly' ? 'monthly' : 'weekly',
+      toEmail: typeof old.toEmail === 'string' ? old.toEmail : '',
+      lastSentAt: typeof old.lastSentAt === 'number' ? old.lastSentAt : undefined,
+      username: owner,
+    });
+  }
+  writeScheduleStore(store);
+  console.log(store.size
+    ? `[migration] Report schedule assigned to "${owner}" (#353). Every other account starts without one.`
+    : `[migration] Report schedule belonged to "${owner}", who no longer exists — dropped (#353).`);
 }
 
 // ── AI config (KI-Assistenz) ──────────────────────────────────────────────────

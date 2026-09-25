@@ -13,9 +13,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
-  getData, setData, getUser, getUserCount, getFirstUsername, createUser, updateUserEmail,
+  getData, setData, getUser, getUserCount, createUser, updateUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
-  getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, migrateScheduleToPerUser,
+  getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
+  migrateScheduleToPerUser,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
@@ -1983,7 +1984,7 @@ async function main() {
   setInterval(async () => {
     if (!isEmailConfigured()) return;
 
-    for (const cfg of getAllScheduleConfigs()) {
+    for (const [reportUser, cfg] of getAllScheduleConfigs()) {
       if (!cfg.enabled || !cfg.toEmail) continue;
 
       const now = new Date();
@@ -2010,24 +2011,16 @@ async function main() {
         refDate.setUTCMonth(now.getUTCMonth() - 1);
       }
 
-      // Configs written before per-user isolation carry no username; the account
-      // that bootstrapped the server owns the migrated collection (#87).
-      const reportUser = cfg.username ?? getFirstUsername();
-      if (!reportUser) {
-        console.warn('[reports] Scheduled report skipped: no user to report on.');
-        continue;
-      }
-
       try {
         const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
         const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
         const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
         const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
         await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-        setScheduleConfig(reportUser, { ...cfg, lastSentAt: Date.now() });
-        console.log(`[reports] Scheduled ${cfg.frequency} report sent to ${cfg.toEmail}`);
+        markScheduleSent(reportUser, Date.now());
+        console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
       } catch (e: unknown) {
-        console.error('[reports] Failed to send scheduled report:', e instanceof Error ? e.message : e);
+        console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
       }
     }
   }, 60 * 60 * 1000); // every hour
