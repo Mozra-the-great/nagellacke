@@ -4,10 +4,10 @@ import QRCode from 'qrcode';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, endServerSession, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto, authedFetch } from '../utils/photos';
-import { ensurePhotoToken, absolutePhotoUrl } from '../utils/photoToken';
+import { ensurePhotoToken, absolutePhotoUrl, clearPhotoToken } from '../utils/photoToken';
 import { generateReport } from '../utils/report';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
@@ -138,6 +138,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     saveSyncConfig(c);
     setConfig(c);
     setServerToken(token);
+    // A photo token cached for whoever was signed in before would be refused
+    // for this account's photos until it expired (#352).
+    clearPhotoToken();
     setLoginPass('');
     setLoginStatus('idle');
     setMfaChallengeToken(null);
@@ -936,8 +939,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   className={styles.logoutBtn}
                   onClick={() => {
                     setServerToken('');
-                    saveSyncConfig(null);
                     setConfig(null);
+                    // Not just local state (#345): the refresh cookie has to go
+                    // too, the cached photo token belongs to this account, and
+                    // App.tsx has to re-probe the role or the Admin tab stays.
+                    // endServerSession() clears the stored config before its
+                    // first await, so the role probe below already sees none.
+                    void endServerSession();
+                    clearPhotoToken();
+                    onAuthChange();
                   }}
                 >Abmelden</button>
               </div>

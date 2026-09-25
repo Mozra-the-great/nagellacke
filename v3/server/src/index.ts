@@ -1790,6 +1790,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   // the current user (e.g. after a device is lost/stolen). No way to revoke
   // a single token without per-token tracking, but bumping the version
   // covers the actual threat: an attacker with a stolen long-lived token.
+  // POST /api/auth/logout — ends the session on this device only (#345). The
+  // browser cannot drop the httpOnly refresh cookie itself, so without this
+  // route "Abmelden" in the web app cleared its own state but left a cookie
+  // that keeps trading itself for fresh access tokens for JWT_REFRESH_TTL. No
+  // auth required: the access token may already have expired, and all this
+  // can do is make a browser forget its own credential.
+  app.post('/api/auth/logout', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (_request, reply) => {
+    clearRefreshCookie(reply);
+    return { ok: true };
+  });
+
   app.post('/api/auth/logout-all', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },

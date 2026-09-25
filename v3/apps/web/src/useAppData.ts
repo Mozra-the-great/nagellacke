@@ -217,6 +217,26 @@ export async function restoreSession(): Promise<boolean> {
   }
 }
 
+/**
+ * "Abmelden" for the server provider (#345). Drops the in-memory tokens and the
+ * persisted config, then asks the server to clear the httpOnly refresh cookie —
+ * the one credential script cannot delete, which would otherwise keep trading
+ * itself for fresh access tokens (restoreSession, or any injected script) for
+ * the rest of its 30 days. Best effort: an older server answers 404 and an
+ * unreachable one nothing, and the local logout has happened either way.
+ */
+export async function endServerSession(): Promise<void> {
+  const cfg = loadSyncConfig();
+  saveSyncConfig(null);
+  if (!cfg || cfg.provider !== 'server') return;
+  try {
+    await fetch(`${(cfg.serverUrl ?? '').replace(/\/$/, '')}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch { /* offline — nothing more to do */ }
+}
+
 export function useAppData() {
   // Lazy-initialized once and reused for both useState initializers below, so
   // loadLocal() (which has localStorage side effects — the migration-backup

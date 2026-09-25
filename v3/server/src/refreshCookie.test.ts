@@ -228,6 +228,24 @@ describe('refresh token as an httpOnly cookie (#299)', () => {
     expect(after.statusCode).toBe(401);
   });
 
+  it('logout clears this device\'s cookie without needing a valid access token (#345)', async () => {
+    const { app, dir } = await createTestApp({ ALLOWED_ORIGIN: 'https://app.example' });
+    tmpDirs.push(dir);
+    await register(app);
+
+    // No Authorization header: the access token may well have expired by the
+    // time someone clicks "Abmelden", and the cookie must go anyway.
+    const res = await app.inject({ method: 'POST', url: '/api/auth/logout' });
+    expect(res.statusCode).toBe(200);
+    const cleared = refreshCookieHeader(res);
+    expect(cleared).toBeDefined();
+    expect(cookieValue(cleared as string)).toBe('');
+    // A clear only matches the original cookie with the same attributes.
+    expect(cleared).toMatch(/Path=\/api\/auth/i);
+    expect(cleared).toMatch(/SameSite=None/i);
+    expect(cleared).toMatch(/Secure/i);
+  });
+
   it('drops the cookie when it is rejected, so the browser stops replaying it', async () => {
     const { app, dir } = await createTestApp();
     tmpDirs.push(dir);
