@@ -21,7 +21,8 @@ import {
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
   recordLoginFailure, clearLoginFailures, loginLockedUntil,
-  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, userOwnsPhoto,
+  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
+  forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -322,7 +323,13 @@ function safeEqual(a: string, b: string): boolean {
 function reportPhotoSigner(username: string): (filename: string) => string {
   const exp = Math.floor(Date.now() / 1000) + REPORT_PHOTO_TOKEN_TTL;
   const tv = getUser(username)?.token_version ?? 0;
-  return (filename: string) => signPhotoToken({ exp, u: username, tv, f: filename }, JWT_SECRET);
+  // Only photos the account may read get a token (#352): a report renders
+  // whatever the account's records reference, and a reference to another
+  // account's filename is something any user can push. An unsigned URL simply
+  // does not load.
+  return (filename: string) => canAccessPhoto(username, filename)
+    ? signPhotoToken({ exp, u: username, tv, f: filename }, JWT_SECRET)
+    : '';
 }
 
 // ── Sync payload validation ───────────────────────────────────────────────────
@@ -376,10 +383,11 @@ function httpsGet(url: string): Promise<string> {
  * handles behind every test that calls this function.
  */
 export async function buildApp(): Promise<FastifyInstance> {
-  // Must run before any request is served (#87, #173, #353).
+  // Must run before any request is served (#87, #173, #352, #353).
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
   migrateScheduleToPerUser();
+  migratePhotoOwners();
 
   // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
   // so req.ip (used as the rate-limit key below) is the real client IP. If you put
@@ -545,11 +553,24 @@ export async function buildApp(): Promise<FastifyInstance> {
    *     client, which cannot set headers. A token bound to a filename (`f`, as
    *     embedded in report emails) is rejected for any other photo.
    *
+   * Every credential that names an account - a bearer JWT or a user photo
+   * token, session-wide or per-file - additionally has to pass
+   * canAccessPhoto() for the requested file (#352). Before that, being logged
+   * in as *anyone* was enough to read any photo whose filename one knew, and a
+   * session token did not help: any account could mint one. Only X-Api-Key and
+   * tokens minted from it (`k`) still reach every photo; that key is the
+   * server's root credential anyway.
+   *
    * Deliberately an onRequest hook rather than a preHandler: it must reject
    * before @fastify/static gets a chance to stream the file.
    */
   async function requirePhotoAccess(request: FastifyRequest, reply: FastifyReply) {
     const unauthorized = () => reply.code(401).send({ error: 'Unauthorized' });
+    const forbidden = () => reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
+    const mayRead = (username: string) => {
+      const requested = requestedPhotoName(request.url);
+      return requested !== null && canAccessPhoto(username, requested);
+    };
 
     const key = request.headers['x-api-key'];
     if (typeof key === 'string' && key) {
@@ -563,6 +584,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         return unauthorized();
       }
       if (!tokenTypeValid(request) || !tokenVersionValid(request)) return unauthorized();
+      const { username } = request.user as { username: string };
+      if (!mayRead(username)) return forbidden();
       return;
     }
 
@@ -587,6 +610,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         return reply.code(403).send({ error: 'Forbidden' });
       }
     }
+    if (!payload.k && !mayRead(payload.u)) return forbidden();
   }
 
   // Self-contained (does not compose requireJwt) rather than relying on
@@ -729,6 +753,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     const tmp      = path.join(PHOTOS_DIR, `${filename}.tmp`);
     fs.writeFileSync(tmp, buf);
     fs.renameSync(tmp, path.join(PHOTOS_DIR, filename));
+    // The uploader owns the file from here on (#352), which is also what lets
+    // a client preview it before any record references it. An X-Api-Key
+    // upload names no account, so its photo stays governed by references.
+    if (!request.headers['x-api-key']) {
+      recordPhotoOwner(filename, (request.user as { username: string }).username);
+    }
     return { filename };
   });
 
@@ -747,15 +777,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     // requireApiKeyOrJwt returns early on the X-Api-Key path without setting
     // request.user — that credential is already root-level (same trust as
     // upload/GET /api/photos/token), so it bypasses the ownership check
-    // below. On the JWT path, only an admin or the owner of the record that
-    // references this filename may delete it (#343).
+    // below. On the JWT path the same rule as reading applies (#343, #352).
     if (!request.headers['x-api-key']) {
       const { username } = request.user as { username: string };
-      if (!isAdmin(username) && !userOwnsPhoto(username, filename)) {
+      if (!canAccessPhoto(username, filename)) {
         return reply.code(403).send({ error: 'Kein Zugriff auf dieses Foto' });
       }
     }
     if (fs.existsSync(p)) fs.unlinkSync(p);
+    forgetPhotoOwner(filename);
     return { ok: true };
   });
 

@@ -331,3 +331,60 @@ describe('report schedules (#353)', () => {
     expect(db.getAllScheduleConfigs().size).toBe(0);
   });
 });
+
+describe('photo ownership (#352)', () => {
+  const polish = (id: string, photo: string) => ({
+    id, name: 'n', brand: 'b', num: '1', color: '#fff', finish: 'Classic', status: 'ok',
+    photo, createdAt: 1, updatedAt: 1,
+  });
+  const data = (photos: string[]) => ({
+    polishes: photos.map((f, i) => polish(`p${i}`, f)), customCats: [], manicures: [], stickers: [],
+  }) as unknown as import('@nagellacke/core').AppData;
+
+  it('backfills owners from references, leaving shared references unowned', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.createUser('bob', 'hash');
+    db.setData('alice', data(['a.png', 'shared.png']));
+    db.setData('bob', data(['b.png', 'shared.png']));
+
+    db.migratePhotoOwners();
+    expect(db.photoOwner('a.png')).toBe('alice');
+    expect(db.photoOwner('b.png')).toBe('bob');
+    expect(db.photoOwner('shared.png')).toBeUndefined();
+    // Unowned falls back to references, so both keep access to it.
+    expect(db.canAccessPhoto('alice', 'shared.png')).toBe(true);
+    expect(db.canAccessPhoto('bob', 'shared.png')).toBe(true);
+    expect(db.canAccessPhoto('bob', 'a.png')).toBe(false);
+
+    // Runs once: a later reference does not re-assign anything.
+    db.setData('bob', data(['b.png', 'shared.png', 'a.png']));
+    db.migratePhotoOwners();
+    expect(db.canAccessPhoto('bob', 'a.png')).toBe(false);
+  });
+
+  it('forgets a deleted account\'s photos so a namesake does not inherit them', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.recordPhotoOwner('a.png', 'alice');
+    db.recordPhotoOwner('x.png', 'someone-else');
+    db.deleteUser('alice');
+    db.createUser('alice', 'hash');
+    expect(db.photoOwner('a.png')).toBeUndefined();
+    expect(db.canAccessPhoto('alice', 'a.png')).toBe(false);
+    expect(db.photoOwner('x.png')).toBe('someone-else');
+  });
+
+  it('survives a module reload (persisted, not just cached)', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.recordPhotoOwner('a.png', 'alice');
+    vi.resetModules();
+    const again = await import('./db');
+    expect(again.photoOwner('a.png')).toBe('alice');
+    again.forgetPhotoOwner('a.png');
+    expect(again.photoOwner('a.png')).toBeUndefined();
+  });
+});
