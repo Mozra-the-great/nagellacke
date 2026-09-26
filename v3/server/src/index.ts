@@ -24,7 +24,7 @@ import {
   isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
-  photoUploadsAllowed, aiAllowed, publicInstanceEnabled, getBranding, setBranding, BRANDING_DIR,
+  photoUploadsAllowed, aiAllowed, publicInstanceEnabled, registrationPowEnabled, getBranding, setBranding, BRANDING_DIR,
   getLegalPages, setLegalPages, LEGAL_PAGE_KEYS,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
@@ -35,6 +35,7 @@ import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 import { signPhotoToken, verifyPhotoToken } from './photoToken';
+import { issuePowChallenge, PowVerifier } from './pow';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -1177,6 +1178,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       aiEnabledSource: settings.aiEnabled !== undefined ? 'panel' : 'default',
       publicInstance: publicInstanceEnabled(),
       publicInstanceSource: settings.publicInstance?.enabled !== undefined ? 'panel' : 'default',
+      registrationPow: registrationPowEnabled(),
+      registrationPowSource: settings.registrationPow !== undefined ? 'panel' : 'default',
       ai: aiSettingsView(getAiConfig()),
       env: {
         port: PORT,
@@ -1204,6 +1207,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       photoUploadsEnabled: boolean;
       aiEnabled: boolean;
       publicInstance: boolean;
+      registrationPow: boolean;
     }>;
     const current = getServerSettings();
     const next: ServerSettings = { ...current };
@@ -1215,6 +1219,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.photoUploadsEnabled !== undefined) next.photoUploadsEnabled = !!body.photoUploadsEnabled;
     if (body.aiEnabled !== undefined) next.aiEnabled = !!body.aiEnabled;
     if (body.publicInstance !== undefined) next.publicInstance = { ...current.publicInstance, enabled: !!body.publicInstance };
+    if (body.registrationPow !== undefined) next.registrationPow = !!body.registrationPow;
 
     if (body.smtp) {
       const currentSmtp = current.smtp;
@@ -1241,6 +1246,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       photoUploadsEnabled: body.photoUploadsEnabled !== undefined,
       aiEnabled: body.aiEnabled !== undefined,
       publicInstance: body.publicInstance !== undefined,
+      registrationPow: body.registrationPow !== undefined,
       smtp: body.smtp !== undefined ? Object.keys(body.smtp) : undefined,
     });
     return { ok: true };
@@ -1458,8 +1464,28 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/api/auth/registration-status', {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async () => {
-    return { allowed: registrationOpen(), firstUser: getUserCount() === 0 };
+    const firstUser = getUserCount() === 0;
+    return { allowed: registrationOpen(), firstUser, requiresPow: registrationRequiresPow() };
   });
+
+  /**
+   * Whether POST /api/auth/register wants a proof of work right now (#324 S13). Never
+   * for the very first account: that one bootstraps the server and there is no admin
+   * yet who could have switched the check on deliberately.
+   */
+  function registrationRequiresPow(): boolean {
+    return registrationPowEnabled() && getUserCount() > 0;
+  }
+
+  const powVerifier = new PowVerifier(JWT_SECRET);
+
+  // GET /api/auth/pow-challenge — public like registration-status, since it is needed
+  // before an account exists. Handed out whether or not the check is on: a challenge
+  // grants nothing by itself, and answering 404 while it is off would only make a
+  // client's behaviour depend on a race with the admin panel.
+  app.get('/api/auth/pow-challenge', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => issuePowChallenge(JWT_SECRET));
 
   // ── Branding (#324 S6) ──────────────────────────────────────────────────────────
 
@@ -1645,7 +1671,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!registrationOpen()) {
       return reply.code(403).send({ error: 'Registrierung deaktiviert' });
     }
-    const { username, password } = request.body as { username?: string; password?: string };
+    const { username, password, pow } = request.body as { username?: string; password?: string; pow?: unknown };
+    // Checked before the username, so the solution is spent even when the name turns
+    // out to be taken: one solved challenge buys one attempt, not a probe per name.
+    if (registrationRequiresPow()) {
+      const failure = powVerifier.verify(pow);
+      if (failure) {
+        return reply.code(400).send({
+          error: failure === 'expired'
+            ? 'Sicherheitsprüfung abgelaufen, bitte erneut versuchen'
+            : 'Sicherheitsprüfung fehlgeschlagen',
+          powRequired: true,
+        });
+      }
+    }
     if (!username || !password || password.length < 8) {
       return reply.code(400).send({ error: 'username und password (min 8 Zeichen) erforderlich' });
     }

@@ -10,6 +10,10 @@ import { uploadPhoto, authedFetch } from '../utils/photos';
 import { ensurePhotoToken, absolutePhotoUrl, clearPhotoToken } from '../utils/photoToken';
 import { generateReport } from '../utils/report';
 import { useInstanceConfig, aiOffered } from '../utils/instance';
+import { fetchPowSolution } from '../utils/pow';
+import type { PowSolution } from '../utils/pow';
+import { fetchLegalPages, LEGAL_ROUTES } from '../utils/legal';
+import type { LegalPages } from '../utils/legal';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
@@ -120,8 +124,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   // status route keeps showing exactly the login form it always did.
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [registrationAllowed, setRegistrationAllowed] = useState<boolean | null>(null);
+  // Whether the server wants a proof of work with the registration (#324 S13). Only a
+  // hint for showing progress early: register() also reacts to the server asking for
+  // one, so a stale or missing answer here costs one extra round trip, not a failure.
+  const [registrationRequiresPow, setRegistrationRequiresPow] = useState(false);
+  const [registerLegal, setRegisterLegal] = useState<LegalPages | null>(null);
   const [registerPass2, setRegisterPass2] = useState('');
-  const [registerStatus, setRegisterStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [registerStatus, setRegisterStatus] = useState<'idle' | 'pow' | 'loading' | 'error'>('idle');
   const [registerError, setRegisterError] = useState('');
 
   // ── Two-step login (TOTP 2FA, #174) ──
@@ -195,16 +204,32 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setRegisterStatus('error');
       return;
     }
-    setRegisterStatus('loading');
     setRegisterError('');
     const base = serverUrl.replace(/\/$/, '');
+    const solve = async (): Promise<PowSolution> => {
+      setRegisterStatus('pow');
+      const solution = await fetchPowSolution(base);
+      setRegisterStatus('loading');
+      return solution;
+    };
+    const post = (pow?: PowSolution) => fetch(`${base}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: loginUser, password: loginPass, ...(pow ? { pow } : {}) }),
+    });
     try {
-      const res = await fetch(`${base}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUser, password: loginPass }),
-      });
-      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
+      setRegisterStatus('loading');
+      let pow = registrationRequiresPow ? await solve() : undefined;
+      let res = await post(pow);
+      let data = await res.json() as { token?: string; refreshToken?: string; error?: string; powRequired?: boolean };
+      // The admin may have switched the check on since the status was read, or the
+      // challenge ran out while solving on a slow device: one retry with a fresh one.
+      if (res.status === 400 && data.powRequired) {
+        setRegistrationRequiresPow(true);
+        pow = await solve();
+        res = await post(pow);
+        data = await res.json() as typeof data;
+      }
       if (!res.ok || !data.token) {
         setRegisterError(data.error ?? `Fehler ${res.status}`);
         setRegisterStatus('error');
@@ -595,11 +620,23 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     const controller = new AbortController();
     const base = serverUrl.replace(/\/$/, '');
     fetch(`${base}/api/auth/registration-status`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean }> : null))
-      .then((data) => { setRegistrationAllowed(data?.allowed ?? null); })
+      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean; requiresPow?: boolean }> : null))
+      .then((data) => {
+        setRegistrationAllowed(data?.allowed ?? null);
+        setRegistrationRequiresPow(data?.requiresPow === true);
+      })
       .catch(() => { /* offline or older server - stay on login-only */ });
     return () => controller.abort();
   }, [provider, serverUrl, serverToken]);
+
+  useEffect(() => {
+    if (authMode !== 'register') return;
+    const controller = new AbortController();
+    void fetchLegalPages(controller.signal).then((pages) => {
+      if (!controller.signal.aborted) setRegisterLegal(pages);
+    });
+    return () => controller.abort();
+  }, [authMode]);
 
   useEffect(() => {
     if (!isServerSync) return;
@@ -1064,6 +1101,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 <div role="status" aria-live="polite" aria-atomic="true">
                   {authMode === 'login' && loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
                   {authMode === 'login' && loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
+                  {authMode === 'register' && registerStatus === 'pow' && <span className={styles.infoText}>Sicherheitsprüfung läuft…</span>}
                   {authMode === 'register' && registerStatus === 'loading' && <span className={styles.infoText}>Konto wird erstellt…</span>}
                   {authMode === 'register' && registerStatus === 'error' && <div className={styles.errorBanner}>{registerError}</div>}
                 </div>
@@ -1079,10 +1117,21 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   <button
                     className={styles.saveBtn}
                     onClick={register}
-                    disabled={!loginUser || loginPass.length < 8 || !registerPass2 || registerStatus === 'loading'}
+                    disabled={!loginUser || loginPass.length < 8 || !registerPass2 || registerStatus === 'loading' || registerStatus === 'pow'}
                   >
-                    {registerStatus === 'loading' ? 'Konto wird erstellt…' : 'Konto erstellen'}
+                    {registerStatus === 'pow' ? 'Sicherheitsprüfung läuft…'
+                      : registerStatus === 'loading' ? 'Konto wird erstellt…' : 'Konto erstellen'}
                   </button>
+                )}
+                {/* The instance's legal texts, where it has any (#324 S14): whoever
+                    creates an account should be able to read them first. A new tab,
+                    because navigating this one would unmount the half-filled form. */}
+                {authMode === 'register' && (registerLegal?.impressum || registerLegal?.datenschutz) && (
+                  <p className={styles.fieldHelpText}>
+                    {registerLegal.datenschutz && <a href={LEGAL_ROUTES.datenschutz} target="_blank" rel="noopener">{registerLegal.datenschutz.title}</a>}
+                    {registerLegal.datenschutz && registerLegal.impressum && ' · '}
+                    {registerLegal.impressum && <a href={LEGAL_ROUTES.impressum} target="_blank" rel="noopener">{registerLegal.impressum.title}</a>}
+                  </p>
                 )}
                 {/* Only offered when the server said registration is actually
                     open (#278) - null means "didn't ask / older server", and

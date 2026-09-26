@@ -52,21 +52,25 @@ describe('admin switches in /api/admin/settings (#324 S1)', () => {
       photoUploadsEnabled: true, photoUploadsEnabledSource: 'default',
       aiEnabled: true, aiEnabledSource: 'default',
       publicInstance: false, publicInstanceSource: 'default',
+      registrationPow: false, registrationPowSource: 'default',
     });
 
     const save = await app.inject({
       method: 'POST', url: '/api/admin/settings', headers: auth,
-      payload: { photoUploadsEnabled: false, aiEnabled: false, publicInstance: true },
+      payload: { photoUploadsEnabled: false, aiEnabled: false, publicInstance: true, registrationPow: true },
     });
     expect(save.statusCode).toBe(200);
 
     // Persisted in server_settings.json, i.e. what a restarted process reads.
-    expect(db.getServerSettings()).toMatchObject({ photoUploadsEnabled: false, aiEnabled: false, publicInstance: { enabled: true } });
+    expect(db.getServerSettings()).toMatchObject({
+      photoUploadsEnabled: false, aiEnabled: false, publicInstance: { enabled: true }, registrationPow: true,
+    });
     const after = (await app.inject({ method: 'GET', url: '/api/admin/settings', headers: auth })).json();
     expect(after).toMatchObject({
       photoUploadsEnabled: false, photoUploadsEnabledSource: 'panel',
       aiEnabled: false, aiEnabledSource: 'panel',
       publicInstance: true, publicInstanceSource: 'panel',
+      registrationPow: true, registrationPowSource: 'panel',
     });
   });
 

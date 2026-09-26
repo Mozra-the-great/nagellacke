@@ -10,6 +10,27 @@ import retrofit2.http.Path
 
 @Serializable data class LoginRequest(val username: String, val password: String)
 @Serializable data class RefreshRequest(val refreshToken: String)
+
+/**
+ * POST /api/auth/register. [pow] is only sent when the server asks for one (#324 S13);
+ * the Json instances here keep encodeDefaults off, so null leaves the field out entirely.
+ */
+@Serializable data class RegisterRequest(
+    val username: String,
+    val password: String,
+    val pow: PowSolution? = null,
+)
+
+/** GET /api/auth/registration-status. Defaults so a server predating a field degrades to "no". */
+@Serializable data class RegistrationStatus(
+    val allowed: Boolean = false,
+    val firstUser: Boolean = false,
+    val requiresPow: Boolean = false,
+)
+
+/** GET /api/auth/pow-challenge: signed by the server, returned unchanged with [PowSolution.n]. */
+@Serializable data class PowChallenge(val salt: String, val difficulty: Int, val expires: Long, val sig: String)
+@Serializable data class PowSolution(val salt: String, val difficulty: Int, val expires: Long, val sig: String, val n: Long)
 /** Second step of a 2FA login: `code` takes either a 6-digit TOTP code or a recovery code. */
 @Serializable data class VerifyRequest(val challengeToken: String, val code: String)
 
@@ -59,7 +80,13 @@ interface ServerApi {
     suspend fun login(@Body body: LoginRequest): LoginResponse
 
     @POST("api/auth/register")
-    suspend fun register(@Body body: LoginRequest): LoginResponse
+    suspend fun register(@Body body: RegisterRequest): LoginResponse
+
+    @GET("api/auth/registration-status")
+    suspend fun registrationStatus(): RegistrationStatus
+
+    @GET("api/auth/pow-challenge")
+    suspend fun powChallenge(): PowChallenge
 
     @POST("api/auth/login/verify")
     suspend fun loginVerify(@Body body: VerifyRequest): LoginResponse

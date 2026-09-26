@@ -108,6 +108,7 @@ export default function AdminPage() {
   const [photoUploadsEnabled, setPhotoUploadsEnabled] = useState(true);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [publicInstance, setPublicInstance] = useState(false);
+  const [registrationPow, setRegistrationPow] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -142,6 +143,7 @@ export default function AdminPage() {
       setPhotoUploadsEnabled(s.photoUploadsEnabled ?? true);
       setAiEnabled(s.aiEnabled ?? true);
       setPublicInstance(s.publicInstance ?? false);
+      setRegistrationPow(s.registrationPow ?? false);
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -170,6 +172,7 @@ export default function AdminPage() {
         photoUploadsEnabled,
         aiEnabled,
         publicInstance,
+        registrationPow,
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -447,6 +450,14 @@ export default function AdminPage() {
             <button type="button" className={`${styles.segBtn} ${!allowRegistration ? styles.segBtnActive : ''}`} onClick={() => setAllowRegistration(false)}>Aus</button>
           </div>
         </label>
+
+        <OnOffField
+          label="Sicherheitsprüfung bei der Registrierung"
+          source={settings?.registrationPowSource}
+          value={registrationPow}
+          onChange={setRegistrationPow}
+          help="Lässt das Gerät vor jeder Registrierung etwa eine Sekunde rechnen. Für einen Menschen kaum spürbar, macht es massenhaft angelegte Konten teuer. Ohne Captcha-Anbieter und ohne Daten an Dritte. Gilt nicht für das allererste Konto."
+        />
 
         <OnOffField
           label="Foto-Uploads erlauben"

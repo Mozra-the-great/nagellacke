@@ -33,6 +33,8 @@ export interface AdminSettings {
   aiEnabledSource?: 'panel' | 'default';
   publicInstance?: boolean;
   publicInstanceSource?: 'panel' | 'default';
+  registrationPow?: boolean;
+  registrationPowSource?: 'panel' | 'default';
   ai: {
     provider: 'openrouter' | 'gemini';
     openrouter: { model: string; freeOnly: boolean; hasApiKey: boolean };
@@ -98,6 +100,7 @@ export interface AdminSettingsInput {
   photoUploadsEnabled?: boolean;
   aiEnabled?: boolean;
   publicInstance?: boolean;
+  registrationPow?: boolean;
   appUrl?: string;
   smtp?: { host?: string; port?: number; user?: string; pass?: string; from?: string; secure?: boolean };
 }

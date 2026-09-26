@@ -738,6 +738,8 @@ export interface ServerSettings {
   aiEnabled?: boolean;
   /** Cloud operation: an instance open to strangers rather than a household LAN. */
   publicInstance?: { enabled?: boolean };
+  /** Require a proof of work on POST /api/auth/register (#324 S13). undefined = off. */
+  registrationPow?: boolean;
 }
 
 /** Whether new photos may be uploaded (#324). Deleting and reading are never affected. */
@@ -752,6 +754,11 @@ export function aiAllowed(): boolean {
 
 export function publicInstanceEnabled(): boolean {
   return getServerSettings().publicInstance?.enabled ?? false;
+}
+
+/** Whether registration requires a proof of work (#324 S13). Off unless switched on in the panel. */
+export function registrationPowEnabled(): boolean {
+  return getServerSettings().registrationPow ?? false;
 }
 
 const SERVER_SETTINGS_FILE = path.join(DATA_DIR, 'server_settings.json');
