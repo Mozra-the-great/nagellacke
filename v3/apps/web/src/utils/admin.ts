@@ -181,6 +181,15 @@ export function getUpdateStatus(): Promise<UpdateStatus> {
  * reaching this call already required an admin JWT session, which is the
  * credential everything here keeps using.
  */
+/**
+ * The server's own journal lines (#356). Same auth as the rest of the panel; the server
+ * clamps `lines` to 1–500. `error: true` means journalctl itself failed (e.g. a container
+ * deployment without systemd), and `logs` then carries its error text instead.
+ */
+export function getServerLogs(lines: number): Promise<{ logs: string; lines: number; error?: boolean }> {
+  return request(`/api/logs?lines=${encodeURIComponent(String(lines))}`);
+}
+
 export async function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
   const result = await request<{ apiKey: string; rotatedAt: number }>('/api/admin/api-key/rotate', { method: 'POST' });
   if (storedApiKey()) setStoredApiKey(null);

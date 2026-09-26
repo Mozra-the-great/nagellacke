@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig, endServerSession, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, endServerSession, logoutEverywhere, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto, authedFetch } from '../utils/photos';
 import { ensurePhotoToken, absolutePhotoUrl, clearPhotoToken } from '../utils/photoToken';
@@ -96,6 +96,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [provider, setProvider] = useState<SyncProviderType | 'none'>(config?.provider ?? 'none');
   const [serverUrl, setServerUrl] = useState(config?.serverUrl ?? '');
   const [serverToken, setServerToken] = useState(config?.serverToken ?? '');
+  const [logoutAllStatus, setLogoutAllStatus] = useState<'idle' | 'confirm' | 'loading' | 'error'>('idle');
+  const [logoutAllError, setLogoutAllError] = useState('');
   const [ncUrl, setNcUrl] = useState(config?.nextcloudUrl ?? '');
   const [ncUser, setNcUser] = useState(config?.nextcloudUser ?? '');
   const [ncPass, setNcPass] = useState(config?.nextcloudPassword ?? '');
@@ -933,6 +935,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             </label>
 
             {serverToken ? (
+              <>
               <div className={styles.tokenRow}>
                 <span className={styles.tokenOk}>✓ Eingeloggt</span>
                 <button
@@ -951,6 +954,43 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   }}
                 >Abmelden</button>
               </div>
+              {logoutAllStatus === 'idle' ? (
+                <button type="button" className={styles.logoutBtn} onClick={() => setLogoutAllStatus('confirm')}>
+                  Von allen Geräten abmelden…
+                </button>
+              ) : (
+                <div className={styles.loginBox}>
+                  <p className={styles.fieldHelpText}>
+                    Beendet jede Sitzung dieses Kontos auf allen Geräten, auch in der Android-App, und macht
+                    alle bisher erzeugten Foto-Links ungültig, auch die in verschickten Berichten. Sinnvoll, wenn
+                    ein Gerät verloren gegangen ist oder ein Link in falsche Hände geraten sein könnte.
+                  </p>
+                  {logoutAllStatus === 'error' && <div className={styles.errorBanner}>{logoutAllError}</div>}
+                  <div className={styles.btnRow}>
+                    <button
+                      className={styles.saveBtn}
+                      disabled={logoutAllStatus === 'loading'}
+                      onClick={async () => {
+                        setLogoutAllStatus('loading');
+                        setLogoutAllError('');
+                        try {
+                          await logoutEverywhere();
+                          setServerToken('');
+                          setConfig(null);
+                          clearPhotoToken();
+                          setLogoutAllStatus('idle');
+                          onAuthChange();
+                        } catch (e) {
+                          setLogoutAllError(e instanceof Error ? e.message : 'Verbindungsfehler');
+                          setLogoutAllStatus('error');
+                        }
+                      }}
+                    >{logoutAllStatus === 'loading' ? 'Melde ab…' : 'Ja, überall abmelden'}</button>
+                    <button className={styles.syncBtn} onClick={() => setLogoutAllStatus('idle')}>Abbrechen</button>
+                  </div>
+                </div>
+              )}
+              </>
             ) : mfaChallengeToken ? (
               <div className={styles.loginBox}>
                 <label className={styles.field}>

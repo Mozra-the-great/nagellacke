@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   listUsers, createUser, setUserRole, deleteUser,
   getSettings, saveSettings, testSmtp, testAi,
-  getAuditLog, checkUpdate, applyUpdate, getUpdateStatus, rotateApiKey,
+  getAuditLog, checkUpdate, applyUpdate, getUpdateStatus, rotateApiKey, getServerLogs,
 } from '../utils/admin';
 import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo, UpdateProgress } from '../utils/admin';
 import { saveAiSettings } from '../utils/ai';
@@ -304,6 +304,27 @@ export default function AdminPage() {
     }
   };
 
+  // ── Server-Log (#356) ── loaded on demand only: it is the one section that runs a
+  // subprocess on the server, and a panel that shells out to journalctl on every open
+  // would be a poor default.
+  const [logLines, setLogLines] = useState(100);
+  const [logs, setLogs] = useState<{ text: string; failed: boolean } | null>(null);
+  const [logsStatus, setLogsStatus] = useState<Status>('idle');
+  const [logsError, setLogsError] = useState('');
+
+  const loadLogs = async () => {
+    setLogsStatus('loading');
+    setLogsError('');
+    try {
+      const d = await getServerLogs(logLines);
+      setLogs({ text: d.logs, failed: !!d.error });
+      setLogsStatus('idle');
+    } catch (e) {
+      setLogsError(e instanceof Error ? e.message : 'Fehler');
+      setLogsStatus('error');
+    }
+  };
+
   // ── Audit-Log ──
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   useEffect(() => { getAuditLog().then((d) => setAudit(d.entries)).catch(() => { /* ignore */ }); }, []);
@@ -593,6 +614,40 @@ export default function AdminPage() {
             {rotateStatus === 'loading' ? 'Rotiere…' : 'Schlüssel rotieren'}
           </button>
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Server-Log</h2>
+        <p className={styles.fieldHelpText}>
+          Die letzten Zeilen aus dem systemd-Journal dieses Dienstes. In einer Container-Installation gibt es kein
+          Journal; dort steht das Log bei <code>docker logs</code>.
+        </p>
+        <div className={styles.btnRow} style={{ alignItems: 'flex-end' }}>
+          <label className={styles.field} style={{ marginBottom: 0 }}>
+            <span>Zeilen</span>
+            <select value={logLines} onChange={(e) => setLogLines(Number(e.target.value))}>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+            </select>
+          </label>
+          <button className={styles.syncBtn} onClick={() => void loadLogs()} disabled={logsStatus === 'loading'}>
+            {logsStatus === 'loading' ? 'Lade…' : logs ? 'Neu laden' : 'Log laden'}
+          </button>
+        </div>
+        {logsStatus === 'error' && <div className={styles.errorBanner}>{logsError}</div>}
+        {logs?.failed && <div className={styles.warningBanner}>Journal nicht lesbar: {logs.text}</div>}
+        {logs && !logs.failed && (
+          <pre
+            tabIndex={0}
+            aria-label="Server-Log"
+            style={{
+              maxHeight: 400, overflow: 'auto', marginTop: 12, padding: 12, fontSize: 11, lineHeight: 1.45,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--md-surface-variant)',
+              borderRadius: 'var(--radius-md)', color: 'var(--md-on-surface-variant)',
+            }}
+          >{logs.text || '(leer)'}</pre>
+        )}
       </section>
 
       <section className={styles.section}>
