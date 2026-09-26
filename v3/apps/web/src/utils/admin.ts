@@ -26,6 +26,13 @@ export interface AdminSettings {
   appUrl: string;
   appUrlSource: 'panel' | 'env' | 'default';
   appUrlRequiresRestart: boolean;
+  // Server-wide switches (#324); no env-var fallback, so never 'env'.
+  photoUploadsEnabled?: boolean;
+  photoUploadsEnabledSource?: 'panel' | 'default';
+  aiEnabled?: boolean;
+  aiEnabledSource?: 'panel' | 'default';
+  publicInstance?: boolean;
+  publicInstanceSource?: 'panel' | 'default';
   ai: {
     provider: 'openrouter' | 'gemini';
     openrouter: { model: string; freeOnly: boolean; hasApiKey: boolean };
@@ -88,6 +95,9 @@ export function getSettings(): Promise<AdminSettings> {
 
 export interface AdminSettingsInput {
   allowRegistration?: boolean;
+  photoUploadsEnabled?: boolean;
+  aiEnabled?: boolean;
+  publicInstance?: boolean;
   appUrl?: string;
   smtp?: { host?: string; port?: number; user?: string; pass?: string; from?: string; secure?: boolean };
 }

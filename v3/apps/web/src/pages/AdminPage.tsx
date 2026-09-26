@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   listUsers, createUser, setUserRole, deleteUser,
   getSettings, saveSettings, testSmtp, testAi,
@@ -10,6 +10,29 @@ import type { AiProvider, SearchBackend } from '../utils/ai';
 import styles from './SettingsPage.module.css';
 
 type Status = 'idle' | 'loading' | 'saved' | 'error';
+
+/** An An/Aus segmented switch, the pattern "Registrierung erlauben" already uses. */
+function OnOffField({ label, source, value, onChange, help }: {
+  label: string;
+  source?: 'panel' | 'env' | 'default';
+  value: boolean;
+  onChange: (value: boolean) => void;
+  help?: string;
+}) {
+  // A group, not a <label>: a label wrapping the buttons names the first one after the
+  // whole label text, so a screen reader announced "An" as "KI-Funktionen erlauben…".
+  const id = useId();
+  return (
+    <div className={styles.field} role="group" aria-labelledby={`${id}-label`}>
+      <span id={`${id}-label`}>{label} <span className={styles.fieldHint}>({source ? sourceBadge(source) : '…'})</span></span>
+      <div className={styles.segmented}>
+        <button type="button" aria-pressed={value} className={`${styles.segBtn} ${value ? styles.segBtnActive : ''}`} onClick={() => onChange(true)}>An</button>
+        <button type="button" aria-pressed={!value} className={`${styles.segBtn} ${!value ? styles.segBtnActive : ''}`} onClick={() => onChange(false)}>Aus</button>
+      </div>
+      {help && <p className={styles.fieldHelpText}>{help}</p>}
+    </div>
+  );
+}
 
 function sourceBadge(source: 'panel' | 'env' | 'default'): string {
   if (source === 'panel') return 'aus Admin-Panel';
@@ -80,6 +103,9 @@ export default function AdminPage() {
   // ── Server-Einstellungen ──
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [allowRegistration, setAllowRegistration] = useState(false);
+  const [photoUploadsEnabled, setPhotoUploadsEnabled] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [publicInstance, setPublicInstance] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -110,6 +136,10 @@ export default function AdminPage() {
     getSettings().then((s) => {
       setSettings(s);
       setAllowRegistration(s.allowRegistration);
+      // Absent on a server older than #324: keep the defaults, which is what it does.
+      setPhotoUploadsEnabled(s.photoUploadsEnabled ?? true);
+      setAiEnabled(s.aiEnabled ?? true);
+      setPublicInstance(s.publicInstance ?? false);
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -135,6 +165,9 @@ export default function AdminPage() {
     try {
       await saveSettings({
         allowRegistration,
+        photoUploadsEnabled,
+        aiEnabled,
+        publicInstance,
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -412,6 +445,28 @@ export default function AdminPage() {
             <button type="button" className={`${styles.segBtn} ${!allowRegistration ? styles.segBtnActive : ''}`} onClick={() => setAllowRegistration(false)}>Aus</button>
           </div>
         </label>
+
+        <OnOffField
+          label="Foto-Uploads erlauben"
+          source={settings?.photoUploadsEnabledSource}
+          value={photoUploadsEnabled}
+          onChange={setPhotoUploadsEnabled}
+          help="Aus sperrt nur neue Uploads, für alle Konten und auch per API-Schlüssel. Vorhandene Fotos bleiben sichtbar und lassen sich löschen."
+        />
+        <OnOffField
+          label="KI-Funktionen erlauben"
+          source={settings?.aiEnabledSource}
+          value={aiEnabled}
+          onChange={setAiEnabled}
+          help="Aus nimmt keine neuen KI-Aufträge mehr an und hält bereits eingereihte an, bis die Funktion wieder eingeschaltet wird. Die Anbieter-Einstellungen bleiben erhalten."
+        />
+        <OnOffField
+          label="Öffentliche Instanz"
+          source={settings?.publicInstanceSource}
+          value={publicInstance}
+          onChange={setPublicInstance}
+          help="Für einen Server, auf dem sich Fremde registrieren können. Bisher wird der Wert nur gespeichert und über /api/instance-config gemeldet; die Web-Oberfläche dafür (Einleitungsseite, kein Sync-Knopf) folgt. Die Android-App ist davon nicht betroffen."
+        />
 
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: '16px 0 12px', color: 'var(--md-on-surface-variant)' }}>
           SMTP {settings && <span className={styles.fieldHint}>({sourceBadge(settings.smtp.source)})</span>}
