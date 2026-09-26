@@ -17,6 +17,7 @@ html { overflow-x: hidden; }
   --md-outline-variant: rgba(255,255,255,0.12);
   --md-error: rgba(255,120,120,0.85);
   --md-shadow: rgba(0,0,0,0.6);
+  --focus-ring: rgba(255,200,230,0.9);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -42,4 +43,17 @@ button {
 
 input, textarea, select {
   font-family: inherit;
+}
+
+/* Keyboard focus ring for every control that has none of its own (#346). The browser
+   default is a 1px near-black outline, about 1.05:1 against this background, so a
+   keyboard user could not see where focus was on almost any button. Same colour as the
+   nav's ring (App.module.css), well above the 3:1 WCAG 1.4.11 asks for. Wrapped in
+   :where() so it has zero specificity: any component rule that styles its own focus
+   state still wins. Text fields are left out on purpose; they signal focus with their
+   border already. */
+:where(button, a[href], summary, [role="button"], [tabindex]:not([tabindex="-1"]),
+       input[type="checkbox"], input[type="radio"], input[type="range"], input[type="file"]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
