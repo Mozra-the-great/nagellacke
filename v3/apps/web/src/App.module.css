@@ -5,6 +5,17 @@
   overflow-x: clip;
 }
 
+/* Wide screens (#323): a fixed 1100px column left most of a 2500px monitor empty.
+   The collection, sticker, diary and cart grids are auto-fill, so a wider column
+   simply gives them more columns. Form pages (Settings, Admin) keep a readable
+   width through their own .page cap. */
+@media (min-width: 1600px) {
+  .app { max-width: 1480px; }
+}
+@media (min-width: 2200px) {
+  .app { max-width: 1900px; }
+}
+
 .header {
   position: sticky;
   top: 0;
