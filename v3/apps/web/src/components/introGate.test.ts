@@ -16,7 +16,7 @@ function config(publicInstance: boolean): InstanceConfig {
 }
 
 describe('introGateVisible (#324 S16)', () => {
-  const base = { hasSyncConfig: false, localOnlyAck: false, onLegalPage: false };
+  const base = { hasSyncConfig: false, localOnlyAck: false, onStandalonePage: false };
 
   it('stands in front of the app only on a public instance', () => {
     expect(introGateVisible({ ...base, config: config(true) })).toBe(true);
@@ -30,8 +30,8 @@ describe('introGateVisible (#324 S16)', () => {
     expect(introGateVisible({ ...base, config: config(true), localOnlyAck: true })).toBe(false);
   });
 
-  it('never covers the legal pages the gate itself links to', () => {
-    expect(introGateVisible({ ...base, config: config(true), onLegalPage: true })).toBe(false);
+  it('never covers the legal pages or a link opened from a mail', () => {
+    expect(introGateVisible({ ...base, config: config(true), onStandalonePage: true })).toBe(false);
   });
 });
 

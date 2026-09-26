@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchPowSolution } from '../utils/pow';
 import type { PowSolution } from '../utils/pow';
 import { fetchLegalPages, LEGAL_ROUTES } from '../utils/legal';
+import { requestPasswordReset } from '../utils/account';
 import type { LegalPages } from '../utils/legal';
 import styles from '../pages/SettingsPage.module.css';
 
@@ -38,6 +39,14 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
   const [registrationRequiresPow, setRegistrationRequiresPow] = useState(false);
   const [registerLegal, setRegisterLegal] = useState<LegalPages | null>(null);
   const [registerPass2, setRegisterPass2] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  // "Passwort vergessen?" (#324 S18): only offered where the server says it can send
+  // the mail, i.e. has SMTP and an App-URL; an older server never says so.
+  const [passwordResetAvailable, setPasswordResetAvailable] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotId, setForgotId] = useState('');
+  const [forgotStatus, setForgotStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
+  const [forgotError, setForgotError] = useState('');
   const [registerStatus, setRegisterStatus] = useState<'idle' | 'pow' | 'loading' | 'error'>('idle');
   const [registerError, setRegisterError] = useState('');
 
@@ -107,7 +116,11 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
     const post = (pow?: PowSolution) => fetch(`${base}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: loginUser, password: loginPass, ...(pow ? { pow } : {}) }),
+      body: JSON.stringify({
+        username: loginUser, password: loginPass,
+        ...(registerEmail.trim() ? { email: registerEmail.trim() } : {}),
+        ...(pow ? { pow } : {}),
+      }),
     });
     try {
       setRegisterStatus('loading');
@@ -187,10 +200,11 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
     const controller = new AbortController();
     const base = serverUrl.replace(/\/$/, '');
     fetch(`${base}/api/auth/registration-status`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean; requiresPow?: boolean }> : null))
+      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean; requiresPow?: boolean; passwordReset?: boolean }> : null))
       .then((data) => {
         setRegistrationAllowed(data?.allowed ?? null);
         setRegistrationRequiresPow(data?.requiresPow === true);
+        setPasswordResetAvailable(data?.passwordReset === true);
       })
       .catch(() => { /* offline or older server - stay on login-only */ });
     return () => controller.abort();
@@ -204,6 +218,70 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
     });
     return () => controller.abort();
   }, [authMode]);
+
+  const sendForgot = async () => {
+    setForgotStatus('loading');
+    setForgotError('');
+    try {
+      await requestPasswordReset(forgotId.trim(), serverUrl.replace(/\/$/, ''));
+      setForgotStatus('sent');
+    } catch (e) {
+      setForgotError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setForgotStatus('error');
+    }
+  };
+
+  if (forgotOpen) {
+    return (
+      <div className={styles.loginBox}>
+        {forgotStatus === 'sent' ? (
+          // Worded so it does not reveal whether the account exists: the server
+          // answers the same either way, and so does this.
+          <div className={styles.successBanner} role="status">
+            Falls es dazu ein Konto mit bestätigter E-Mail-Adresse gibt, ist eine Mail mit einem Link unterwegs.
+            Er gilt eine Stunde.
+          </div>
+        ) : (
+          <>
+            <label className={styles.field}>
+              <span>Benutzername oder E-Mail-Adresse</span>
+              <input
+                value={forgotId}
+                onChange={(e) => setForgotId(e.target.value)}
+                autoComplete="username"
+                onKeyDown={(e) => { if (e.key === 'Enter' && forgotId.trim()) void sendForgot(); }}
+              />
+              <p className={styles.fieldHelpText}>
+                Der Link geht an die E-Mail-Adresse des Kontos, sofern sie bestätigt ist.
+              </p>
+            </label>
+            <div role="status" aria-live="polite" aria-atomic="true">
+              {forgotStatus === 'error' && <div className={styles.errorBanner}>{forgotError}</div>}
+            </div>
+          </>
+        )}
+        <div className={styles.btnRow}>
+          {forgotStatus !== 'sent' && (
+            <button
+              type="button"
+              className={styles.saveBtn}
+              disabled={!forgotId.trim() || forgotStatus === 'loading'}
+              onClick={() => void sendForgot()}
+            >
+              {forgotStatus === 'loading' ? 'Sende…' : 'Link anfordern'}
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.syncBtn}
+            onClick={() => { setForgotOpen(false); setForgotStatus('idle'); setForgotError(''); }}
+          >
+            Zurück zum Anmelden
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (mfaChallengeToken) {
     return (
@@ -276,6 +354,20 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
           />
         </label>
       )}
+      {authMode === 'register' && (
+        <label className={styles.field}>
+          <span>E-Mail-Adresse <span className={styles.fieldHint}>(optional)</span></span>
+          <input
+            type="email"
+            value={registerEmail}
+            onChange={(e) => setRegisterEmail(e.target.value)}
+            autoComplete="email"
+          />
+          <p className={styles.fieldHelpText}>
+            Nur für ein vergessenes Passwort und Berichte per Mail. Du bekommst einen Link, mit dem du sie bestätigst.
+          </p>
+        </label>
+      )}
       <div role="status" aria-live="polite" aria-atomic="true">
         {authMode === 'login' && loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
         {authMode === 'login' && loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
@@ -314,6 +406,15 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
       {/* Only offered when the server said registration is actually
           open (#278) - null means "didn't ask / older server", and
           then this stays a login-only box, exactly as before. */}
+      {authMode === 'login' && passwordResetAvailable && (
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          onClick={() => { setForgotOpen(true); setForgotId(loginUser); setForgotStatus('idle'); }}
+        >
+          Passwort vergessen?
+        </button>
+      )}
       {registrationAllowed === true && (
         <button
           type="button"

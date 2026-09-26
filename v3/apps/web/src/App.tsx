@@ -18,6 +18,8 @@ import { fetchRole } from './utils/auth';
 import { fetchLegalPages, legalPageForHash, LEGAL_ROUTES } from './utils/legal';
 import type { LegalPages } from './utils/legal';
 import LegalPage from './pages/LegalPage';
+import AccountLinkPage from './pages/AccountLinkPage';
+import { accountRouteForHash } from './utils/account';
 import { refreshInstanceConfig, useInstanceConfig, useInstanceConfigLoaded, introGateVisible, brandingLogoSrc, DEFAULT_NAME, DEFAULT_TITLE } from './utils/instance';
 import { clearPhotoToken } from './utils/photoToken';
 import type { Role } from './utils/auth';
@@ -106,6 +108,9 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   const legalKey = legalPageForHash(hash);
+  // Links from reset and verification mails (#324 S18, S19), same mechanism.
+  const accountRoute = accountRouteForHash(hash);
+  const onStandalonePage = legalKey !== null || accountRoute !== null;
   const leaveLegal = () => {
     history.pushState(null, '', window.location.pathname + window.location.search);
     setHash('');
@@ -117,11 +122,11 @@ export default function App() {
   const [localOnlyAck, setLocalOnlyAckState] = useState(hasLocalOnlyAck);
   const hasSyncConfig = loadSyncConfig() !== null;
   const gateShown = introGateVisible({
-    config: instanceConfig, hasSyncConfig, localOnlyAck, onLegalPage: legalKey !== null,
+    config: instanceConfig, hasSyncConfig, localOnlyAck, onStandalonePage,
   });
   // Until the server has answered, a visitor the gate might be meant for sees an empty
   // page rather than the app flashing up and being taken away again.
-  const gatePending = !instanceLoaded && !hasSyncConfig && !localOnlyAck && legalKey === null;
+  const gatePending = !instanceLoaded && !hasSyncConfig && !localOnlyAck && !onStandalonePage;
   const localOnlyBanner = instanceConfig?.publicInstance === true && localOnlyAck && !hasSyncConfig;
   const chooseLocalOnly = () => { setLocalOnlyAck(true); setLocalOnlyAckState(true); };
   const leaveLocalOnly = () => { setLocalOnlyAck(false); setLocalOnlyAckState(false); };
@@ -169,7 +174,7 @@ export default function App() {
             <button
               key={id}
               className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''} ${id === 'settings' ? styles.navBtnSettings : ''}`}
-              onClick={() => { setTab(id); if (legalKey) leaveLegal(); }}
+              onClick={() => { setTab(id); if (onStandalonePage) leaveLegal(); }}
             >
               {id === 'settings' && appData.syncError && (
                 <span
@@ -202,6 +207,8 @@ export default function App() {
           legalLoaded
             ? <LegalPage page={legal?.[legalKey] ?? null} onBack={leaveLegal} />
             : null
+        ) : accountRoute ? (
+          <AccountLinkPage route={accountRoute} onDone={leaveLegal} />
         ) : gatePending ? null : gateShown ? (
           <IntroGate
             introText={branding?.introText ?? null}

@@ -64,7 +64,7 @@ async function challenge(): Promise<PowChallenge> {
 describe('GET /api/auth/registration-status (#278)', () => {
   it('reports open on a server with no users yet, and says so is the first-user case', async () => {
     const before = await status();
-    expect(before).toEqual({ allowed: true, firstUser: true, requiresPow: false });
+    expect(before).toEqual({ allowed: true, firstUser: true, requiresPow: false, passwordReset: false });
 
     // Bootstrap the first account; that one is always allowed through.
     expect((await register(freshUsername())).statusCode).toBe(200);
@@ -110,7 +110,7 @@ describe('GET /api/auth/registration-status (#278)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/auth/registration-status' });
     expect(res.statusCode).toBe(200);
     // Nothing about existing accounts leaks out of it.
-    expect(Object.keys(res.json() as object).sort()).toEqual(['allowed', 'firstUser', 'requiresPow']);
+    expect(Object.keys(res.json() as object).sort()).toEqual(['allowed', 'firstUser', 'passwordReset', 'requiresPow']);
   });
 });
 

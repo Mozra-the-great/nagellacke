@@ -105,15 +105,16 @@ export function useInstanceConfigLoaded(): boolean {
 /**
  * Whether the public-instance intro gate stands in front of the app (#324 S16): only
  * on a public instance, only for a visitor who has neither a sync setup nor chose to
- * work without an account, and never over the legal pages, which the gate links to.
+ * work without an account, and never over a standalone page: the legal pages the
+ * gate links to, or a reset/verification link opened from a mail.
  */
 export function introGateVisible(opts: {
   config: InstanceConfig | null;
   hasSyncConfig: boolean;
   localOnlyAck: boolean;
-  onLegalPage: boolean;
+  onStandalonePage: boolean;
 }): boolean {
-  return opts.config?.publicInstance === true && !opts.hasSyncConfig && !opts.localOnlyAck && !opts.onLegalPage;
+  return opts.config?.publicInstance === true && !opts.hasSyncConfig && !opts.localOnlyAck && !opts.onStandalonePage;
 }
 
 /** False only when the server has explicitly switched AI off. */

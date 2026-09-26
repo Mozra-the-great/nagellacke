@@ -109,6 +109,7 @@ export default function AdminPage() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [publicInstance, setPublicInstance] = useState(false);
   const [registrationPow, setRegistrationPow] = useState(false);
+  const [appUrl, setAppUrl] = useState('');
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -144,6 +145,7 @@ export default function AdminPage() {
       setAiEnabled(s.aiEnabled ?? true);
       setPublicInstance(s.publicInstance ?? false);
       setRegistrationPow(s.registrationPow ?? false);
+      setAppUrl(s.appUrl);
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -173,6 +175,8 @@ export default function AdminPage() {
         aiEnabled,
         publicInstance,
         registrationPow,
+        // Only sent when changed, so saving the SMTP block never pins an env value into the panel.
+        ...(settings && appUrl.trim() !== settings.appUrl ? { appUrl: appUrl.trim() } : {}),
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -512,6 +516,16 @@ export default function AdminPage() {
           </div>
         </label>
 
+        <label className={styles.field}>
+          <span>App-URL {settings && <span className={styles.fieldHint}>({sourceBadge(settings.appUrlSource)})</span>}</span>
+          <input value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder="https://nagellack.example.de" inputMode="url" />
+          <p className={styles.fieldHelpText}>
+            Die öffentliche Adresse dieser Web-App. Daraus baut der Server die Links in Mails: Fotos in Berichten, Passwort
+            zurücksetzen, Adresse bestätigen. Ohne sie gibt es kein „Passwort vergessen?“. Wirkt sofort nach dem Speichern;
+            leer lassen, um auf die Umgebungsvariable <code>APP_URL</code> zurückzufallen.
+          </p>
+        </label>
+
         {settingsSaveStatus === 'error' && <div className={styles.errorBanner}>{settingsSaveError}</div>}
         <div className={styles.btnRow} style={{ marginBottom: 16 }}>
           <button className={styles.saveBtn} onClick={() => void saveServerSettings()} disabled={settingsSaveStatus === 'loading'}>
@@ -531,11 +545,6 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <p className={styles.fieldHelpText} style={{ marginTop: 16 }}>
-          App-URL {settings && <span className={styles.fieldHint}>({sourceBadge(settings.appUrlSource)}, aktuell: {settings.appUrl || '—'})</span>}<br />
-          Wird für Links in versendeten Berichten verwendet. Über die Umgebungsvariable <code>APP_URL</code> setzen — ein
-          Neustart des Servers ist dafür nötig, das Panel zeigt den Wert nur an.
-        </p>
       </section>
 
       <BrandingSection />

@@ -25,7 +25,7 @@ import {
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
   photoUploadsAllowed, aiAllowed, publicInstanceEnabled, registrationPowEnabled, getBranding, setBranding, BRANDING_DIR,
-  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS,
+  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS, patchUser, findUsers, resetPassword,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -36,6 +36,10 @@ import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
 import { signPhotoToken, verifyPhotoToken } from './photoToken';
 import { issuePowChallenge, PowVerifier } from './pow';
+import {
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail,
+  RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
+} from './accountMail';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -160,6 +164,16 @@ function loadOrCreateSecret(): string {
   return s;
 }
 const JWT_SECRET = loadOrCreateSecret();
+
+/**
+ * Base URL for links in mails: the panel value, else APP_URL, else '' (no links can be
+ * built). Read on every call since #324 S17, so a value saved in the panel takes effect
+ * without a restart. Never derived from request headers: that would let anyone who can
+ * send a request with a forged Host header decide where reset links point.
+ */
+function appBaseUrl(): string {
+  return (getServerSettings().appUrl || process.env.APP_URL || '').replace(/\/$/, '');
+}
 
 // users.json already holds scrypt password hashes and, as of this PR, TOTP
 // secrets and recovery-code hashes too. writeUsers() (db.ts) now creates it
@@ -1163,14 +1177,10 @@ export async function buildApp(): Promise<FastifyInstance> {
         hasPassword: !!(smtp?.pass || process.env.SMTP_PASS),
         source: smtp ? 'panel' : (process.env.SMTP_HOST ? 'env' : 'default'),
       },
-      // appUrl: stored for round-tripping through the panel, but the actual
-      // email-link generation below still reads process.env.APP_URL once at
-      // module load (APP_BASE_URL) — wiring a live read is deliberately
-      // deferred (see #173 plan §9 "PR5", out of scope here). requiresRestart
-      // reflects that honestly instead of implying an effect this PR doesn't have.
+      // Read live by appBaseUrl() since #324 S17; the flag stays for older clients.
       appUrl: settings.appUrl || process.env.APP_URL || '',
       appUrlSource: settings.appUrl ? 'panel' : (process.env.APP_URL ? 'env' : 'default'),
-      appUrlRequiresRestart: true,
+      appUrlRequiresRestart: false,
       // No env-var fallback for these three, so the source is only panel or default (#324).
       photoUploadsEnabled: photoUploadsAllowed(),
       photoUploadsEnabledSource: settings.photoUploadsEnabled !== undefined ? 'panel' : 'default',
@@ -1214,7 +1224,20 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     if (body.allowRegistration !== undefined) next.allowRegistration = !!body.allowRegistration;
 
-    if (body.appUrl !== undefined) next.appUrl = body.appUrl.trim().replace(/\/$/, '');
+    if (body.appUrl !== undefined) {
+      const appUrl = String(body.appUrl).trim().replace(/\/$/, '');
+      // It ends up as the base of every link in a mail, so only a plain http(s) origin
+      // with an optional path; '' clears it and falls back to APP_URL.
+      if (appUrl) {
+        let parsed: URL | null = null;
+        try { parsed = new URL(appUrl); } catch { /* handled below */ }
+        if (!parsed || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')
+          || parsed.search || parsed.hash || parsed.username || parsed.password) {
+          return reply.code(400).send({ error: 'App-URL muss eine http(s)-Adresse ohne Query und Fragment sein' });
+        }
+      }
+      next.appUrl = appUrl;
+    }
 
     if (body.photoUploadsEnabled !== undefined) next.photoUploadsEnabled = !!body.photoUploadsEnabled;
     if (body.aiEnabled !== undefined) next.aiEnabled = !!body.aiEnabled;
@@ -1317,6 +1340,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     return {
       username,
       email: user?.email ?? null,
+      emailVerified: !!user?.email_verified,
       smtpConfigured: isEmailConfigured(),
       totpEnabled: !!user?.totp_enabled,
       recoveryCodesRemaining: user?.recovery_codes?.length ?? 0,
@@ -1336,15 +1360,138 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!email || !isValidEmail(email)) {
       return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
     }
-    updateUserEmail(username, email.trim().toLowerCase());
+    const address = email.trim().toLowerCase();
+    const changed = getUser(username)?.email !== address;
+    updateUserEmail(username, address);
+    // A new address gets a verification mail right away (#324 S19); saving the same
+    // one again does not, "erneut senden" is for that.
+    const verificationSent = changed ? await sendVerificationMail(username) : false;
+    return { ok: true, verificationSent };
+  });
+
+  // ── Password reset and address verification (#324 S17, S19) ──────────────────
+
+  /** Both need SMTP and a base URL for the link; without either there is no way to deliver one. */
+  function accountMailAvailable(): boolean {
+    return isEmailConfigured() && appBaseUrl() !== '';
+  }
+
+  function appName(): string {
+    return resolveBranding(getBranding()).title;
+  }
+
+  /** Issues a fresh verification token and mails it. False when nothing could be sent. */
+  async function sendVerificationMail(username: string): Promise<boolean> {
+    const user = getUser(username);
+    if (!user?.email || user.email_verified || !accountMailAvailable()) return false;
+    const { token, hash } = newAccountToken();
+    const now = Date.now();
+    patchUser(username, { verify_hash: hash, verify_expires: now + VERIFY_TTL_MS, verify_sent_at: now });
+    const mail = verifyMail(appName(), appBaseUrl(), username, token);
+    try {
+      await sendHtmlEmail(user.email, mail.subject, mail.html);
+      return true;
+    } catch (e) {
+      logAccountMailError('verification mail', e);
+      return false;
+    }
+  }
+
+  function logAccountMailError(what: string, e: unknown): void {
+    app.log.error(`[account] ${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // POST /api/auth/password/forgot — always answers the same way whether or not the
+  // account exists, has an address or is verified: the server has never disclosed
+  // which accounts exist (DUMMY_PASSWORD_HASH at login). For the same reason the mail
+  // is sent after the response, so its duration cannot tell the two cases apart.
+  app.post('/api/auth/password/forgot', {
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    if (!accountMailAvailable()) {
+      return reply.code(503).send({ error: 'Passwort-Reset ist auf diesem Server nicht eingerichtet' });
+    }
+    const { identifier } = (request.body ?? {}) as { identifier?: unknown };
+    if (typeof identifier !== 'string' || !identifier.trim() || identifier.length > 254) {
+      return reply.code(400).send({ error: 'Benutzername oder E-Mail-Adresse erforderlich' });
+    }
+    const id = identifier.trim();
+    const lower = id.toLowerCase();
+    const now = Date.now();
+    // Only verified addresses: a reset mail to an address nobody proved they own would
+    // hand the account to whoever typed it in (#324 S19).
+    const targets = findUsers((u) => (u.username === id || u.email === lower)
+      && !!u.email && !!u.email_verified
+      && !(u.reset_sent_at && now - u.reset_sent_at < RESET_RESEND_MS));
+    const mails = targets.map((u) => {
+      const { token, hash } = newAccountToken();
+      patchUser(u.username, { reset_hash: hash, reset_expires: now + RESET_TTL_MS, reset_sent_at: now });
+      return { to: u.email!, ...resetMail(appName(), appBaseUrl(), u.username, token) };
+    });
+    setImmediate(() => {
+      for (const m of mails) {
+        sendHtmlEmail(m.to, m.subject, m.html).catch((e) => logAccountMailError('reset mail', e));
+      }
+    });
+    return { ok: true };
+  });
+
+  // POST /api/auth/password/reset — the token from the mail plus a new password.
+  app.post('/api/auth/password/reset', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { token, password } = (request.body ?? {}) as { token?: unknown; password?: unknown };
+    if (typeof password !== 'string' || password.length < 8) {
+      return reply.code(400).send({ error: 'Das Passwort braucht mindestens 8 Zeichen' });
+    }
+    const invalid = () => reply.code(400).send({ error: 'Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.' });
+    if (!isWellFormedToken(token)) return invalid();
+    const hash = hashAccountToken(token);
+    const now = Date.now();
+    const user = findUsers((u) => u.reset_hash === hash)[0];
+    if (!user || !user.reset_expires || user.reset_expires <= now) return invalid();
+    resetPassword(user.username, hashPassword(password));
+    return { ok: true };
+  });
+
+  // POST /api/auth/email/verify — public, since the link may be opened on a device with
+  // no session. The token alone identifies the account.
+  app.post('/api/auth/email/verify', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { token } = (request.body ?? {}) as { token?: unknown };
+    const invalid = () => reply.code(400).send({ error: 'Der Link ist ungültig oder abgelaufen.' });
+    if (!isWellFormedToken(token)) return invalid();
+    const hash = hashAccountToken(token);
+    const user = findUsers((u) => u.verify_hash === hash)[0];
+    if (!user || !user.verify_expires || user.verify_expires <= Date.now()) return invalid();
+    patchUser(user.username, { email_verified: true, verify_hash: undefined, verify_expires: undefined });
+    return { ok: true };
+  });
+
+  // POST /api/auth/email/resend — "Bestätigungsmail erneut senden", once per hour.
+  app.post('/api/auth/email/resend', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const user = getUser(username);
+    if (!user?.email) return reply.code(400).send({ error: 'Keine E-Mail-Adresse hinterlegt' });
+    if (user.email_verified) return { ok: true, alreadyVerified: true };
+    if (!accountMailAvailable()) {
+      return reply.code(503).send({ error: 'Dieser Server kann keine E-Mails versenden' });
+    }
+    if (user.verify_sent_at && Date.now() - user.verify_sent_at < VERIFY_RESEND_MS) {
+      return reply.code(429).send({ error: 'Bitte warte eine Stunde, bevor du die Mail erneut anforderst' });
+    }
+    if (!(await sendVerificationMail(username))) {
+      return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
+    }
     return { ok: true };
   });
 
   // ── Report endpoints (JWT) ────────────────────────────────────────────────────
 
-  // Use APP_URL env var — never derive the base URL from request headers to
-  // prevent host-header poisoning attacks on generated email links.
-  const APP_BASE_URL = (process.env.APP_URL ?? '').replace(/\/$/, '');
 
   function isValidEmail(s: string): boolean {
     if (!s || s.length > 254) return false;
@@ -1370,7 +1517,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const period = (query.period === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = query.date ? new Date(query.date + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
-    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL, reportPhotoSigner(username));
+    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username));
     return reply.type('text/html').send(html);
   });
 
@@ -1394,7 +1541,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(username), period, date, APP_BASE_URL, reportPhotoSigner(username));
+    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username));
     try {
       await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
     } catch (e: unknown) {
@@ -1465,7 +1612,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async () => {
     const firstUser = getUserCount() === 0;
-    return { allowed: registrationOpen(), firstUser, requiresPow: registrationRequiresPow() };
+    return {
+      allowed: registrationOpen(), firstUser, requiresPow: registrationRequiresPow(),
+      // Whether "Passwort vergessen?" can work at all here (#324 S18). Says nothing
+      // about any account, only whether this server can send the mail.
+      passwordReset: accountMailAvailable(),
+    };
   });
 
   /**
@@ -1671,7 +1823,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!registrationOpen()) {
       return reply.code(403).send({ error: 'Registrierung deaktiviert' });
     }
-    const { username, password, pow } = request.body as { username?: string; password?: string; pow?: unknown };
+    const { username, password, pow, email } = request.body as { username?: string; password?: string; pow?: unknown; email?: unknown };
     // Checked before the username, so the solution is spent even when the name turns
     // out to be taken: one solved challenge buys one attempt, not a probe per name.
     if (registrationRequiresPow()) {
@@ -1690,11 +1842,22 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     const usernameErr = usernameError(username);
     if (usernameErr) return reply.code(400).send({ error: usernameErr });
+    // Optional address (#324 S19), the only way to a password reset later on.
+    const address = typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
+    if (email !== undefined && email !== null && email !== '' && (!address || !isValidEmail(address))) {
+      return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
+    }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
     // The very first registered user becomes admin immediately (#173) — rather
     // than relying solely on migrateFirstUserToAdmin() at the next restart,
     // which would leave a window where this session isn't yet admin.
     createUser(username, hashPassword(password), isFirstUser ? 'admin' : undefined);
+    if (address) {
+      updateUserEmail(username, address);
+      // After the response: SMTP can take seconds, and a failed mail must not fail
+      // the registration. "Erneut senden" in the settings covers a lost one.
+      setImmediate(() => { void sendVerificationMail(username); });
+    }
     const user = getUser(username);
     return issueTokens(username, user?.token_version ?? 0, reply);
   });
@@ -2326,7 +2489,7 @@ async function main() {
       try {
         const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
         const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-        const baseUrl = process.env.APP_URL ?? `http://localhost:${PORT}`;
+        const baseUrl = appBaseUrl() || `http://localhost:${PORT}`;
         const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
         await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
         markScheduleSent(reportUser, Date.now());
@@ -2361,8 +2524,8 @@ async function main() {
         );
       }
     }
-    if (isEmailConfigured() && !process.env.APP_URL) {
-      console.warn('[reports] WARNING: SMTP is configured but APP_URL is not set — photo URLs in emails will be broken. Set APP_URL to the public base URL of this server.');
+    if (isEmailConfigured() && !appBaseUrl()) {
+      console.warn('[reports] WARNING: SMTP is configured but no App-URL is set — links in emails (report photos, password reset, address verification) will be broken. Set it under Admin → Server-Einstellungen or via APP_URL.');
     }
   } catch (err) {
     console.error(err);

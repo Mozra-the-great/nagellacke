@@ -18,6 +18,7 @@ import type { UpdateProgress } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
+import { saveAccountEmail, resendVerification } from '../utils/account';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -120,6 +121,36 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     // admin account (#173). Lives here rather than at the call site so the
     // two-step 2FA login refreshes the role too, not just the direct login.
     onAuthChange();
+  };
+
+  const doSaveAccountEmail = async () => {
+    setAccountEmailStatus('saving');
+    setAccountEmailMessage('');
+    try {
+      const sent = await saveAccountEmail(accountEmail.trim());
+      const normalized = accountEmail.trim().toLowerCase();
+      if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
+      setSavedAccountEmail(normalized);
+      setAccountEmail(normalized);
+      setAccountEmailStatus('idle');
+      setAccountEmailMessage(sent ? 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.' : 'Gespeichert.');
+    } catch (e) {
+      setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAccountEmailStatus('error');
+    }
+  };
+
+  const doResendVerification = async () => {
+    setAccountEmailStatus('resending');
+    setAccountEmailMessage('');
+    try {
+      await resendVerification();
+      setAccountEmailStatus('idle');
+      setAccountEmailMessage('Mail gesendet.');
+    } catch (e) {
+      setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAccountEmailStatus('error');
+    }
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -376,6 +407,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [scheduleSaveError, setScheduleSaveError] = useState('');
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
+  // ── Konto-E-Mail (#324 S19): the address a password reset goes to ──
+  const [accountEmail, setAccountEmail] = useState('');
+  const [savedAccountEmail, setSavedAccountEmail] = useState<string | null>(null);
+  const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
+  const [accountEmailStatus, setAccountEmailStatus] = useState<'idle' | 'saving' | 'resending' | 'error'>('idle');
+  const [accountEmailMessage, setAccountEmailMessage] = useState('');
+
   // ── KI-Assistenz ──
   const [aiProvider, setAiProvider] = useState<AiProvider>('openrouter');
   const [aiOpenrouterKey, setAiOpenrouterKey] = useState('');
@@ -452,7 +490,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     const controller = new AbortController();
     const { signal } = controller;
 
-    type MeResponse = { email?: string | null; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
+    type MeResponse = { email?: string | null; emailVerified?: boolean; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
     type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
 
     // Load email + smtp status + 2FA status
@@ -461,6 +499,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       .then(d => {
         if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
+        setAccountEmail(d.email ?? '');
+        setSavedAccountEmail(d.email ?? null);
+        // Absent on a server older than #324 S19: no status to show then.
+        setEmailVerified(typeof d.emailVerified === 'boolean' ? d.emailVerified : null);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
         setTotpEnabled(!!d.totpEnabled);
         setRecoveryCodesRemaining(d.recoveryCodesRemaining ?? 0);
@@ -798,6 +840,42 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     onAuthChange();
                   }}
                 >Abmelden</button>
+              </div>
+              <label className={styles.field}>
+                <span>
+                  Konto-E-Mail
+                  {savedAccountEmail && emailVerified === true && <span className={styles.fieldHint}> (bestätigt)</span>}
+                  {savedAccountEmail && emailVerified === false && <span className={styles.fieldHint}> (nicht bestätigt)</span>}
+                </span>
+                <input type="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} autoComplete="email" />
+                <p className={styles.fieldHelpText}>
+                  An diese Adresse geht der Link, wenn du dein Passwort vergessen hast, aber erst, nachdem du sie bestätigt hast.
+                </p>
+              </label>
+              <div role="status" aria-live="polite" aria-atomic="true">
+                {accountEmailMessage && (
+                  <div className={accountEmailStatus === 'error' ? styles.errorBanner : styles.successBanner}>{accountEmailMessage}</div>
+                )}
+              </div>
+              <div className={styles.btnRow} style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className={styles.syncBtn}
+                  disabled={!accountEmail.trim() || accountEmail.trim().toLowerCase() === savedAccountEmail || accountEmailStatus === 'saving'}
+                  onClick={() => void doSaveAccountEmail()}
+                >
+                  {accountEmailStatus === 'saving' ? 'Speichere…' : 'Adresse speichern'}
+                </button>
+                {savedAccountEmail && emailVerified === false && (
+                  <button
+                    type="button"
+                    className={styles.syncBtn}
+                    disabled={accountEmailStatus === 'resending'}
+                    onClick={() => void doResendVerification()}
+                  >
+                    {accountEmailStatus === 'resending' ? 'Sende…' : 'Bestätigungsmail erneut senden'}
+                  </button>
+                )}
               </div>
               {logoutAllStatus === 'idle' ? (
                 <button type="button" className={styles.logoutBtn} onClick={() => setLogoutAllStatus('confirm')}>

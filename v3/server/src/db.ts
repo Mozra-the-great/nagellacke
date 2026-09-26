@@ -284,6 +284,17 @@ export interface User {
   // and a wrong TOTP code are different failure modes with independent budgets.
   login_fail_count?: number;
   login_locked_until?: number;
+  // Password reset (#324 S17). Only the sha256 of the emailed token is stored, the
+  // pattern recovery_codes uses: a leaked users.json does not hand out reset links.
+  reset_hash?: string;
+  reset_expires?: number;        // epoch ms
+  reset_sent_at?: number;        // epoch ms; throttles repeat mails to one address
+  // E-mail verification (#324 S19), same shape. Unverified accounts work fully; they
+  // only cannot trigger a password reset, since the reset mail goes to that address.
+  email_verified?: boolean;
+  verify_hash?: string;
+  verify_expires?: number;
+  verify_sent_at?: number;
   // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
   // single fixed RP ID across this app's self-hosted deployment topologies).
   // webauthn_credentials?: WebAuthnCredential[];
@@ -346,13 +357,64 @@ export function bumpTokenVersion(username: string): number {
   return next;
 }
 
+/**
+ * Sets the account's e-mail address. A changed address is unverified again (#324 S19):
+ * whoever controlled the old one proved nothing about the new one. Setting the same
+ * address again keeps its status.
+ */
 export function updateUserEmail(username: string, email: string): void {
   const users = readUsers();
   const idx = users.findIndex((u) => u.username === username);
   if (idx >= 0) {
+    const unchanged = users[idx].email === email;
     users[idx] = { ...users[idx], email };
+    if (!unchanged) {
+      delete users[idx].email_verified;
+      delete users[idx].verify_hash;
+      delete users[idx].verify_expires;
+    }
     writeUsers(users);
   }
+}
+
+/** Shallow-merges `changes` into one user; a key set to undefined is removed. */
+export function patchUser(username: string, changes: Partial<Omit<User, 'username'>>): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  const next: User = { ...users[idx] };
+  for (const [k, v] of Object.entries(changes) as [keyof User, unknown][]) {
+    if (v === undefined) delete next[k];
+    else (next as unknown as Record<string, unknown>)[k] = v;
+  }
+  users[idx] = next;
+  writeUsers(users);
+}
+
+export function findUsers(predicate: (u: User) => boolean): User[] {
+  return readUsers().filter(predicate);
+}
+
+/**
+ * Replaces the password after a reset (#324 S17): clears the reset token so the link
+ * works once, clears the login lockout the forgotten password may have caused, and
+ * bumps token_version so every session and photo link issued before is dead.
+ */
+export function resetPassword(username: string, passwordHash: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  const next: User = {
+    ...users[idx],
+    password_hash: passwordHash,
+    token_version: (users[idx].token_version ?? 0) + 1,
+  };
+  delete next.reset_hash;
+  delete next.reset_expires;
+  delete next.login_fail_count;
+  delete next.login_locked_until;
+  users[idx] = next;
+  writeUsers(users);
 }
 
 // ── TOTP (2FA, #174) ─────────────────────────────────────────────────────────
