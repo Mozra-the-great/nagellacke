@@ -465,7 +465,7 @@ export default function AdminPage() {
           source={settings?.publicInstanceSource}
           value={publicInstance}
           onChange={setPublicInstance}
-          help="Für einen Server, auf dem sich Fremde registrieren können. Bisher wird der Wert nur gespeichert und über /api/instance-config gemeldet; die Web-Oberfläche dafür (Einleitungsseite, kein Sync-Knopf) folgt. Die Android-App ist davon nicht betroffen."
+          help="Für einen Server, auf dem sich Fremde registrieren können. Blendet in der Web-App den Knopf „Jetzt syncen“ aus; die Einleitungsseite vor der Anmeldung folgt in einem späteren Update. Die Android-App ist davon nicht betroffen."
         />
 
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: '16px 0 12px', color: 'var(--md-on-surface-variant)' }}>
