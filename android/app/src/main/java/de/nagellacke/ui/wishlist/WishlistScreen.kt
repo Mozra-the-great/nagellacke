@@ -26,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,9 +70,20 @@ fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
     LaunchedEffect(smartCartStatus) {
         if (smartCartStatus is SmartCartStatus.Done) smartCartPrompt = ""
     }
+    // Autofill result (#324 S22): success, nothing found, or why it failed — e.g. AI
+    // switched off on the server, which used to look exactly like a job still running.
+    val aiMessage by vm.aiMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(aiMessage) {
+        aiMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.dismissAiMessage()
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Wunschliste", fontWeight = FontWeight.Bold) }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { editing = null; showForm = true },

@@ -27,6 +27,8 @@ import de.nagellacke.domain.model.SortOption
 import de.nagellacke.domain.sortPolishes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -83,9 +85,14 @@ class CollectionViewModel @Inject constructor(
     fun setCategory(c: String)       = _filter.update { it.copy(category = c) }
     fun setSort(s: SortOption)       = _filter.update { it.copy(sort = s) }
 
+    // Result of the last autofill run (#324 S22), shown once as a snackbar.
+    private val _aiMessage = MutableStateFlow<String?>(null)
+    val aiMessage: StateFlow<String?> = _aiMessage.asStateFlow()
+    fun dismissAiMessage() { _aiMessage.value = null }
+
     fun addPolish(p: Polish, autofill: Boolean = false) = viewModelScope.launch {
         repo.addPolish(p)
-        if (autofill) aiAssistant.runAutofill(p.id, p.name, p.brand, p.num)
+        if (autofill) _aiMessage.value = AiAssistant.message(aiAssistant.runAutofill(p.id, p.name, p.brand, p.num))
     }
     fun updatePolish(p: Polish)      = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String)     = viewModelScope.launch { repo.deletePolish(id) }

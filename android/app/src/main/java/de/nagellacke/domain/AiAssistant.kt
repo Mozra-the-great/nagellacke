@@ -24,6 +24,20 @@ class AiAssistant @Inject constructor(
         data class Failed(val message: String) : AutofillOutcome()
     }
 
+    companion object {
+        /**
+         * What the collection and wishlist screens tell the user once an autofill job ends
+         * (#324 S22). The outcome used to be dropped, so a server with AI switched off, or a
+         * job that found nothing, looked exactly like one still running. A failure carries
+         * the server's own German message, e.g. the 403 for AI switched off by the admin.
+         */
+        fun message(outcome: AutofillOutcome): String = when (outcome) {
+            AutofillOutcome.Applied -> "KI-Auto-Fill: Farbe und Finish ergänzt."
+            AutofillOutcome.NoResult -> "KI-Auto-Fill hat nichts Passendes gefunden."
+            is AutofillOutcome.Failed -> "KI-Auto-Fill fehlgeschlagen: ${outcome.message}"
+        }
+    }
+
     private fun client(): AiClient? {
         val cfg = configStore.getConfig() ?: return null
         if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
