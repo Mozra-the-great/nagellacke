@@ -61,7 +61,13 @@ function photoTag(filename: string | undefined | null, alt: string, photoSrc: Ph
  *   `?t=` token, and the report is opened as a blob: document where a relative
  *   path wouldn't resolve against the app origin — pass `absolutePhotoUrl`.
  */
-export function generateReport(data: AppData, period: 'week' | 'month', ref: Date, photoSrc: PhotoSrc): string {
+/**
+ * @param appName Shown in the report's title, cover and footer: the instance's branding
+ *   title (#324 S8). Escaped like every other value, since it comes from the server and
+ *   the report opens as a blob: document on the app's own origin.
+ */
+export function generateReport(data: AppData, period: 'week' | 'month', ref: Date, photoSrc: PhotoSrc, appName = 'Nagellacke'): string {
+  const app = escHtml(appName);
   const { start, end, label } = getPeriodBounds(period, ref);
 
   const inPeriod = (ts: number) => ts >= start.getTime() && ts <= end.getTime();
@@ -272,7 +278,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nagellacke ${periodLabel} · ${label}</title>
+  <title>${app} ${periodLabel} · ${label}</title>
   <style>${css}</style>
 </head>
 <body>
@@ -281,7 +287,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
   <!-- Cover -->
   <div class="cover">
     <div class="cover-emoji">💅</div>
-    <div class="cover-title">Nagellacke</div>
+    <div class="cover-title">${app}</div>
     <div class="cover-sub">${periodLabel} · ${label}</div>
     <div class="cover-chips">
       <div class="chip"><strong>${newPolishes.length}</strong> neue Lacke</div>
@@ -342,7 +348,7 @@ export function generateReport(data: AppData, period: 'week' | 'month', ref: Dat
   </div>
 
   <div style="text-align:center;padding:24px 32px 48px;color:#ad5d78;font-size:12px;font-style:italic">
-    Erstellt am ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })} · Nagellacke
+    Erstellt am ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })} · ${app}
   </div>
 </body>
 </html>`;

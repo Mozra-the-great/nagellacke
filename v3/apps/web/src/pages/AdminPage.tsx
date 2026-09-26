@@ -7,6 +7,7 @@ import {
 import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo, UpdateProgress } from '../utils/admin';
 import { saveAiSettings } from '../utils/ai';
 import type { AiProvider, SearchBackend } from '../utils/ai';
+import BrandingSection from '../components/BrandingSection';
 import styles from './SettingsPage.module.css';
 
 type Status = 'idle' | 'loading' | 'saved' | 'error';
@@ -524,6 +525,8 @@ export default function AdminPage() {
           Neustart des Servers ist dafür nötig, das Panel zeigt den Wert nur an.
         </p>
       </section>
+
+      <BrandingSection />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>

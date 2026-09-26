@@ -32,6 +32,21 @@
   padding: 18px 0 8px;
 }
 
+.appLogo {
+  display: block;
+  margin: 0 auto;
+  max-height: clamp(40px, 7vw, 72px);
+  max-width: min(80vw, 480px);
+  object-fit: contain;
+}
+
+.appTagline {
+  margin: 4px 0 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--md-on-surface-variant);
+}
+
 .appTitle {
   font-family: var(--font-display);
   font-size: clamp(34px, 6vw, 62px);

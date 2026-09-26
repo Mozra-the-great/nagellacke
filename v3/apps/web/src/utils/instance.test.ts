@@ -64,4 +64,17 @@ describe('fetchInstanceConfig (#324)', () => {
     expect(aiOffered(null)).toBe(true);
     expect(photoUploadsOffered(null)).toBe(true);
   });
+
+  it('resolves the logo against the configured server and drops a colour that is not #rrggbb', async () => {
+    localStorage.setItem('nagellacke_v3_sync', JSON.stringify({ provider: 'server', serverUrl: 'https://srv.example' }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ branding: { name: 'X', title: 'X', logoUrl: '/api/branding/logo?v=1', accentColor: 'red;}' } }),
+    }));
+    const { fetchInstanceConfig, brandingLogoSrc } = await freshModule();
+    const cfg = await fetchInstanceConfig();
+    expect(brandingLogoSrc(cfg)).toBe('https://srv.example/api/branding/logo?v=1');
+    expect(cfg?.branding.accentColor).toBeNull();
+    expect(brandingLogoSrc(null)).toBeNull();
+  });
 });

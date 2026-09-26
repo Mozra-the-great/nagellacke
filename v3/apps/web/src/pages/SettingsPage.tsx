@@ -838,7 +838,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     await ensurePhotoToken();
     // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
     // which shifts getPeriodBounds off by one day in UTC-offset timezones.
-    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'), absolutePhotoUrl);
+    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'), absolutePhotoUrl, instanceConfig?.branding.title);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');

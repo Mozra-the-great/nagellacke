@@ -13,7 +13,7 @@ import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
 import { plural } from './utils/plural';
 import { fetchRole } from './utils/auth';
-import { refreshInstanceConfig } from './utils/instance';
+import { refreshInstanceConfig, useInstanceConfig, brandingLogoSrc, DEFAULT_NAME, DEFAULT_TITLE } from './utils/instance';
 import type { Role } from './utils/auth';
 import styles from './App.module.css';
 
@@ -62,6 +62,30 @@ export default function App() {
     // the refresh cookie for it, which is after this effect first ran.
   }, [authVersion, appData.sessionRestored]);
 
+  // Branding (#324 S8). Without an answer from the server everything stays as it
+  // always was: the defaults below, index.html's title and the stylesheet's accent.
+  const instanceConfig = useInstanceConfig();
+  const branding = instanceConfig?.branding ?? null;
+  const brandName = branding?.name ?? DEFAULT_NAME;
+  const logoSrc = brandingLogoSrc(instanceConfig);
+  const brandTitle = branding?.title ?? DEFAULT_TITLE;
+  const accent = branding?.accentColor ?? null;
+  useEffect(() => { document.title = brandTitle; }, [brandTitle]);
+  useEffect(() => {
+    // Only --md-primary: every other colour token stays as designed.
+    const root = document.documentElement;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const originalMeta = meta?.getAttribute('content') ?? null;
+    if (accent) {
+      root.style.setProperty('--md-primary', accent);
+      meta?.setAttribute('content', accent);
+    }
+    return () => {
+      root.style.removeProperty('--md-primary');
+      if (meta && originalMeta !== null) meta.setAttribute('content', originalMeta);
+    };
+  }, [accent]);
+
   const navItems = role === 'admin'
     ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '◈ Admin' }]
     : BASE_NAV_ITEMS;
@@ -81,7 +105,10 @@ export default function App() {
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.titleArea}>
-          <h1 className={styles.appTitle}>Nail Lacquer</h1>
+          <h1 className={styles.appTitle}>
+            {logoSrc ? <img className={styles.appLogo} src={logoSrc} alt={brandName} /> : brandName}
+          </h1>
+          {branding?.tagline && <p className={styles.appTagline}>{branding.tagline}</p>}
           <p className={styles.appSubtitle}>
             {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
           </p>

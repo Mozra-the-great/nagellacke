@@ -12,12 +12,29 @@ export interface InstanceConfig {
   photoUploads: boolean;
   ai: boolean;
   branding: {
+    /** Header wordmark text. */
     name: string;
+    /** Browser tab and report title. */
+    title: string;
     tagline: string | null;
     accentColor: string | null;
     logoUrl: string | null;
     introText: string | null;
   };
+}
+
+/** The app's own names, used whenever the server says nothing (#324 S8). */
+export const DEFAULT_NAME = 'Nail Lacquer';
+export const DEFAULT_TITLE = 'Nagellacke';
+
+/**
+ * The logo's URL, resolved against the server that reported it: logoUrl is a server
+ * path, and the web app may be served from a different origin than the API.
+ */
+export function brandingLogoSrc(cfg: InstanceConfig | null): string | null {
+  const url = cfg?.branding.logoUrl;
+  if (!url) return null;
+  return url.startsWith('/') ? `${serverBase()}${url}` : null;
 }
 
 /**
@@ -39,9 +56,12 @@ export async function fetchInstanceConfig(signal?: AbortSignal): Promise<Instanc
       photoUploads: d.photoUploads !== false,
       ai: d.ai !== false,
       branding: {
-        name: typeof b.name === 'string' && b.name ? b.name : 'Nail Lacquer',
+        name: typeof b.name === 'string' && b.name ? b.name : DEFAULT_NAME,
+        title: typeof b.title === 'string' && b.title ? b.title : DEFAULT_TITLE,
         tagline: typeof b.tagline === 'string' ? b.tagline : null,
-        accentColor: typeof b.accentColor === 'string' ? b.accentColor : null,
+        // Re-checked here although the server validates it: it goes into a CSS
+        // custom property, and this client may be talking to any server.
+        accentColor: typeof b.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(b.accentColor) ? b.accentColor : null,
         logoUrl: typeof b.logoUrl === 'string' ? b.logoUrl : null,
         introText: typeof b.introText === 'string' ? b.introText : null,
       },
