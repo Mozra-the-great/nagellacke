@@ -108,19 +108,14 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [newCatLabel, setNewCatLabel] = useState('');
 
   const applyLoginTokens = (token: string, refreshToken: string | undefined) => {
-    const c: SyncConfig = {
-      provider: 'server',
-      serverUrl,
-      serverToken: token,
-      serverRefreshToken: refreshToken,
-    };
-    saveSyncConfig(c);
-    setConfig(c);
+    // Stores the session and syncs — or, on a public instance with a collection
+    // already in this browser, first asks whether to take it along (#324 S16).
+    appData.signIn(serverUrl, token, refreshToken, instanceConfig?.publicInstance === true);
+    setConfig(loadSyncConfig());
     setServerToken(token);
     // A photo token cached for whoever was signed in before would be refused
     // for this account's photos until it expired (#352).
     clearPhotoToken();
-    void appData.sync();
     // Re-reads GET /api/auth/me so the Admin tab appears immediately for an
     // admin account (#173). Lives here rather than at the call site so the
     // two-step 2FA login refreshes the role too, not just the direct login.

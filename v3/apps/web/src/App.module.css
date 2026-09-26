@@ -149,3 +149,25 @@
     justify-content: flex-start;
   }
 }
+
+/* Public instance, working without an account (#324 S16): a standing reminder that
+   also keeps the choice reversible. */
+.localOnlyBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  padding: 10px 24px;
+  font-size: 13px;
+  color: var(--md-on-surface-variant);
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+.localOnlyBannerBtn {
+  color: var(--md-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppData, shouldShowFinishMigrationNotice } from './useAppData';
+import { useAppData, shouldShowFinishMigrationNotice, loadSyncConfig, hasLocalOnlyAck, setLocalOnlyAck } from './useAppData';
 import { SnackbarProvider } from './components/Snackbar';
 import LocalLoadErrorNotice from './components/LocalLoadErrorNotice';
 import FinishMigrationNotice from './components/FinishMigrationNotice';
+import IntroGate from './components/IntroGate';
+import AdoptLocalDataDialog from './components/AdoptLocalDataDialog';
 import ErrorBoundary from './components/ErrorBoundary';
 import CollectionPage from './pages/CollectionPage';
 import CartPage from './pages/CartPage';
@@ -16,7 +18,8 @@ import { fetchRole } from './utils/auth';
 import { fetchLegalPages, legalPageForHash, LEGAL_ROUTES } from './utils/legal';
 import type { LegalPages } from './utils/legal';
 import LegalPage from './pages/LegalPage';
-import { refreshInstanceConfig, useInstanceConfig, brandingLogoSrc, DEFAULT_NAME, DEFAULT_TITLE } from './utils/instance';
+import { refreshInstanceConfig, useInstanceConfig, useInstanceConfigLoaded, introGateVisible, brandingLogoSrc, DEFAULT_NAME, DEFAULT_TITLE } from './utils/instance';
+import { clearPhotoToken } from './utils/photoToken';
 import type { Role } from './utils/auth';
 import styles from './App.module.css';
 
@@ -108,6 +111,29 @@ export default function App() {
     setHash('');
   };
 
+  // Public-instance intro gate (#324 S16). Read on every render: App re-renders on each
+  // login and logout (authVersion), which is exactly when the sync config changes.
+  const instanceLoaded = useInstanceConfigLoaded();
+  const [localOnlyAck, setLocalOnlyAckState] = useState(hasLocalOnlyAck);
+  const hasSyncConfig = loadSyncConfig() !== null;
+  const gateShown = introGateVisible({
+    config: instanceConfig, hasSyncConfig, localOnlyAck, onLegalPage: legalKey !== null,
+  });
+  // Until the server has answered, a visitor the gate might be meant for sees an empty
+  // page rather than the app flashing up and being taken away again.
+  const gatePending = !instanceLoaded && !hasSyncConfig && !localOnlyAck && legalKey === null;
+  const localOnlyBanner = instanceConfig?.publicInstance === true && localOnlyAck && !hasSyncConfig;
+  const chooseLocalOnly = () => { setLocalOnlyAck(true); setLocalOnlyAckState(true); };
+  const leaveLocalOnly = () => { setLocalOnlyAck(false); setLocalOnlyAckState(false); };
+  const gateSignedIn = (token: string, refreshToken: string | undefined) => {
+    appData.signIn('', token, refreshToken, true);
+    clearPhotoToken();
+    setLocalOnlyAckState(false);
+    setTab('collection');
+    refreshAuth();
+  };
+  const hideAppChrome = gateShown || gatePending;
+
   const navItems = role === 'admin'
     ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '◈ Admin' }]
     : BASE_NAV_ITEMS;
@@ -131,10 +157,13 @@ export default function App() {
             {logoSrc ? <img className={styles.appLogo} src={logoSrc} alt={brandName} /> : brandName}
           </h1>
           {branding?.tagline && <p className={styles.appTagline}>{branding.tagline}</p>}
-          <p className={styles.appSubtitle}>
-            {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
-          </p>
+          {!hideAppChrome && (
+            <p className={styles.appSubtitle}>
+              {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
+            </p>
+          )}
         </div>
+        {!hideAppChrome && (
         <nav className={styles.navRow}>
           {navItems.map(({ id, label }) => (
             <button
@@ -153,7 +182,17 @@ export default function App() {
             </button>
           ))}
         </nav>
+        )}
       </header>
+
+      {localOnlyBanner && (
+        <div className={styles.localOnlyBanner} role="note">
+          <span>Du arbeitest ohne Konto: Deine Sammlung liegt nur in diesem Browser.</span>
+          <button type="button" className={styles.localOnlyBannerBtn} onClick={leaveLocalOnly}>
+            Konto erstellen oder anmelden
+          </button>
+        </div>
+      )}
 
       <main className={styles.main}>
         {/* Keyed by tab so switching away from a crashed page (nav above stays
@@ -163,6 +202,12 @@ export default function App() {
           legalLoaded
             ? <LegalPage page={legal?.[legalKey] ?? null} onBack={leaveLegal} />
             : null
+        ) : gatePending ? null : gateShown ? (
+          <IntroGate
+            introText={branding?.introText ?? null}
+            onAuthenticated={gateSignedIn}
+            onLocalOnly={chooseLocalOnly}
+          />
         ) : (
         <ErrorBoundary key={tab}>
           {tab === 'collection' && <CollectionPage appData={appData} />}
@@ -183,6 +228,10 @@ export default function App() {
           {legal.impressum && <a href={LEGAL_ROUTES.impressum}>{legal.impressum.title}</a>}
           {legal.datenschutz && <a href={LEGAL_ROUTES.datenschutz}>{legal.datenschutz.title}</a>}
         </footer>
+      )}
+
+      {appData.pendingAdoption !== null && (
+        <AdoptLocalDataDialog count={appData.pendingAdoption} onResolve={appData.resolveAdoption} />
       )}
 
       {showFinishMigrationNotice && (
