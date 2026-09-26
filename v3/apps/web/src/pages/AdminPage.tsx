@@ -110,6 +110,8 @@ export default function AdminPage() {
   const [publicInstance, setPublicInstance] = useState(false);
   const [registrationPow, setRegistrationPow] = useState(false);
   const [appUrl, setAppUrl] = useState('');
+  const [webauthnRpId, setWebauthnRpId] = useState('');
+  const [passkeyDropStatus, setPasskeyDropStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -146,6 +148,7 @@ export default function AdminPage() {
       setPublicInstance(s.publicInstance ?? false);
       setRegistrationPow(s.registrationPow ?? false);
       setAppUrl(s.appUrl);
+      setWebauthnRpId(s.webauthnRpId ?? '');
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -177,6 +180,8 @@ export default function AdminPage() {
         registrationPow,
         // Only sent when changed, so saving the SMTP block never pins an env value into the panel.
         ...(settings && appUrl.trim() !== settings.appUrl ? { appUrl: appUrl.trim() } : {}),
+        // Only a server that reports passkeys knows the field (#228).
+        ...(settings?.passkeys ? { webauthnRpId: webauthnRpId.trim() } : {}),
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -525,6 +530,39 @@ export default function AdminPage() {
             leer lassen, um auf die Umgebungsvariable <code>APP_URL</code> zurückzufallen.
           </p>
         </label>
+
+        {settings?.passkeys && (
+          <label className={styles.field}>
+            <span>Passkey-Domain <span className={styles.fieldHint}>(optional)</span></span>
+            <input value={webauthnRpId} onChange={(e) => setWebauthnRpId(e.target.value)} placeholder={settings.passkeys.rpId ?? 'example.de'} />
+            <p className={styles.fieldHelpText}>
+              Passkeys werden an eine Domain gebunden. Ohne Eintrag ist das der Host der App-URL
+              {settings.passkeys.rpId ? <> (derzeit <code>{settings.passkeys.rpId}</code>)</> : null}; eine übergeordnete
+              Domain lässt Passkeys auch auf weiteren Subdomains gelten. <strong>Wer die Domain oder den Host der App-URL
+              ändert, macht alle bestehenden Passkeys unbrauchbar</strong> – sie lassen sich nicht umziehen, die Konten
+              melden sich dann wieder mit Passwort an. Test- und Live-Instanz haben getrennte Passkeys.
+              {settings.passkeys.problem ? <> Derzeit nicht nutzbar: {settings.passkeys.problem}</> : null}
+            </p>
+          </label>
+        )}
+        {settings?.passkeys && settings.passkeys.stale > 0 && (
+          <div className={styles.warningBanner} style={{ gap: 12, flexWrap: 'wrap' }}>
+            <span>{settings.passkeys.stale} von {settings.passkeys.total} gespeicherten Passkeys gehören zu einer früheren Domain und funktionieren nicht mehr.</span>
+            <button
+              type="button"
+              className={styles.syncBtn}
+              disabled={passkeyDropStatus === 'loading'}
+              onClick={() => {
+                setPasskeyDropStatus('loading');
+                saveSettings({ dropStalePasskeys: true })
+                  .then(() => { setPasskeyDropStatus('idle'); loadSettings(); })
+                  .catch(() => setPasskeyDropStatus('error'));
+              }}
+            >
+              {passkeyDropStatus === 'loading' ? 'Entferne…' : 'Veraltete Passkeys entfernen'}
+            </button>
+          </div>
+        )}
 
         {settingsSaveStatus === 'error' && <div className={styles.errorBanner}>{settingsSaveError}</div>}
         <div className={styles.btnRow} style={{ marginBottom: 16 }}>

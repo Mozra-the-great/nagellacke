@@ -18,6 +18,7 @@ import type { UpdateProgress } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
+import PasskeySection from '../components/PasskeySection';
 import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
@@ -1663,6 +1664,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 </div>
               </div>
             )}
+            {serverToken && <PasskeySection />}
           </>
         )}
       </section>

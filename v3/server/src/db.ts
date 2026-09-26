@@ -5,6 +5,7 @@ import { normalizeFinish, type AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
 import { hashRecoveryCode } from './totp';
+import type { StoredPasskey } from './passkeys';
 import { BRANDING_PRESETS, DEFAULT_BRANDING_SETTINGS } from './branding';
 import type { BrandingPreset, BrandingSettings } from './branding';
 
@@ -295,9 +296,10 @@ export interface User {
   verify_hash?: string;
   verify_expires?: number;
   verify_sent_at?: number;
-  // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
-  // single fixed RP ID across this app's self-hosted deployment topologies).
-  // webauthn_credentials?: WebAuthnCredential[];
+  // Passkeys (#228). The user handle is random rather than the username, so an
+  // authenticator's stored account list does not carry the name into other contexts.
+  webauthn_user_id?: string;     // base64url, 16 random bytes, fixed per account
+  webauthn_credentials?: StoredPasskey[];
 }
 
 function readUsers(): User[] {
@@ -838,6 +840,11 @@ export interface ServerSettings {
   publicInstance?: { enabled?: boolean };
   /** Require a proof of work on POST /api/auth/register (#324 S13). undefined = off. */
   registrationPow?: boolean;
+  /**
+   * Narrows the passkey relying party to a parent domain of the App-URL's host (#228),
+   * e.g. `example.de` for `app.example.de`. Unset = the App-URL's host itself.
+   */
+  webauthnRpId?: string;
 }
 
 /** Whether new photos may be uploaded (#324). Deleting and reading are never affected. */

@@ -3,6 +3,7 @@ import { fetchPowSolution } from '../utils/pow';
 import type { PowSolution } from '../utils/pow';
 import { fetchLegalPages, LEGAL_ROUTES } from '../utils/legal';
 import { requestPasswordReset } from '../utils/account';
+import { loginWithPasskey, passkeyErrorMessage, passkeysSupported } from '../utils/passkeys';
 import type { LegalPages } from '../utils/legal';
 import styles from '../pages/SettingsPage.module.css';
 
@@ -47,6 +48,9 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
   const [forgotId, setForgotId] = useState('');
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
   const [forgotError, setForgotError] = useState('');
+  // "Mit Passkey anmelden" (#228): offered where the server can verify passkeys and the
+  // browser can create them (secure context).
+  const [serverPasskeys, setServerPasskeys] = useState(false);
   const [registerStatus, setRegisterStatus] = useState<'idle' | 'pow' | 'loading' | 'error'>('idle');
   const [registerError, setRegisterError] = useState('');
 
@@ -200,11 +204,12 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
     const controller = new AbortController();
     const base = serverUrl.replace(/\/$/, '');
     fetch(`${base}/api/auth/registration-status`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean; requiresPow?: boolean; passwordReset?: boolean }> : null))
+      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean; requiresPow?: boolean; passwordReset?: boolean; passkeys?: boolean }> : null))
       .then((data) => {
         setRegistrationAllowed(data?.allowed ?? null);
         setRegistrationRequiresPow(data?.requiresPow === true);
         setPasswordResetAvailable(data?.passwordReset === true);
+        setServerPasskeys(data?.passkeys === true);
       })
       .catch(() => { /* offline or older server - stay on login-only */ });
     return () => controller.abort();
@@ -218,6 +223,18 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
     });
     return () => controller.abort();
   }, [authMode]);
+
+  const passkeyLogin = async () => {
+    setLoginStatus('loading');
+    setLoginError('');
+    try {
+      const { token, refreshToken } = await loginWithPasskey(serverUrl.replace(/\/$/, ''));
+      succeed(token, refreshToken);
+    } catch (e) {
+      setLoginError(passkeyErrorMessage(e));
+      setLoginStatus('error');
+    }
+  };
 
   const sendForgot = async () => {
     setForgotStatus('loading');
@@ -406,6 +423,11 @@ export default function ServerAuthForm({ serverUrl, onAuthenticated }: ServerAut
       {/* Only offered when the server said registration is actually
           open (#278) - null means "didn't ask / older server", and
           then this stays a login-only box, exactly as before. */}
+      {authMode === 'login' && serverPasskeys && passkeysSupported() && (
+        <button type="button" className={styles.syncBtn} onClick={() => void passkeyLogin()} disabled={loginStatus === 'loading'}>
+          Mit Passkey anmelden
+        </button>
+      )}
       {authMode === 'login' && passwordResetAvailable && (
         <button
           type="button"

@@ -37,6 +37,15 @@ import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCo
 import { signPhotoToken, verifyPhotoToken } from './photoToken';
 import { issuePowChallenge, PowVerifier } from './pow';
 import {
+  generateRegistrationOptions, verifyRegistrationResponse,
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from '@simplewebauthn/server';
+import {
+  resolveRelyingParty, relyingPartyProblemText, isValidRpId, ChallengeStore, CHALLENGE_TTL_MS,
+  toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
+} from './passkeys';
+import {
   newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
@@ -1190,6 +1199,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       publicInstanceSource: settings.publicInstance?.enabled !== undefined ? 'panel' : 'default',
       registrationPow: registrationPowEnabled(),
       registrationPowSource: settings.registrationPow !== undefined ? 'panel' : 'default',
+      // Passkeys (#228): the effective relying party and how many stored passkeys are
+      // bound to a different one, i.e. dead since the App-URL or the domain changed.
+      webauthnRpId: settings.webauthnRpId ?? '',
+      passkeys: passkeyAdminView(),
       ai: aiSettingsView(getAiConfig()),
       env: {
         port: PORT,
@@ -1218,6 +1231,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       aiEnabled: boolean;
       publicInstance: boolean;
       registrationPow: boolean;
+      webauthnRpId: string;
+      /** Removes every stored passkey bound to an RP ID other than the effective one. */
+      dropStalePasskeys: boolean;
     }>;
     const current = getServerSettings();
     const next: ServerSettings = { ...current };
@@ -1243,6 +1259,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.aiEnabled !== undefined) next.aiEnabled = !!body.aiEnabled;
     if (body.publicInstance !== undefined) next.publicInstance = { ...current.publicInstance, enabled: !!body.publicInstance };
     if (body.registrationPow !== undefined) next.registrationPow = !!body.registrationPow;
+    if (body.webauthnRpId !== undefined) {
+      const rpId = String(body.webauthnRpId).trim().toLowerCase();
+      if (rpId && !isValidRpId(rpId)) {
+        return reply.code(400).send({ error: 'Passkey-Domain muss ein Hostname sein, z. B. example.de' });
+      }
+      next.webauthnRpId = rpId || undefined;
+    }
 
     if (body.smtp) {
       const currentSmtp = current.smtp;
@@ -1262,6 +1285,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     setServerSettings(next);
+    let droppedPasskeys = 0;
+    if (body.dropStalePasskeys) droppedPasskeys = dropStalePasskeys();
     // Never log the actual values of secret fields — only that they changed.
     logAdminAction(actor, 'server_settings.updated', undefined, {
       allowRegistration: body.allowRegistration !== undefined,
@@ -1270,6 +1295,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       aiEnabled: body.aiEnabled !== undefined,
       publicInstance: body.publicInstance !== undefined,
       registrationPow: body.registrationPow !== undefined,
+      webauthnRpId: body.webauthnRpId !== undefined,
+      droppedPasskeys: body.dropStalePasskeys ? droppedPasskeys : undefined,
       smtp: body.smtp !== undefined ? Object.keys(body.smtp) : undefined,
     });
     return { ok: true };
@@ -1367,6 +1394,213 @@ export async function buildApp(): Promise<FastifyInstance> {
     // one again does not, "erneut senden" is for that.
     const verificationSent = changed ? await sendVerificationMail(username) : false;
     return { ok: true, verificationSent };
+  });
+
+  // ── Passkeys (#228) ─────────────────────────────────────────────────────────────
+  //
+  // Opt-in, next to password and TOTP; the password always stays valid, so removing
+  // the last passkey locks nobody out. A passkey login requires user verification
+  // (PIN, fingerprint, face), which makes it two factors by itself — so it issues
+  // tokens directly and never passes through the TOTP step. Nothing before the final
+  // verify ever returns a token: the options calls only hand out a challenge.
+
+  const passkeyChallenges = new ChallengeStore();
+
+  function relyingParty(): ReturnType<typeof resolveRelyingParty> {
+    return resolveRelyingParty(appBaseUrl(), getServerSettings().webauthnRpId);
+  }
+
+  function passkeyAdminView() {
+    const rp = relyingParty();
+    const all = findUsers((u) => !!u.webauthn_credentials?.length).flatMap((u) => u.webauthn_credentials ?? []);
+    const current = typeof rp === 'string' ? null : rp.rpId;
+    return {
+      rpId: current,
+      origin: typeof rp === 'string' ? null : rp.origin,
+      problem: typeof rp === 'string' ? relyingPartyProblemText(rp) : null,
+      total: all.length,
+      stale: all.filter((c) => c.rpId !== current).length,
+    };
+  }
+
+  function dropStalePasskeys(): number {
+    const rp = relyingParty();
+    const current = typeof rp === 'string' ? null : rp.rpId;
+    let dropped = 0;
+    for (const u of findUsers((x) => !!x.webauthn_credentials?.length)) {
+      const keep = (u.webauthn_credentials ?? []).filter((c) => c.rpId === current);
+      dropped += (u.webauthn_credentials?.length ?? 0) - keep.length;
+      patchUser(u.username, { webauthn_credentials: keep.length ? keep : undefined });
+    }
+    return dropped;
+  }
+
+  function requireRelyingParty(reply: FastifyReply): RelyingParty | null {
+    const rp = relyingParty();
+    if (typeof rp === 'string') {
+      void reply.code(409).send({ error: relyingPartyProblemText(rp) });
+      return null;
+    }
+    return rp;
+  }
+
+  // GET /api/auth/passkeys — the caller's passkeys, and whether adding one can work here.
+  app.get('/api/auth/passkeys', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const { username } = request.user as { username: string };
+    const rp = relyingParty();
+    const list = getUser(username)?.webauthn_credentials ?? [];
+    return {
+      available: typeof rp !== 'string',
+      reason: typeof rp === 'string' ? relyingPartyProblemText(rp) : null,
+      passkeys: list.map((c) => ({
+        id: c.id, name: c.name, createdAt: c.createdAt, lastUsedAt: c.lastUsedAt ?? null,
+        // Bound to a different domain than the current one: listed so it can be removed.
+        stale: typeof rp === 'string' || c.rpId !== rp.rpId,
+      })),
+    };
+  });
+
+  app.post('/api/auth/passkeys/register/options', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const rp = requireRelyingParty(reply);
+    if (!rp) return reply;
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    let userId = user.webauthn_user_id;
+    if (!userId) {
+      userId = toBase64Url(crypto.randomBytes(16));
+      patchUser(username, { webauthn_user_id: userId });
+    }
+    const options = await generateRegistrationOptions({
+      rpName: resolveBranding(getBranding()).title,
+      rpID: rp.rpId,
+      userName: username,
+      userID: fromBase64Url(userId),
+      attestationType: 'none',
+      // An authenticator that already holds one of this account's passkeys is refused,
+      // rather than silently creating a second one on the same device.
+      excludeCredentials: (user.webauthn_credentials ?? [])
+        .filter((c) => c.rpId === rp.rpId)
+        .map((c) => ({ id: c.id, transports: c.transports })),
+      // Discoverable, so signing in needs no username first.
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+    });
+    passkeyChallenges.put(options.challenge, { kind: 'register', username, expires: Date.now() + CHALLENGE_TTL_MS });
+    return options;
+  });
+
+  app.post('/api/auth/passkeys/register/verify', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const rp = requireRelyingParty(reply);
+    if (!rp) return reply;
+    const { response, name } = (request.body ?? {}) as { response?: RegistrationResponseJSON; name?: unknown };
+    if (!response || typeof response !== 'object') return reply.code(400).send({ error: 'Antwort des Geräts fehlt' });
+    let verification;
+    try {
+      verification = await verifyRegistrationResponse({
+        response,
+        expectedChallenge: (c) => passkeyChallenges.take(c, 'register', username),
+        expectedOrigin: rp.origin,
+        expectedRPID: rp.rpId,
+        requireUserVerification: true,
+      });
+    } catch (e) {
+      return reply.code(400).send({ error: `Passkey nicht angenommen: ${e instanceof Error ? e.message : 'Fehler'}` });
+    }
+    if (!verification.verified) return reply.code(400).send({ error: 'Passkey nicht angenommen' });
+    const { credential } = verification.registrationInfo;
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    const existing = user.webauthn_credentials ?? [];
+    if (findUsers((u) => (u.webauthn_credentials ?? []).some((c) => c.id === credential.id)).length) {
+      return reply.code(409).send({ error: 'Dieser Passkey ist bereits registriert' });
+    }
+    const label = typeof name === 'string' && name.trim() ? name.trim().slice(0, 60) : `Passkey ${existing.length + 1}`;
+    const stored: StoredPasskey = {
+      id: credential.id,
+      publicKey: toBase64Url(credential.publicKey),
+      counter: credential.counter,
+      transports: credential.transports,
+      name: label,
+      rpId: rp.rpId,
+      createdAt: Date.now(),
+    };
+    patchUser(username, { webauthn_credentials: [...existing, stored] });
+    return { ok: true, id: stored.id, name: stored.name };
+  });
+
+  app.delete('/api/auth/passkeys/:id', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 20, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { id } = request.params as { id: string };
+    const list = getUser(username)?.webauthn_credentials ?? [];
+    const keep = list.filter((c) => c.id !== id);
+    if (keep.length === list.length) return reply.code(404).send({ error: 'Passkey nicht gefunden' });
+    patchUser(username, { webauthn_credentials: keep.length ? keep : undefined });
+    return { ok: true };
+  });
+
+  // POST /api/auth/passkeys/login/options — public. No username: the passkeys are
+  // discoverable, so the authenticator offers the accounts it holds, and nothing here
+  // tells an anonymous caller which accounts exist.
+  app.post('/api/auth/passkeys/login/options', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (_request, reply) => {
+    const rp = requireRelyingParty(reply);
+    if (!rp) return reply;
+    const options = await generateAuthenticationOptions({ rpID: rp.rpId, userVerification: 'required' });
+    passkeyChallenges.put(options.challenge, { kind: 'login', expires: Date.now() + CHALLENGE_TTL_MS });
+    return options;
+  });
+
+  app.post('/api/auth/passkeys/login/verify', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const rp = requireRelyingParty(reply);
+    if (!rp) return reply;
+    const { response } = (request.body ?? {}) as { response?: AuthenticationResponseJSON };
+    const refused = () => reply.code(401).send({ error: 'Anmeldung mit Passkey fehlgeschlagen' });
+    if (!response || typeof response !== 'object' || typeof response.id !== 'string') return refused();
+    const owner = findUsers((u) => (u.webauthn_credentials ?? []).some((c) => c.id === response.id && c.rpId === rp.rpId))[0];
+    const stored = owner?.webauthn_credentials?.find((c) => c.id === response.id);
+    if (!owner || !stored) {
+      // Still spend the challenge, so an unknown credential cannot keep one alive.
+      try {
+        const clientData = JSON.parse(Buffer.from(response.response?.clientDataJSON ?? '', 'base64url').toString('utf-8')) as { challenge?: string };
+        if (typeof clientData.challenge === 'string') passkeyChallenges.take(clientData.challenge, 'login');
+      } catch { /* malformed: nothing to spend */ }
+      return refused();
+    }
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: (c) => passkeyChallenges.take(c, 'login'),
+        expectedOrigin: rp.origin,
+        expectedRPID: rp.rpId,
+        credential: { id: stored.id, publicKey: fromBase64Url(stored.publicKey), counter: stored.counter, transports: stored.transports },
+        requireUserVerification: true,
+      });
+    } catch {
+      return refused();
+    }
+    if (!verification.verified) return refused();
+    const credentials = (owner.webauthn_credentials ?? []).map((c) => (c.id === stored.id
+      ? { ...c, counter: verification.authenticationInfo.newCounter, lastUsedAt: Date.now() }
+      : c));
+    patchUser(owner.username, { webauthn_credentials: credentials });
+    return issueTokens(owner.username, owner.token_version ?? 0, reply);
   });
 
   // ── Self-service export and deletion (#324 S20, S21) ─────────────────────────
@@ -1677,6 +1911,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       // Whether "Passwort vergessen?" can work at all here (#324 S18). Says nothing
       // about any account, only whether this server can send the mail.
       passwordReset: accountMailAvailable(),
+      // Whether "Mit Passkey anmelden" can work here (#228): a relying party can be
+      // derived, i.e. an https (or localhost) App-URL is set.
+      passkeys: typeof relyingParty() !== 'string',
     };
   });
 

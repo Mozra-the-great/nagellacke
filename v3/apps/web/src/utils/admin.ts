@@ -35,6 +35,9 @@ export interface AdminSettings {
   publicInstanceSource?: 'panel' | 'default';
   registrationPow?: boolean;
   registrationPowSource?: 'panel' | 'default';
+  /** Passkeys (#228); absent on an older server. */
+  webauthnRpId?: string;
+  passkeys?: { rpId: string | null; origin: string | null; problem: string | null; total: number; stale: number };
   ai: {
     provider: 'openrouter' | 'gemini';
     openrouter: { model: string; freeOnly: boolean; hasApiKey: boolean };
@@ -101,6 +104,8 @@ export interface AdminSettingsInput {
   aiEnabled?: boolean;
   publicInstance?: boolean;
   registrationPow?: boolean;
+  webauthnRpId?: string;
+  dropStalePasskeys?: boolean;
   appUrl?: string;
   smtp?: { host?: string; port?: number; user?: string; pass?: string; from?: string; secure?: boolean };
 }
