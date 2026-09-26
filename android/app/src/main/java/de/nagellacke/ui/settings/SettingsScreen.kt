@@ -4,7 +4,6 @@ import android.net.Uri
 import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,6 +51,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import de.nagellacke.ui.common.DatePickerTriggerField
 import de.nagellacke.data.sync.AuthResult
 import de.nagellacke.data.sync.LoginOutcome
 import de.nagellacke.data.sync.SyncProvider
@@ -300,13 +300,10 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
                 FilterChip(selected = reportPeriod == ReportPeriod.Month, onClick = { reportPeriod = ReportPeriod.Month }, label = { Text("Monatsübersicht") })
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
+            DatePickerTriggerField(
                 value = reportDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")),
-                onValueChange = {},
-                label = { Text("Datum im Zeitraum") },
-                readOnly = true,
-                enabled = false,
-                modifier = Modifier.fillMaxWidth().clickable { showReportDatePicker = true },
+                label = "Datum im Zeitraum",
+                onPick = { showReportDatePicker = true },
             )
             Spacer(Modifier.height(8.dp))
             Button(

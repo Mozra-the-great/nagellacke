@@ -1127,6 +1127,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         <div className={styles.catAddRow}>
           <input
             className={styles.catInput}
+            aria-label="Neue Kategorie"
             placeholder="Neue Kategorie…"
             value={newCatLabel}
             onChange={(e) => setNewCatLabel(e.target.value)}

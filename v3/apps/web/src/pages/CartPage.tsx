@@ -133,6 +133,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
               rows={2}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              aria-label="Smart-Cart: Was möchtest du deiner Sammlung hinzufügen?"
               placeholder="Was möchtest du deiner Sammlung hinzufügen?"
               disabled={smartCartStatus === 'running'}
             />

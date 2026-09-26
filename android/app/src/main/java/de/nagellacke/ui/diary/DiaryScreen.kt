@@ -64,6 +64,7 @@ import de.nagellacke.domain.model.PolishRef
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.domain.model.StickerRef
 import de.nagellacke.domain.model.toFlatList
+import de.nagellacke.ui.common.DatePickerTriggerField
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.common.EmptyScreen
 import de.nagellacke.ui.common.LoadingScreen
@@ -233,13 +234,10 @@ fun DiaryFormSheet(
         Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text(if (entry != null) "Eintrag bearbeiten" else "Neuer Eintrag", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
 
-            OutlinedTextField(
+            DatePickerTriggerField(
                 value = formatDate(date),
-                onValueChange = {},
-                label = { Text("Datum") },
-                readOnly = true,
-                modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true },
-                enabled = false,
+                label = "Datum",
+                onPick = { showDatePicker = true },
             )
             Spacer(Modifier.height(8.dp))
 
