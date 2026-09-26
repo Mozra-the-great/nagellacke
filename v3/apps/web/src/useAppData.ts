@@ -241,6 +241,28 @@ export async function endServerSession(): Promise<void> {
   } catch { /* offline — nothing more to do */ }
 }
 
+/**
+ * "Von allen Geräten abmelden" (#347): POST /api/auth/logout-all bumps the account's
+ * token_version, which invalidates every access and refresh token and every signed
+ * photo link issued so far, on every device, and clears this browser's refresh cookie.
+ * Unlike endServerSession() this must reach the server to mean anything, so a failure
+ * throws and leaves the local session in place for the caller to report.
+ */
+export async function logoutEverywhere(): Promise<void> {
+  const cfg = loadSyncConfig();
+  if (!cfg || cfg.provider !== 'server' || !cfg.serverToken) throw new Error('Nicht angemeldet');
+  const res = await fetch(`${(cfg.serverUrl ?? '').replace(/\/$/, '')}/api/auth/logout-all`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Authorization: `Bearer ${cfg.serverToken}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error ?? `Fehler ${res.status}`);
+  }
+  saveSyncConfig(null);
+}
+
 export function useAppData() {
   // Lazy-initialized once and reused for both useState initializers below, so
   // loadLocal() (which has localStorage side effects — the migration-backup
@@ -499,9 +521,14 @@ export function useAppData() {
   // token is gone after a reload and only the httpOnly cookie can produce a new one,
   // so syncing first would build an adapter with no credential and report a spurious
   // "Sitzung abgelaufen" on every refresh of the page.
+  // sessionRestored flips once that exchange has succeeded. App.tsx probes the role on
+  // mount, which is before the cookie has been traded for a token; without a second
+  // probe an admin's Admin tab vanished on every reload even though the session itself
+  // survived it.
+  const [sessionRestored, setSessionRestored] = useState(false);
   useEffect(() => {
     void (async () => {
-      await restoreSession();
+      if (await restoreSession()) setSessionRestored(true);
       await sync();
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -509,6 +536,7 @@ export function useAppData() {
   return {
     data,
     localLoadError,
+    sessionRestored,
     syncing,
     syncError,
     lastSyncAt,

@@ -54,7 +54,9 @@ export default function App() {
     const controller = new AbortController();
     fetchRole(controller.signal).then((r) => { if (!cancelled) setRole(r); });
     return () => { cancelled = true; controller.abort(); };
-  }, [authVersion]);
+    // sessionRestored: after a reload the token only exists once useAppData has traded
+    // the refresh cookie for it, which is after this effect first ran.
+  }, [authVersion, appData.sessionRestored]);
 
   const navItems = role === 'admin'
     ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '◈ Admin' }]
