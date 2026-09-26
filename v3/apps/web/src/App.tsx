@@ -13,6 +13,7 @@ import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
 import { plural } from './utils/plural';
 import { fetchRole } from './utils/auth';
+import { refreshInstanceConfig } from './utils/instance';
 import type { Role } from './utils/auth';
 import styles from './App.module.css';
 
@@ -53,6 +54,9 @@ export default function App() {
     let cancelled = false;
     const controller = new AbortController();
     fetchRole(controller.signal).then((r) => { if (!cancelled) setRole(r); });
+    // Same triggers as the role: a login can point the app at a different server,
+    // and that server may offer a different set of features (#324).
+    void refreshInstanceConfig(controller.signal);
     return () => { cancelled = true; controller.abort(); };
     // sessionRestored: after a reload the token only exists once useAppData has traded
     // the refresh cookie for it, which is after this effect first ran.

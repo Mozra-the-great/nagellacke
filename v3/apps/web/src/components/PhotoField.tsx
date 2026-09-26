@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { uploadPhoto, hasPhotoUploadAuth } from '../utils/photos';
 import { usePhotoUrl } from '../utils/photoToken';
+import { useInstanceConfig, photoUploadsOffered } from '../utils/instance';
 import styles from './PhotoField.module.css';
 
 export default function PhotoField({
@@ -15,7 +16,9 @@ export default function PhotoField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canUpload = hasPhotoUploadAuth();
+  const instanceConfig = useInstanceConfig();
+  const uploadsOffered = photoUploadsOffered(instanceConfig);
+  const canUpload = hasPhotoUploadAuth() && uploadsOffered;
   const photoSrc = usePhotoUrl();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,7 +57,10 @@ export default function PhotoField({
           </button>
         )}
       </div>
-      {!canUpload && (
+      {!uploadsOffered ? (
+        // An existing photo stays visible and removable; only adding one is off (#324).
+        <div className={styles.hint}>Foto-Uploads sind auf diesem Server deaktiviert.</div>
+      ) : !canUpload && (
         <div className={styles.hint}>Fotos benötigen Eigenen-Server-Sync oder einen API-Schlüssel (Einstellungen).</div>
       )}
       {error && <div className={styles.error}>{error}</div>}

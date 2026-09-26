@@ -19,6 +19,17 @@ export function serverBase(): string {
  * is returned untouched, so a caller passing one cannot silently produce a
  * mangled `https://a.test https://b.test/...`.
  */
+/**
+ * The configured server plus the current access token, or null when the app is not
+ * signed in to a server. The one place auth.ts and ai.ts read this from; they used to
+ * carry a copy each (#324 S7).
+ */
+export function serverSession(): { base: string; token: string } | null {
+  const config = loadSyncConfig();
+  if (!config || config.provider !== 'server' || !config.serverToken) return null;
+  return { base: (config.serverUrl ?? '').replace(/\/$/, ''), token: config.serverToken };
+}
+
 export function serverUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   return `${serverBase()}${path}`;

@@ -9,6 +9,7 @@ import type { useAppData } from '../useAppData';
 import { uploadPhoto, authedFetch } from '../utils/photos';
 import { ensurePhotoToken, absolutePhotoUrl, clearPhotoToken } from '../utils/photoToken';
 import { generateReport } from '../utils/report';
+import { useInstanceConfig, aiOffered } from '../utils/instance';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
@@ -256,6 +257,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
   const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
+  const instanceConfig = useInstanceConfig();
+  const serverOffersAi = aiOffered(instanceConfig);
   const [apiKey, setApiKey] = useState(() => storedApiKey() ?? '');
   // Rejection is discovered by whatever request hit the 401 first (a photo
   // upload, typically), so it is read at mount rather than owned here.
@@ -1139,7 +1142,11 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           <button className={styles.saveBtn} onClick={saveConfig}>
             {saved ? '✓ Gespeichert' : 'Speichern'}
           </button>
-          {config && (
+          {/* Hidden on a public instance (#324): there the server is the place the data
+              lives, and useAppData already syncs after every change, so the button is
+              only a manual re-trigger. The server URL field and the login box above
+              stay, since they are the app's only sign-in UI. Android is unaffected. */}
+          {config && !instanceConfig?.publicInstance && (
             <button
               className={styles.syncBtn}
               onClick={() => void appData.sync()}
@@ -1208,6 +1215,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
 
         <div className={styles.field}>
           <span>KI-Funktionen</span>
+          {!serverOffersAi ? (
+            <p className={styles.fieldHelpText}>Auf diesem Server sind die KI-Funktionen abgeschaltet.</p>
+          ) : (<>
           <div className={styles.segmented}>
             <button
               className={`${styles.segBtn} ${aiEnabled ? styles.segBtnActive : ''}`}
@@ -1227,6 +1237,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             Einkaufswagen und die KI-Einstellungen. Nichts wird nur ausgegraut, die App sieht aus,
             als hätte es die Funktionen nie gegeben.
           </p>
+          </>)}
         </div>
       </section>
 
@@ -1393,7 +1404,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           — keep exactly today's behavior. Once a role is known this section
           moves wholesale to AdminPage (admin) or disappears (non-admin, whose
           POST /api/ai/settings now 403s server-side anyway, see #173 §4.2). */}
-      {aiEnabled && role === null && (
+      {aiEnabled && serverOffersAi && role === null && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
 

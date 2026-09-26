@@ -1,4 +1,4 @@
-import { loadSyncConfig } from '../useAppData';
+import { serverSession } from './serverBase';
 
 export type AiProvider = 'openrouter' | 'gemini';
 
@@ -36,11 +36,10 @@ export interface AiJob {
 }
 
 function serverContext(): { base: string; headers: Record<string, string> } | null {
-  const config = loadSyncConfig();
-  if (!config || config.provider !== 'server' || !config.serverToken) return null;
-  return {
-    base: (config.serverUrl ?? '').replace(/\/$/, ''),
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.serverToken}` },
+  const session = serverSession();
+  return session && {
+    base: session.base,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
   };
 }
 
