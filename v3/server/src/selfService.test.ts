@@ -87,15 +87,22 @@ describe('POST /api/me/delete (#324 S21)', () => {
     expect(exp.collection.polishes).toEqual([]);
   });
 
-  it('keeps a photo another account still shows', async () => {
+  it('keeps a photo another account still shows, and that account can still load it', async () => {
     const { app, db, dir } = await createTestApp();
-    await register(app, 'owner');
+    await register(app, 'owner'); // the admin, who could read any photo anyway
     const token = await register(app, 'anna');
+    const ben = await register(app, 'ben'); // not an admin: only the reference lets him in
     const photo = await upload(app, token);
-    db.setData('owner', { polishes: [polish('shared', photo)], customCats: [], manicures: [], stickers: [] } as never);
+    db.setData('ben', { polishes: [polish('shared', photo)], customCats: [], manicures: [], stickers: [] } as never);
+    // While anna owns it, a reference alone does not grant access (#352).
+    expect((await app.inject({ method: 'GET', url: `/photos/${photo}`, headers: auth(ben) })).statusCode).toBe(403);
+
     const res = await app.inject({ method: 'POST', url: '/api/me/delete', headers: auth(token), payload: { password: 'password123' } });
     expect(res.statusCode).toBe(200);
     expect(fs.existsSync(path.join(dir, 'photos', photo))).toBe(true);
+    // The ownership record went with the account, so access falls back to references.
+    expect(db.photoOwner(photo)).toBeUndefined();
+    expect((await app.inject({ method: 'GET', url: `/photos/${photo}`, headers: auth(ben) })).statusCode).toBe(200);
   });
 
   it('refuses a wrong password', async () => {

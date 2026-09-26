@@ -726,6 +726,8 @@ export function eraseAccount(username: string): { photosDeleted: number; photosK
   let photosDeleted = 0;
   let photosKept = 0;
   for (const filename of owned) {
+    // Kept for the accounts that still show it. deleteUser() below drops this account's
+    // ownership records, so access to a kept photo falls back to those references.
     if (others.some((o) => userOwnsPhoto(o, filename))) { photosKept++; continue; }
     const file = path.resolve(photosRoot, filename);
     if (!file.startsWith(photosRoot + path.sep)) continue;
