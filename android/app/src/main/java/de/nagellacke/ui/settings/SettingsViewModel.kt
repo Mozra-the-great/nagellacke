@@ -21,6 +21,7 @@ import de.nagellacke.data.sync.LoginOutcome
 import de.nagellacke.data.sync.PhotoTokenCache
 import de.nagellacke.data.sync.ReportsClient
 import de.nagellacke.data.sync.ServerAdapter
+import de.nagellacke.data.sync.ServerSession
 import de.nagellacke.data.sync.SaveAiSettingsRequest
 import de.nagellacke.data.sync.SaveGeminiDto
 import de.nagellacke.data.sync.SaveOpenRouterDto
@@ -201,7 +202,7 @@ class SettingsViewModel @Inject constructor(
     private fun reportsClient(): ReportsClient? {
         val cfg = configStore.getConfig() ?: return null
         if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
-        return ReportsClient(cfg.serverUrl, cfg.serverToken)
+        return ReportsClient(ServerSession.from(cfg, configStore), cfg.serverUrl)
     }
 
     fun loadReportSchedule() {
@@ -240,7 +241,7 @@ class SettingsViewModel @Inject constructor(
     private fun aiClient(): AiClient? {
         val cfg = configStore.getConfig() ?: return null
         if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
-        return AiClient(cfg.serverUrl, cfg.serverToken)
+        return AiClient(ServerSession.from(cfg, configStore), cfg.serverUrl)
     }
 
     /**

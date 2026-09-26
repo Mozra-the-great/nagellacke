@@ -74,15 +74,13 @@ interface AiApi {
 class AiRequestException(message: String) : Exception(message)
 
 /** Talks to the server's AI endpoints — settings, autofill, smart-cart, job polling. */
-class AiClient(serverUrl: String, token: String) {
+class AiClient(private val session: ServerSession, serverUrl: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val api: AiApi by lazy {
         val base = serverUrl.trimEnd('/') + "/"
         val client = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer $token").build())
-            }
+            .addInterceptor(session.authInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
@@ -98,6 +96,11 @@ class AiClient(serverUrl: String, token: String) {
             .create(AiApi::class.java)
     }
 
+    // Every request goes through the session's refresh-once-retry-once policy (#349); wrapped per
+    // request rather than around a whole safeCall, so a 401 in the middle of pollJob() does not
+    // restart the poll.
+    private suspend fun <T> call(block: suspend (AiApi) -> T): T = session.withAuthRetry { block(api) }
+
     private suspend fun <T> safeCall(block: suspend () -> T): Result<T> = try {
         Result.success(block())
     } catch (e: HttpException) {
@@ -108,21 +111,21 @@ class AiClient(serverUrl: String, token: String) {
         Result.failure(e)
     }
 
-    suspend fun getSettings(): Result<AiSettingsDto> = safeCall { api.getSettings() }
+    suspend fun getSettings(): Result<AiSettingsDto> = safeCall { call { it.getSettings() } }
 
-    suspend fun saveSettings(body: SaveAiSettingsRequest): Result<Unit> = safeCall { api.saveSettings(body); Unit }
+    suspend fun saveSettings(body: SaveAiSettingsRequest): Result<Unit> = safeCall { call { it.saveSettings(body) }; Unit }
 
     suspend fun startAutofill(name: String, brand: String, num: String): Result<String> =
-        safeCall { api.startAutofill(AutofillRequest(name, brand, num)).jobId }
+        safeCall { call { it.startAutofill(AutofillRequest(name, brand, num)) }.jobId }
 
     suspend fun startSmartCart(prompt: String): Result<String> =
-        safeCall { api.startSmartCart(SmartCartRequest(prompt)).jobId }
+        safeCall { call { it.startSmartCart(SmartCartRequest(prompt)) }.jobId }
 
     /** Polls a job until it reaches a terminal state, mirroring pollAiJob() in ai.ts. */
     suspend fun pollJob(jobId: String, intervalMs: Long = 2000, timeoutMs: Long = 120_000): Result<AiJobDto> = safeCall {
         val start = System.currentTimeMillis()
         while (true) {
-            val job = api.getJob(jobId).job
+            val job = call { it.getJob(jobId) }.job
             if (job.status == "done" || job.status == "error") return@safeCall job
             if (System.currentTimeMillis() - start > timeoutMs) throw AiRequestException("Zeitüberschreitung bei der KI-Anfrage")
             delay(intervalMs)
