@@ -296,6 +296,19 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
    5. LAYOUT HELPERS
    ========================================================================= */
 
+/* Wide screens (#322): at the fixed 1080px cap a 2500px monitor showed ~700px of empty
+   page on each side, which read as a page that had failed to load. The column grows
+   in steps instead, and on the widest screens the type grows with it so the wider
+   column does not turn into long thin lines. Section heads keep their own ch-based
+   cap, so running text stays readable at any width. */
+@media (min-width: 1600px) {
+  :root { --container-max: 1320px; }
+}
+@media (min-width: 2200px) {
+  :root { --container-max: 1560px; }
+  html { font-size: 112.5%; }
+}
+
 .section {
   max-width: var(--container-max);
   margin-inline: auto;

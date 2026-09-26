@@ -13,6 +13,10 @@ import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
 import { plural } from './utils/plural';
 import { fetchRole } from './utils/auth';
+import { fetchLegalPages, legalPageForHash, LEGAL_ROUTES } from './utils/legal';
+import type { LegalPages } from './utils/legal';
+import LegalPage from './pages/LegalPage';
+import { refreshInstanceConfig, useInstanceConfig, brandingLogoSrc, DEFAULT_NAME, DEFAULT_TITLE } from './utils/instance';
 import type { Role } from './utils/auth';
 import styles from './App.module.css';
 
@@ -46,6 +50,9 @@ export default function App() {
   // resolves to null, so non-admins — and anyone on an older server that
   // doesn't send `role` yet — never see the tab at all, not merely disabled.
   const [role, setRole] = useState<Role | null>(null);
+  // Legal pages (#324 S12), fetched with the role below; see the hash routing further down.
+  const [legal, setLegal] = useState<LegalPages | null>(null);
+  const [legalLoaded, setLegalLoaded] = useState(false);
   const [authVersion, setAuthVersion] = useState(0);
   const refreshAuth = useCallback(() => setAuthVersion((v) => v + 1), []);
 
@@ -53,8 +60,53 @@ export default function App() {
     let cancelled = false;
     const controller = new AbortController();
     fetchRole(controller.signal).then((r) => { if (!cancelled) setRole(r); });
+    // Same triggers as the role: a login can point the app at a different server,
+    // and that server may offer a different set of features (#324).
+    void refreshInstanceConfig(controller.signal);
+    fetchLegalPages(controller.signal).then((p) => { if (!cancelled) { setLegal(p); setLegalLoaded(true); } });
     return () => { cancelled = true; controller.abort(); };
-  }, [authVersion]);
+    // sessionRestored: after a reload the token only exists once useAppData has traded
+    // the refresh cookie for it, which is after this effect first ran.
+  }, [authVersion, appData.sessionRestored]);
+
+  // Branding (#324 S8). Without an answer from the server everything stays as it
+  // always was: the defaults below, index.html's title and the stylesheet's accent.
+  const instanceConfig = useInstanceConfig();
+  const branding = instanceConfig?.branding ?? null;
+  const brandName = branding?.name ?? DEFAULT_NAME;
+  const logoSrc = brandingLogoSrc(instanceConfig);
+  const brandTitle = branding?.title ?? DEFAULT_TITLE;
+  const accent = branding?.accentColor ?? null;
+  useEffect(() => { document.title = brandTitle; }, [brandTitle]);
+  useEffect(() => {
+    // Only --md-primary: every other colour token stays as designed.
+    const root = document.documentElement;
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const originalMeta = meta?.getAttribute('content') ?? null;
+    if (accent) {
+      root.style.setProperty('--md-primary', accent);
+      meta?.setAttribute('content', accent);
+    }
+    return () => {
+      root.style.removeProperty('--md-primary');
+      if (meta && originalMeta !== null) meta.setAttribute('content', originalMeta);
+    };
+  }, [accent]);
+
+  // Legal pages (#324 S12) live at #/impressum and #/datenschutz: shareable links, as an
+  // Impressum needs, without a router dependency. They replace the tab content and are
+  // reachable whatever the login state.
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const legalKey = legalPageForHash(hash);
+  const leaveLegal = () => {
+    history.pushState(null, '', window.location.pathname + window.location.search);
+    setHash('');
+  };
 
   const navItems = role === 'admin'
     ? [...BASE_NAV_ITEMS, { id: 'admin' as const, label: '◈ Admin' }]
@@ -75,7 +127,10 @@ export default function App() {
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.titleArea}>
-          <h1 className={styles.appTitle}>Nail Lacquer</h1>
+          <h1 className={styles.appTitle}>
+            {logoSrc ? <img className={styles.appLogo} src={logoSrc} alt={brandName} /> : brandName}
+          </h1>
+          {branding?.tagline && <p className={styles.appTagline}>{branding.tagline}</p>}
           <p className={styles.appSubtitle}>
             {plural(activeCount, 'Lack', 'Lacke')} im Besitz · {plural(totalCount, 'Flasche', 'Flaschen')} gesamt
           </p>
@@ -85,7 +140,7 @@ export default function App() {
             <button
               key={id}
               className={`${styles.navBtn} ${tab === id ? styles.navBtnActive : ''} ${id === 'settings' ? styles.navBtnSettings : ''}`}
-              onClick={() => setTab(id)}
+              onClick={() => { setTab(id); if (legalKey) leaveLegal(); }}
             >
               {id === 'settings' && appData.syncError && (
                 <span
@@ -104,6 +159,11 @@ export default function App() {
         {/* Keyed by tab so switching away from a crashed page (nav above stays
             usable, since it lives outside this boundary) remounts a clean
             boundary instead of staying stuck on the failed render - see #218. */}
+        {legalKey ? (
+          legalLoaded
+            ? <LegalPage page={legal?.[legalKey] ?? null} onBack={leaveLegal} />
+            : null
+        ) : (
         <ErrorBoundary key={tab}>
           {tab === 'collection' && <CollectionPage appData={appData} />}
           {tab === 'cart'       && <CartPage appData={appData} />}
@@ -113,7 +173,17 @@ export default function App() {
           {tab === 'settings'   && <SettingsPage appData={appData} role={role} onAuthChange={refreshAuth} />}
           {tab === 'admin' && role === 'admin' && <AdminPage />}
         </ErrorBoundary>
+        )}
       </main>
+
+      {/* Only pages that were actually maintained get a link, so an instance without
+          legal texts looks exactly as before. */}
+      {(legal?.impressum || legal?.datenschutz) && (
+        <footer className={styles.footer}>
+          {legal.impressum && <a href={LEGAL_ROUTES.impressum}>{legal.impressum.title}</a>}
+          {legal.datenschutz && <a href={LEGAL_ROUTES.datenschutz}>{legal.datenschutz.title}</a>}
+        </footer>
+      )}
 
       {showFinishMigrationNotice && (
         <FinishMigrationNotice

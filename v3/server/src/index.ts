@@ -24,7 +24,10 @@ import {
   isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
+  photoUploadsAllowed, aiAllowed, publicInstanceEnabled, getBranding, setBranding, BRANDING_DIR,
+  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS,
 } from './db';
+import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
 import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
 import type { SearchBackend } from './websearch';
@@ -282,6 +285,10 @@ const MAGIC: [Buffer, string][] = [
 function validImage(buf: Buffer): boolean {
   return MAGIC.some(([m]) => buf.slice(0, m.length).equals(m));
 }
+/** The MIME type the file's own magic bytes claim, or null for anything else. */
+function sniffImageType(buf: Buffer): string | null {
+  return MAGIC.find(([m]) => buf.slice(0, m.length).equals(m))?.[1] ?? null;
+}
 
 // ── Password hashing ──────────────────────────────────────────────────────────
 function hashPassword(password: string): string {
@@ -414,6 +421,24 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
   await app.register(cookie);
   await app.register(jwt, { secret: JWT_SECRET });
+  // Hardening headers on every response, the SPA and its assets included (#355).
+  // In the install.sh deployment this server serves the web app itself, and
+  // nothing stopped another site from framing the logged-in UI and overlaying
+  // it (clickjacking). Deliberately no script/style CSP: the frame and
+  // plugin/base-URI directives cost nothing, a full policy would need auditing
+  // against the Vite build first. No HSTS either — install.sh serves plain HTTP
+  // on the LAN, and HSTS belongs to whatever terminates TLS in front of it.
+  // Registered as a root onRequest hook ahead of the plugins below, so the
+  // encapsulated /photos/ plugin and the static SPA handler inherit it and even
+  // a 401/404/429 carries the headers.
+  app.addHook('onRequest', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    // Page URLs carry nothing secret, but ?t= photo tokens do travel in URLs;
+    // there is no reason to hand any of them to a third party.
+    reply.header('Referrer-Policy', 'no-referrer');
+  });
   // global: false — each /api/* route below opts in via its own `config.rateLimit`.
   // A global default would also throttle /photos/ and the SPA static assets,
   // and the gallery renders its full photo list unpaginated/unlazy on load, so a
@@ -744,6 +769,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     preHandler: requireApiKeyOrJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    // Server-wide switch (#324). Applies to X-Api-Key callers too; the key is not a
+    // way around a limit meant to cap disk use. DELETE and reads stay open, since
+    // deleting frees space and existing photos remain visible.
+    if (!photoUploadsAllowed()) {
+      return reply.code(403).send({ error: 'Foto-Uploads sind auf diesem Server deaktiviert' });
+    }
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
     const buf = Buffer.from(b64, 'base64');
@@ -1139,6 +1170,13 @@ export async function buildApp(): Promise<FastifyInstance> {
       appUrl: settings.appUrl || process.env.APP_URL || '',
       appUrlSource: settings.appUrl ? 'panel' : (process.env.APP_URL ? 'env' : 'default'),
       appUrlRequiresRestart: true,
+      // No env-var fallback for these three, so the source is only panel or default (#324).
+      photoUploadsEnabled: photoUploadsAllowed(),
+      photoUploadsEnabledSource: settings.photoUploadsEnabled !== undefined ? 'panel' : 'default',
+      aiEnabled: aiAllowed(),
+      aiEnabledSource: settings.aiEnabled !== undefined ? 'panel' : 'default',
+      publicInstance: publicInstanceEnabled(),
+      publicInstanceSource: settings.publicInstance?.enabled !== undefined ? 'panel' : 'default',
       ai: aiSettingsView(getAiConfig()),
       env: {
         port: PORT,
@@ -1163,6 +1201,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       allowRegistration: boolean;
       smtp: Partial<{ host: string; port: number; user: string; pass: string; from: string; secure: boolean }>;
       appUrl: string;
+      photoUploadsEnabled: boolean;
+      aiEnabled: boolean;
+      publicInstance: boolean;
     }>;
     const current = getServerSettings();
     const next: ServerSettings = { ...current };
@@ -1170,6 +1211,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.allowRegistration !== undefined) next.allowRegistration = !!body.allowRegistration;
 
     if (body.appUrl !== undefined) next.appUrl = body.appUrl.trim().replace(/\/$/, '');
+
+    if (body.photoUploadsEnabled !== undefined) next.photoUploadsEnabled = !!body.photoUploadsEnabled;
+    if (body.aiEnabled !== undefined) next.aiEnabled = !!body.aiEnabled;
+    if (body.publicInstance !== undefined) next.publicInstance = { ...current.publicInstance, enabled: !!body.publicInstance };
 
     if (body.smtp) {
       const currentSmtp = current.smtp;
@@ -1193,6 +1238,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     logAdminAction(actor, 'server_settings.updated', undefined, {
       allowRegistration: body.allowRegistration !== undefined,
       appUrl: body.appUrl !== undefined,
+      photoUploadsEnabled: body.photoUploadsEnabled !== undefined,
+      aiEnabled: body.aiEnabled !== undefined,
+      publicInstance: body.publicInstance !== undefined,
       smtp: body.smtp !== undefined ? Object.keys(body.smtp) : undefined,
     });
     return { ok: true };
@@ -1411,6 +1459,182 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async () => {
     return { allowed: registrationOpen(), firstUser: getUserCount() === 0 };
+  });
+
+  // ── Branding (#324 S6) ──────────────────────────────────────────────────────────
+
+  // GET /api/admin/branding — the stored choice plus every preset resolved, so the
+  // panel can preview them and pre-fill "custom" from one.
+  app.get('/api/admin/branding', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const settings = getBranding();
+    return {
+      settings,
+      resolved: resolveBranding(settings),
+      presets: { nagellacke: resolvePreset('nagellacke'), nailvault: resolvePreset('nailvault') },
+    };
+  });
+
+  app.post('/api/admin/branding', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const current = getBranding();
+    const parsed = parseBrandingInput(request.body, current);
+    if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+    // The logo is managed through its own route; never let this one drop or forge it.
+    parsed.settings.custom = { ...parsed.settings.custom, logo: current.custom?.logo };
+    setBranding(parsed.settings);
+    const body = (request.body ?? {}) as { custom?: Record<string, unknown> };
+    logAdminAction(actor, 'branding.updated', undefined, {
+      preset: parsed.settings.preset,
+      custom: body.custom && typeof body.custom === 'object' ? Object.keys(body.custom) : undefined,
+    });
+    return { ok: true, resolved: resolveBranding(parsed.settings) };
+  });
+
+  // POST /api/admin/branding/logo — the custom preset's logo. PNG, JPEG or WebP only,
+  // identified by its own magic bytes rather than the declared type: the file is served
+  // publicly from this origin, and an SVG or HTML upload would be a stored-XSS vector.
+  app.post('/api/admin/branding/logo', {
+    preHandler: requireAdmin,
+    bodyLimit: 3 * 1024 * 1024,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const { data } = (request.body ?? {}) as { data?: string };
+    if (!data) return reply.code(400).send({ error: 'data erforderlich' });
+    const buf = Buffer.from(data, 'base64');
+    const mimeType = sniffImageType(buf);
+    if (!mimeType) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
+    const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+    fs.mkdirSync(BRANDING_DIR, { recursive: true });
+    const filename = `logo.${ext}`;
+    const tmp = path.join(BRANDING_DIR, `${filename}.tmp`);
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, path.join(BRANDING_DIR, filename));
+    for (const other of ['logo.png', 'logo.jpg', 'logo.webp']) {
+      if (other !== filename) fs.rmSync(path.join(BRANDING_DIR, other), { force: true });
+    }
+    const current = getBranding();
+    setBranding({ ...current, custom: { ...current.custom, logo: { filename, mimeType, updatedAt: Date.now() } } });
+    logAdminAction(actor, 'branding.logo_updated');
+    return { ok: true, resolved: resolveBranding(getBranding()) };
+  });
+
+  app.delete('/api/admin/branding/logo', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request) => {
+    const { username: actor } = request.user as { username: string };
+    const current = getBranding();
+    if (current.custom?.logo) {
+      fs.rmSync(path.join(BRANDING_DIR, path.basename(current.custom.logo.filename)), { force: true });
+      setBranding({ ...current, custom: { ...current.custom, logo: undefined } });
+      logAdminAction(actor, 'branding.logo_removed');
+    }
+    return { ok: true };
+  });
+
+  // GET /api/branding/logo — public, it sits in the header before anyone logs in. The
+  // URL carries a version (?v=) from resolveBranding, so it can be cached for a day.
+  app.get('/api/branding/logo', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (_request, reply) => {
+    const settings = getBranding();
+    reply.header('Cache-Control', 'public, max-age=86400');
+    if (settings.preset === 'nailvault') {
+      return reply.type('image/svg+xml').send(NAILVAULT_WORDMARK_SVG);
+    }
+    const logo = settings.preset === 'custom' ? settings.custom?.logo : undefined;
+    const file = logo && path.join(BRANDING_DIR, path.basename(logo.filename));
+    if (!logo || !file || !fs.existsSync(file)) {
+      reply.header('Cache-Control', 'no-store');
+      return reply.code(404).send({ error: 'Kein Logo gesetzt' });
+    }
+    return reply.type(logo.mimeType).send(fs.readFileSync(file));
+  });
+
+  // ── Legal pages (#324 S11) ──────────────────────────────────────────────────────
+
+  const MAX_LEGAL_TITLE = 120;
+  const MAX_LEGAL_BODY = 50_000;
+
+  // GET /api/legal — public: an Impressum has to be reachable without an account. A page
+  // nobody maintained comes back as null, and the web app then shows no link to it, so
+  // an install.sh instance looks exactly as before.
+  app.get('/api/legal', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const pages = getLegalPages();
+    return { impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
+  });
+
+  // Separate from /api/admin/settings on purpose: several KB of text would otherwise
+  // travel along with every panel load and every SMTP save.
+  app.get('/api/admin/legal', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const pages = getLegalPages();
+    return { impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
+  });
+
+  // POST /api/admin/legal — { impressum?: { title, body } | null, datenschutz?: … }.
+  // An omitted key is left alone; null or an empty body removes the page.
+  app.post('/api/admin/legal', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const pages = getLegalPages();
+    const changed: string[] = [];
+    for (const key of LEGAL_PAGE_KEYS) {
+      if (!(key in body)) continue;
+      const v = body[key] as { title?: unknown; body?: unknown } | null;
+      if (v === null || (v && typeof v.body === 'string' && !v.body.trim())) {
+        delete pages[key];
+        changed.push(key);
+        continue;
+      }
+      if (!v || typeof v.title !== 'string' || typeof v.body !== 'string') {
+        return reply.code(400).send({ error: `${key} braucht title und body als Text` });
+      }
+      if (v.title.length > MAX_LEGAL_TITLE) return reply.code(400).send({ error: `Titel darf höchstens ${MAX_LEGAL_TITLE} Zeichen lang sein` });
+      if (v.body.length > MAX_LEGAL_BODY) return reply.code(400).send({ error: `Text darf höchstens ${MAX_LEGAL_BODY} Zeichen lang sein` });
+      pages[key] = {
+        title: v.title.trim() || (key === 'impressum' ? 'Impressum' : 'Datenschutz'),
+        body: v.body,
+        updatedAt: Date.now(),
+      };
+      changed.push(key);
+    }
+    setLegalPages(pages);
+    // Which pages changed, never their content.
+    logAdminAction(actor, 'legal.updated', undefined, { pages: changed });
+    return { ok: true, impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
+  });
+
+  // GET /api/instance-config — deliberately public, like registration-status above
+  // and for the same reason: the web app has to know what this server offers before
+  // anyone is logged in (#324). It carries the capability flags and not just the mode,
+  // because today the web app hides AI features purely client-side and knows nothing
+  // the server decided; without the flags a user would get a 403 where the feature
+  // should simply not be offered. Nothing here is secret: each flag can already be
+  // learned by calling the endpoint it guards and reading the 403.
+  app.get('/api/instance-config', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    return {
+      publicInstance: publicInstanceEnabled(),
+      photoUploads: photoUploadsAllowed(),
+      ai: aiAllowed(),
+      branding: resolveBranding(getBranding()),
+    };
   });
 
   // POST /api/auth/register
@@ -1790,6 +2014,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   // the current user (e.g. after a device is lost/stolen). No way to revoke
   // a single token without per-token tracking, but bumping the version
   // covers the actual threat: an attacker with a stolen long-lived token.
+  // POST /api/auth/logout — ends the session on this device only (#345). The
+  // browser cannot drop the httpOnly refresh cookie itself, so without this
+  // route "Abmelden" in the web app cleared its own state but left a cookie
+  // that keeps trading itself for fresh access tokens for JWT_REFRESH_TTL. No
+  // auth required: the access token may already have expired, and all this
+  // can do is make a browser forget its own credential.
+  app.post('/api/auth/logout', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (_request, reply) => {
+    clearRefreshCookie(reply);
+    return { ok: true };
+  });
+
   app.post('/api/auth/logout-all', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
@@ -1938,6 +2175,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username } = request.user as { username: string };
     const { name, brand, num } = request.body as { name?: string; brand?: string; num?: string };
     if (!name) return reply.code(400).send({ error: 'name erforderlich' });
+    if (!aiAllowed()) {
+      return reply.code(403).send({ error: 'KI-Funktionen sind auf diesem Server deaktiviert' });
+    }
     const config = getAiConfig();
     if (!isAiConfigured(config)) {
       return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
@@ -1960,6 +2200,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username } = request.user as { username: string };
     const { prompt } = request.body as { prompt?: string };
     if (!prompt || !prompt.trim()) return reply.code(400).send({ error: 'prompt erforderlich' });
+    if (!aiAllowed()) {
+      return reply.code(403).send({ error: 'KI-Funktionen sind auf diesem Server deaktiviert' });
+    }
     const config = getAiConfig();
     if (!isAiConfigured(config)) {
       return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });

@@ -163,4 +163,57 @@ describe('sync token storage (#299)', () => {
 
     expect(localStorage.getItem(SYNC_CONFIG_KEY)).not.toContain('renewed-access-token');
   });
+
+  it('endServerSession forgets the tokens at once and asks the server to drop the cookie (#345)', async () => {
+    const { saveSyncConfig, endServerSession, loadSyncConfig } = await freshModule();
+    saveSyncConfig(CONFIG);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const done = endServerSession();
+    // Synchronously gone: the Admin tab's role probe runs right after the click.
+    expect(loadSyncConfig()).toBeNull();
+    expect(localStorage.getItem(SYNC_CONFIG_KEY)).toBeNull();
+    await done;
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://nagellacke.example/api/auth/logout');
+    expect(init.method).toBe('POST');
+    // The cookie is httpOnly; only the server can clear it, and only if it is sent.
+    expect(init.credentials).toBe('include');
+  });
+
+  it('endServerSession still logs out locally when the server is unreachable', async () => {
+    const { saveSyncConfig, endServerSession, loadSyncConfig } = await freshModule();
+    saveSyncConfig(CONFIG);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
+
+    await expect(endServerSession()).resolves.toBeUndefined();
+    expect(loadSyncConfig()).toBeNull();
+  });
+
+  it('logoutEverywhere calls logout-all with the access token and then drops the session (#347)', async () => {
+    const { saveSyncConfig, logoutEverywhere, loadSyncConfig } = await freshModule();
+    saveSyncConfig(CONFIG);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await logoutEverywhere();
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://nagellacke.example/api/auth/logout-all');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer access-token-value');
+    expect(init.credentials).toBe('include');
+    expect(loadSyncConfig()).toBeNull();
+  });
+
+  it('logoutEverywhere keeps the session and reports the error when the server refuses', async () => {
+    const { saveSyncConfig, logoutEverywhere, loadSyncConfig } = await freshModule();
+    saveSyncConfig(CONFIG);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: 'Unauthorized' }) }));
+
+    await expect(logoutEverywhere()).rejects.toThrow('Unauthorized');
+    // Nothing was revoked, so pretending otherwise locally would only hide that.
+    expect(loadSyncConfig()?.serverToken).toBe('access-token-value');
+  });
 });

@@ -5,6 +5,8 @@ import { normalizeFinish, type AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
 import { hashRecoveryCode } from './totp';
+import { BRANDING_PRESETS, DEFAULT_BRANDING_SETTINGS } from './branding';
+import type { BrandingPreset, BrandingSettings } from './branding';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
@@ -726,6 +728,30 @@ export interface ServerSettings {
   smtp?: { host: string; port: number; user: string; pass: string; from: string; secure?: boolean };
   /** Shadows APP_URL when set; env var is the fallback. */
   appUrl?: string;
+  // The next three have no env-var fallback: undefined simply means the default.
+  // Photos and AI sit at the top level rather than under publicInstance because
+  // they make sense on a LAN install too, and nested it would be unclear whether
+  // they still apply with the public mode off (#324).
+  /** Server-wide switch for new photo uploads. undefined = allowed. */
+  photoUploadsEnabled?: boolean;
+  /** Server-wide switch for AI jobs, on top of ai_config.json. undefined = allowed. */
+  aiEnabled?: boolean;
+  /** Cloud operation: an instance open to strangers rather than a household LAN. */
+  publicInstance?: { enabled?: boolean };
+}
+
+/** Whether new photos may be uploaded (#324). Deleting and reading are never affected. */
+export function photoUploadsAllowed(): boolean {
+  return getServerSettings().photoUploadsEnabled ?? true;
+}
+
+/** Whether AI jobs may be started or run (#324), independent of whether a provider is configured. */
+export function aiAllowed(): boolean {
+  return getServerSettings().aiEnabled ?? true;
+}
+
+export function publicInstanceEnabled(): boolean {
+  return getServerSettings().publicInstance?.enabled ?? false;
 }
 
 const SERVER_SETTINGS_FILE = path.join(DATA_DIR, 'server_settings.json');
@@ -743,6 +769,71 @@ export function setServerSettings(settings: ServerSettings): void {
   const tmp = `${SERVER_SETTINGS_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(settings), { mode: 0o600 });
   fs.renameSync(tmp, SERVER_SETTINGS_FILE);
+}
+
+// ── Branding (#324 S6) ─────────────────────────────────────────────────────────
+//
+// Its own file rather than a field in server_settings.json: that one carries the SMTP
+// password, while branding is served publicly. Keeping them apart means the public
+// endpoint never reads a file that holds a secret.
+
+const BRANDING_FILE = path.join(DATA_DIR, 'branding.json');
+export const BRANDING_DIR = path.join(DATA_DIR, 'branding');
+
+export function getBranding(): BrandingSettings {
+  try {
+    if (!fs.existsSync(BRANDING_FILE)) return { ...DEFAULT_BRANDING_SETTINGS };
+    const raw = JSON.parse(fs.readFileSync(BRANDING_FILE, 'utf-8')) as Partial<BrandingSettings>;
+    return {
+      preset: BRANDING_PRESETS.includes(raw.preset as BrandingPreset) ? raw.preset as BrandingPreset : 'nagellacke',
+      custom: raw.custom && typeof raw.custom === 'object' ? raw.custom : undefined,
+    };
+  } catch {
+    return { ...DEFAULT_BRANDING_SETTINGS };
+  }
+}
+
+export function setBranding(settings: BrandingSettings): void {
+  const tmp = `${BRANDING_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(settings), { mode: 0o600 });
+  fs.renameSync(tmp, BRANDING_FILE);
+}
+
+// ── Legal pages (#324 S11) ────────────────────────────────────────────────────
+//
+// Impressum and Datenschutz, maintained in the admin panel, never compiled in: install.sh
+// and the container image run the same code, and each instance needs its own text.
+// Plain text only. Like branding, kept out of server_settings.json because it is served
+// publicly while that file holds the SMTP password.
+
+export type LegalPageKey = 'impressum' | 'datenschutz';
+export const LEGAL_PAGE_KEYS: readonly LegalPageKey[] = ['impressum', 'datenschutz'];
+export interface LegalPage { title: string; body: string; updatedAt: number }
+export type LegalPages = Partial<Record<LegalPageKey, LegalPage>>;
+
+const LEGAL_FILE = path.join(DATA_DIR, 'legal.json');
+
+export function getLegalPages(): LegalPages {
+  try {
+    if (!fs.existsSync(LEGAL_FILE)) return {};
+    const raw = JSON.parse(fs.readFileSync(LEGAL_FILE, 'utf-8')) as Record<string, unknown>;
+    const pages: LegalPages = {};
+    for (const key of LEGAL_PAGE_KEYS) {
+      const p = raw[key] as Partial<LegalPage> | undefined;
+      if (p && typeof p.title === 'string' && typeof p.body === 'string' && typeof p.updatedAt === 'number') {
+        pages[key] = { title: p.title, body: p.body, updatedAt: p.updatedAt };
+      }
+    }
+    return pages;
+  } catch {
+    return {};
+  }
+}
+
+export function setLegalPages(pages: LegalPages): void {
+  const tmp = `${LEGAL_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(pages), { mode: 0o600 });
+  fs.renameSync(tmp, LEGAL_FILE);
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────

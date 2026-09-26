@@ -94,6 +94,8 @@ fun WishlistScreen(vm: WishlistViewModel = hiltViewModel()) {
                         OutlinedTextField(
                             value = smartCartPrompt,
                             onValueChange = { smartCartPrompt = it },
+                            // A placeholder vanishes once there is text; the label stays (#358).
+                            label = { Text("Wunsch beschreiben") },
                             placeholder = { Text("Was möchtest du hinzufügen?") },
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 2,

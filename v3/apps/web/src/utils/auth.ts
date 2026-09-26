@@ -1,4 +1,4 @@
-import { loadSyncConfig } from '../useAppData';
+import { serverSession } from './serverBase';
 
 export type Role = 'admin' | 'user';
 
@@ -10,12 +10,8 @@ export type Role = 'admin' | 'user';
  * identity).
  */
 function serverContext(): { base: string; headers: Record<string, string> } | null {
-  const config = loadSyncConfig();
-  if (!config || config.provider !== 'server' || !config.serverToken) return null;
-  return {
-    base: (config.serverUrl ?? '').replace(/\/$/, ''),
-    headers: { Authorization: `Bearer ${config.serverToken}` },
-  };
+  const session = serverSession();
+  return session && { base: session.base, headers: { Authorization: `Bearer ${session.token}` } };
 }
 
 /**

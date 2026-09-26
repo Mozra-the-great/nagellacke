@@ -4,11 +4,12 @@ import QRCode from 'qrcode';
 import type { SyncConfig, SyncProviderType } from '@nagellacke/sync';
 import type { AppData as CoreAppData, ManicurePhotos } from '@nagellacke/core';
 import { mergeData } from '@nagellacke/core';
-import { loadSyncConfig, saveSyncConfig, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
+import { loadSyncConfig, saveSyncConfig, endServerSession, logoutEverywhere, loadPhotoDefault, savePhotoDefault, loadAiEnabled, saveAiEnabled } from '../useAppData';
 import type { useAppData } from '../useAppData';
 import { uploadPhoto, authedFetch } from '../utils/photos';
-import { ensurePhotoToken, absolutePhotoUrl } from '../utils/photoToken';
+import { ensurePhotoToken, absolutePhotoUrl, clearPhotoToken } from '../utils/photoToken';
 import { generateReport } from '../utils/report';
+import { useInstanceConfig, aiOffered } from '../utils/instance';
 import { getAiSettings, saveAiSettings } from '../utils/ai';
 import type { SearchBackend } from '../utils/ai';
 import type { AiProvider } from '../utils/ai';
@@ -96,6 +97,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [provider, setProvider] = useState<SyncProviderType | 'none'>(config?.provider ?? 'none');
   const [serverUrl, setServerUrl] = useState(config?.serverUrl ?? '');
   const [serverToken, setServerToken] = useState(config?.serverToken ?? '');
+  const [logoutAllStatus, setLogoutAllStatus] = useState<'idle' | 'confirm' | 'loading' | 'error'>('idle');
+  const [logoutAllError, setLogoutAllError] = useState('');
   const [ncUrl, setNcUrl] = useState(config?.nextcloudUrl ?? '');
   const [ncUser, setNcUser] = useState(config?.nextcloudUser ?? '');
   const [ncPass, setNcPass] = useState(config?.nextcloudPassword ?? '');
@@ -138,6 +141,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     saveSyncConfig(c);
     setConfig(c);
     setServerToken(token);
+    // A photo token cached for whoever was signed in before would be refused
+    // for this account's photos until it expired (#352).
+    clearPhotoToken();
     setLoginPass('');
     setLoginStatus('idle');
     setMfaChallengeToken(null);
@@ -251,6 +257,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoDefault, setPhotoDefaultState] = useState<boolean>(loadPhotoDefault);
   const [aiEnabled, setAiEnabledState] = useState<boolean>(loadAiEnabled);
+  const instanceConfig = useInstanceConfig();
+  const serverOffersAi = aiOffered(instanceConfig);
   const [apiKey, setApiKey] = useState(() => storedApiKey() ?? '');
   // Rejection is discovered by whatever request hit the 401 first (a photo
   // upload, typically), so it is read at mount rather than owned here.
@@ -830,7 +838,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     await ensurePhotoToken();
     // Parse as local midnight — new Date("YYYY-MM-DD") parses as UTC midnight,
     // which shifts getPeriodBounds off by one day in UTC-offset timezones.
-    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'), absolutePhotoUrl);
+    const html = generateReport(appData.data, reportPeriod, new Date(reportDate + 'T00:00:00'), absolutePhotoUrl, instanceConfig?.branding.title);
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
@@ -930,17 +938,62 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             </label>
 
             {serverToken ? (
+              <>
               <div className={styles.tokenRow}>
                 <span className={styles.tokenOk}>✓ Eingeloggt</span>
                 <button
                   className={styles.logoutBtn}
                   onClick={() => {
                     setServerToken('');
-                    saveSyncConfig(null);
                     setConfig(null);
+                    // Not just local state (#345): the refresh cookie has to go
+                    // too, the cached photo token belongs to this account, and
+                    // App.tsx has to re-probe the role or the Admin tab stays.
+                    // endServerSession() clears the stored config before its
+                    // first await, so the role probe below already sees none.
+                    void endServerSession();
+                    clearPhotoToken();
+                    onAuthChange();
                   }}
                 >Abmelden</button>
               </div>
+              {logoutAllStatus === 'idle' ? (
+                <button type="button" className={styles.logoutBtn} onClick={() => setLogoutAllStatus('confirm')}>
+                  Von allen Geräten abmelden…
+                </button>
+              ) : (
+                <div className={styles.loginBox}>
+                  <p className={styles.fieldHelpText}>
+                    Beendet jede Sitzung dieses Kontos auf allen Geräten, auch in der Android-App, und macht
+                    alle bisher erzeugten Foto-Links ungültig, auch die in verschickten Berichten. Sinnvoll, wenn
+                    ein Gerät verloren gegangen ist oder ein Link in falsche Hände geraten sein könnte.
+                  </p>
+                  {logoutAllStatus === 'error' && <div className={styles.errorBanner}>{logoutAllError}</div>}
+                  <div className={styles.btnRow}>
+                    <button
+                      className={styles.saveBtn}
+                      disabled={logoutAllStatus === 'loading'}
+                      onClick={async () => {
+                        setLogoutAllStatus('loading');
+                        setLogoutAllError('');
+                        try {
+                          await logoutEverywhere();
+                          setServerToken('');
+                          setConfig(null);
+                          clearPhotoToken();
+                          setLogoutAllStatus('idle');
+                          onAuthChange();
+                        } catch (e) {
+                          setLogoutAllError(e instanceof Error ? e.message : 'Verbindungsfehler');
+                          setLogoutAllStatus('error');
+                        }
+                      }}
+                    >{logoutAllStatus === 'loading' ? 'Melde ab…' : 'Ja, überall abmelden'}</button>
+                    <button className={styles.syncBtn} onClick={() => setLogoutAllStatus('idle')}>Abbrechen</button>
+                  </div>
+                </div>
+              )}
+              </>
             ) : mfaChallengeToken ? (
               <div className={styles.loginBox}>
                 <label className={styles.field}>
@@ -1089,7 +1142,11 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           <button className={styles.saveBtn} onClick={saveConfig}>
             {saved ? '✓ Gespeichert' : 'Speichern'}
           </button>
-          {config && (
+          {/* Hidden on a public instance (#324): there the server is the place the data
+              lives, and useAppData already syncs after every change, so the button is
+              only a manual re-trigger. The server URL field and the login box above
+              stay, since they are the app's only sign-in UI. Android is unaffected. */}
+          {config && !instanceConfig?.publicInstance && (
             <button
               className={styles.syncBtn}
               onClick={() => void appData.sync()}
@@ -1117,6 +1174,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         <div className={styles.catAddRow}>
           <input
             className={styles.catInput}
+            aria-label="Neue Kategorie"
             placeholder="Neue Kategorie…"
             value={newCatLabel}
             onChange={(e) => setNewCatLabel(e.target.value)}
@@ -1157,6 +1215,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
 
         <div className={styles.field}>
           <span>KI-Funktionen</span>
+          {!serverOffersAi ? (
+            <p className={styles.fieldHelpText}>Auf diesem Server sind die KI-Funktionen abgeschaltet.</p>
+          ) : (<>
           <div className={styles.segmented}>
             <button
               className={`${styles.segBtn} ${aiEnabled ? styles.segBtnActive : ''}`}
@@ -1176,6 +1237,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             Einkaufswagen und die KI-Einstellungen. Nichts wird nur ausgegraut, die App sieht aus,
             als hätte es die Funktionen nie gegeben.
           </p>
+          </>)}
         </div>
       </section>
 
@@ -1342,7 +1404,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           — keep exactly today's behavior. Once a role is known this section
           moves wholesale to AdminPage (admin) or disappears (non-admin, whose
           POST /api/ai/settings now 403s server-side anyway, see #173 §4.2). */}
-      {aiEnabled && role === null && (
+      {aiEnabled && serverOffersAi && role === null && (
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
 

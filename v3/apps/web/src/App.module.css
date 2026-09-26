@@ -5,6 +5,17 @@
   overflow-x: clip;
 }
 
+/* Wide screens (#323): a fixed 1100px column left most of a 2500px monitor empty.
+   The collection, sticker, diary and cart grids are auto-fill, so a wider column
+   simply gives them more columns. Form pages (Settings, Admin) keep a readable
+   width through their own .page cap. */
+@media (min-width: 1600px) {
+  .app { max-width: 1480px; }
+}
+@media (min-width: 2200px) {
+  .app { max-width: 1900px; }
+}
+
 .header {
   position: sticky;
   top: 0;
@@ -19,6 +30,21 @@
 .titleArea {
   text-align: center;
   padding: 18px 0 8px;
+}
+
+.appLogo {
+  display: block;
+  margin: 0 auto;
+  max-height: clamp(40px, 7vw, 72px);
+  max-width: min(80vw, 480px);
+  object-fit: contain;
+}
+
+.appTagline {
+  margin: 4px 0 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--md-on-surface-variant);
 }
 
 .appTitle {
@@ -73,7 +99,7 @@
 }
 
 .navBtn:focus-visible {
-  outline: 2px solid rgba(255,200,230,0.9);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -94,6 +120,18 @@
 
 .main {
   flex: 1;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 16px 32px;
+  font-size: 12px;
+}
+
+.footer a {
+  color: var(--md-on-surface-variant);
 }
 
 @media (max-width: 600px) {

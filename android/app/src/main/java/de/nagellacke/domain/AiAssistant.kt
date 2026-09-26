@@ -3,6 +3,7 @@ package de.nagellacke.domain
 import de.nagellacke.data.repo.NagellackeRepository
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.data.sync.AiClient
+import de.nagellacke.data.sync.ServerSession
 import de.nagellacke.data.sync.SyncProvider
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -26,7 +27,7 @@ class AiAssistant @Inject constructor(
     private fun client(): AiClient? {
         val cfg = configStore.getConfig() ?: return null
         if (cfg.provider != SyncProvider.Server || cfg.serverUrl.isBlank()) return null
-        return AiClient(cfg.serverUrl, cfg.serverToken)
+        return AiClient(ServerSession.from(cfg, configStore), cfg.serverUrl)
     }
 
     /**

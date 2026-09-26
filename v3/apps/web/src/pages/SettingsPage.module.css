@@ -1,4 +1,7 @@
 .page { padding: 0 0 40px; }
+/* Settings and Admin are forms: full-width inputs across a wide column (#323) only make
+   the eye travel. They stay at the column width the app always had. */
+.page { max-width: 1100px; margin-inline: auto; }
 
 .header { padding: 20px 24px 12px; }
 .title { font-family: var(--font-display); font-size: 28px; font-weight: 300; font-style: italic; color: var(--md-primary); letter-spacing: 0.03em; }
@@ -16,12 +19,13 @@
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .field span { font-size: 13px; font-weight: 500; color: var(--md-on-surface-variant); }
-.field input, .field select {
+.field input, .field select, .field textarea {
   padding: 10px 14px; border: 1px solid var(--md-outline-variant);
   border-radius: var(--radius-md); background: var(--md-surface-variant);
   color: var(--md-on-surface); font-size: 15px; outline: none;
 }
-.field input:focus, .field select:focus { border-color: var(--md-primary); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--md-primary); }
+.field textarea { font-family: inherit; resize: vertical; }
 
 .oauthHint {
   padding: 12px 14px; background: var(--md-primary-container); color: var(--md-primary);

@@ -1,6 +1,7 @@
 package de.nagellacke.data.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.work.Constraints
@@ -13,13 +14,17 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import de.nagellacke.data.repo.NagellackeRepository
+import de.nagellacke.data.repo.PendingPhotoDeleteStore
 import de.nagellacke.data.repo.PhotoRepository
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.collectPhotoFilenames
 import de.nagellacke.domain.mergeData
+import de.nagellacke.domain.model.AppData
+import de.nagellacke.domain.partitionPendingPhotoDeletes
 import de.nagellacke.domain.purgeOldDeleted
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +41,7 @@ class SyncManager @Inject constructor(
     private val repository: NagellackeRepository,
     private val configStore: SyncConfigStore,
     private val photoRepository: PhotoRepository,
+    private val pendingPhotoDeletes: PendingPhotoDeleteStore,
     @ApplicationContext private val context: Context,
 ) {
     fun schedulePeriodicSync() {
@@ -65,9 +71,42 @@ class SyncManager @Inject constructor(
             val purged = purgeOldDeleted(reconciled)
             repository.replaceAll(purged)
             photoRepository.cleanup(collectPhotoFilenames(purged))
+            deletePendingRemotePhotos(adapter, purged)
             return result.copy(merged = purged)
         }
         return result
+    }
+
+    /**
+     * Deletes photos that deleted or re-photographed records left behind on the sync target
+     * (#348). Runs only after a successful sync, so the tombstone reaches the remote before the
+     * file disappears — the order the web app uses too — and checks the freshly merged state, so a
+     * photo that a live record references again stays. A failed delete never fails the sync; it
+     * is retried on the next one and given up after [MAX_DELETE_ATTEMPTS], which also covers a
+     * photo that never reached the remote in the first place.
+     */
+    private suspend fun deletePendingRemotePhotos(adapter: SyncAdapter, data: AppData) {
+        val pending = pendingPhotoDeletes.pending()
+        if (pending.isEmpty()) return
+        val (deletable, inUseAgain) = partitionPendingPhotoDeletes(pending, data)
+        inUseAgain.forEach(pendingPhotoDeletes::remove)
+        for (filename in deletable) {
+            try {
+                adapter.deletePhoto(filename)
+                pendingPhotoDeletes.remove(filename)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (pendingPhotoDeletes.recordFailure(filename, MAX_DELETE_ATTEMPTS)) {
+                    Log.w(TAG, "Giving up deleting remote photo $filename: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "SyncManager"
+        const val MAX_DELETE_ATTEMPTS = 3
     }
 }
 

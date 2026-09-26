@@ -35,15 +35,13 @@ interface ReportApi {
  * (see [de.nagellacke.domain.generateReportHtml]) and doesn't need this client, matching how the
  * web app's "Bericht erstellen" button works.
  */
-class ReportsClient(serverUrl: String, token: String) {
+class ReportsClient(private val session: ServerSession, serverUrl: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val api: ReportApi by lazy {
         val base = serverUrl.trimEnd('/') + "/"
         val client = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                chain.proceed(chain.request().newBuilder().header("Authorization", "Bearer $token").build())
-            }
+            .addInterceptor(session.authInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
@@ -59,11 +57,12 @@ class ReportsClient(serverUrl: String, token: String) {
             .create(ReportApi::class.java)
     }
 
+    // Every call goes through the session's refresh-once-retry-once policy (#349).
     suspend fun sendReport(period: String, date: String, toEmail: String): Result<Unit> =
-        runCatching { api.sendReport(SendReportRequest(period, date, toEmail)); Unit }
+        runCatching { session.withAuthRetry { api.sendReport(SendReportRequest(period, date, toEmail)) }; Unit }
 
-    suspend fun getSchedule(): Result<ScheduleResponse> = runCatching { api.getSchedule() }
+    suspend fun getSchedule(): Result<ScheduleResponse> = runCatching { session.withAuthRetry { api.getSchedule() } }
 
     suspend fun saveSchedule(enabled: Boolean, frequency: String, toEmail: String): Result<Unit> =
-        runCatching { api.saveSchedule(ScheduleConfigDto(enabled, frequency, toEmail)); Unit }
+        runCatching { session.withAuthRetry { api.saveSchedule(ScheduleConfigDto(enabled, frequency, toEmail)) }; Unit }
 }

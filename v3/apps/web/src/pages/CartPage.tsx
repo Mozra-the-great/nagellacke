@@ -3,6 +3,7 @@ import type { Polish } from '@nagellacke/core';
 import { FINISH_OPTIONS } from '@nagellacke/core';
 import type { useAppData } from '../useAppData';
 import { loadPhotoDefault, loadAiEnabled } from '../useAppData';
+import { useInstanceConfig, aiOffered } from '../utils/instance';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
 import NailBottle from '../components/NailBottle';
@@ -32,7 +33,10 @@ export default function CartPage({ appData }: { appData: AppData }) {
   useFocusTrap(chooserRef, showChooser);
   useFocusTrap(pickerRef, showPicker);
   const photoDefault = loadPhotoDefault();
-  const aiEnabled = loadAiEnabled();
+  const instanceConfig = useInstanceConfig();
+  // The server's switch (#324) wins over the local preference: offering Smart-Cart
+  // on a server that refuses AI would only lead to a 403.
+  const aiEnabled = loadAiEnabled() && aiOffered(instanceConfig);
   const serverSyncAvailable = hasServerSync();
 
   const cartItems = useMemo(
@@ -133,6 +137,7 @@ export default function CartPage({ appData }: { appData: AppData }) {
               rows={2}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              aria-label="Smart-Cart: Was möchtest du deiner Sammlung hinzufügen?"
               placeholder="Was möchtest du deiner Sammlung hinzufügen?"
               disabled={smartCartStatus === 'running'}
             />

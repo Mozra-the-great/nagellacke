@@ -26,6 +26,13 @@ export interface AdminSettings {
   appUrl: string;
   appUrlSource: 'panel' | 'env' | 'default';
   appUrlRequiresRestart: boolean;
+  // Server-wide switches (#324); no env-var fallback, so never 'env'.
+  photoUploadsEnabled?: boolean;
+  photoUploadsEnabledSource?: 'panel' | 'default';
+  aiEnabled?: boolean;
+  aiEnabledSource?: 'panel' | 'default';
+  publicInstance?: boolean;
+  publicInstanceSource?: 'panel' | 'default';
   ai: {
     provider: 'openrouter' | 'gemini';
     openrouter: { model: string; freeOnly: boolean; hasApiKey: boolean };
@@ -88,6 +95,9 @@ export function getSettings(): Promise<AdminSettings> {
 
 export interface AdminSettingsInput {
   allowRegistration?: boolean;
+  photoUploadsEnabled?: boolean;
+  aiEnabled?: boolean;
+  publicInstance?: boolean;
   appUrl?: string;
   smtp?: { host?: string; port?: number; user?: string; pass?: string; from?: string; secure?: boolean };
 }
@@ -181,6 +191,76 @@ export function getUpdateStatus(): Promise<UpdateStatus> {
  * reaching this call already required an admin JWT session, which is the
  * credential everything here keeps using.
  */
+// ── Branding (#324 S9) ──
+
+export type BrandingPreset = 'nagellacke' | 'nailvault' | 'custom';
+
+export interface ResolvedBranding {
+  name: string;
+  title: string;
+  tagline: string | null;
+  accentColor: string | null;
+  logoUrl: string | null;
+  introText: string | null;
+}
+
+export interface BrandingState {
+  settings: {
+    preset: BrandingPreset;
+    custom?: { name?: string; tagline?: string; accentColor?: string; introText?: string; logo?: { updatedAt: number } };
+  };
+  resolved: ResolvedBranding;
+  presets: { nagellacke: ResolvedBranding; nailvault: ResolvedBranding };
+}
+
+export function getBrandingState(): Promise<BrandingState> {
+  return request('/api/admin/branding');
+}
+
+export function saveBranding(input: {
+  preset: BrandingPreset;
+  custom?: { name?: string; tagline?: string; accentColor?: string; introText?: string };
+}): Promise<{ ok: true; resolved: ResolvedBranding }> {
+  return request('/api/admin/branding', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** PNG, JPEG or WebP; the server identifies the type from the file itself. */
+export async function uploadBrandingLogo(file: File): Promise<{ ok: true; resolved: ResolvedBranding }> {
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    reader.readAsDataURL(file);
+  });
+  return request('/api/admin/branding/logo', { method: 'POST', body: JSON.stringify({ data }) });
+}
+
+export function deleteBrandingLogo(): Promise<{ ok: true }> {
+  return request('/api/admin/branding/logo', { method: 'DELETE' });
+}
+
+// ── Legal pages (#324 S12) ──
+
+export type LegalEditable = Record<'impressum' | 'datenschutz', { title: string; body: string; updatedAt: number } | null>;
+
+export function getLegalAdmin(): Promise<LegalEditable> {
+  return request('/api/admin/legal');
+}
+
+/** An omitted page stays; null or an empty body removes it. */
+export function saveLegal(input: Partial<Record<'impressum' | 'datenschutz', { title: string; body: string } | null>>): Promise<LegalEditable & { ok: true }> {
+  return request('/api/admin/legal', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/**
+ * The server's own journal lines (#356). Same auth as the rest of the panel; the server
+ * clamps `lines` to 1–500. `error: true` means journalctl itself failed (e.g. a container
+ * deployment without systemd), and `logs` then carries its error text instead.
+ */
+export function getServerLogs(lines: number): Promise<{ logs: string; lines: number; error?: boolean }> {
+  return request(`/api/logs?lines=${encodeURIComponent(String(lines))}`);
+}
+
 export async function rotateApiKey(): Promise<{ apiKey: string; rotatedAt: number }> {
   const result = await request<{ apiKey: string; rotatedAt: number }>('/api/admin/api-key/rotate', { method: 'POST' });
   if (storedApiKey()) setStoredApiKey(null);

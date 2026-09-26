@@ -10,6 +10,7 @@ import de.nagellacke.data.repo.SyncConfigStore
 import de.nagellacke.domain.filterManicures
 import de.nagellacke.domain.model.Manicure
 import de.nagellacke.domain.model.Polish
+import de.nagellacke.domain.model.PolishStatus
 import de.nagellacke.domain.model.Sticker
 import de.nagellacke.ui.collection.PhotoResolution
 import de.nagellacke.ui.collection.photoResolution
@@ -38,7 +39,7 @@ class DiaryViewModel @Inject constructor(
     val uiState = combine(repo.observeData(), configStore.configFlow) { data, cfg ->
         DiaryUiState(
             entries      = filterManicures(data.manicures).sortedByDescending { it.date },
-            polishes     = data.polishes.filter { it.deletedAt == null && it.status.name != "Wish" },
+            polishes     = data.polishes.filter { it.deletedAt == null && it.status != PolishStatus.Wish },
             stickers     = data.stickers.filter { it.deletedAt == null },
             loading      = false,
             photoResolution = cfg.photoResolution(),

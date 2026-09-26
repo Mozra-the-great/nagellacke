@@ -1,15 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   listUsers, createUser, setUserRole, deleteUser,
   getSettings, saveSettings, testSmtp, testAi,
-  getAuditLog, checkUpdate, applyUpdate, getUpdateStatus, rotateApiKey,
+  getAuditLog, checkUpdate, applyUpdate, getUpdateStatus, rotateApiKey, getServerLogs,
 } from '../utils/admin';
 import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo, UpdateProgress } from '../utils/admin';
 import { saveAiSettings } from '../utils/ai';
 import type { AiProvider, SearchBackend } from '../utils/ai';
+import BrandingSection from '../components/BrandingSection';
+import LegalSection from '../components/LegalSection';
 import styles from './SettingsPage.module.css';
 
 type Status = 'idle' | 'loading' | 'saved' | 'error';
+
+/** An An/Aus segmented switch, the pattern "Registrierung erlauben" already uses. */
+function OnOffField({ label, source, value, onChange, help }: {
+  label: string;
+  source?: 'panel' | 'env' | 'default';
+  value: boolean;
+  onChange: (value: boolean) => void;
+  help?: string;
+}) {
+  // A group, not a <label>: a label wrapping the buttons names the first one after the
+  // whole label text, so a screen reader announced "An" as "KI-Funktionen erlauben…".
+  const id = useId();
+  return (
+    <div className={styles.field} role="group" aria-labelledby={`${id}-label`}>
+      <span id={`${id}-label`}>{label} <span className={styles.fieldHint}>({source ? sourceBadge(source) : '…'})</span></span>
+      <div className={styles.segmented}>
+        <button type="button" aria-pressed={value} className={`${styles.segBtn} ${value ? styles.segBtnActive : ''}`} onClick={() => onChange(true)}>An</button>
+        <button type="button" aria-pressed={!value} className={`${styles.segBtn} ${!value ? styles.segBtnActive : ''}`} onClick={() => onChange(false)}>Aus</button>
+      </div>
+      {help && <p className={styles.fieldHelpText}>{help}</p>}
+    </div>
+  );
+}
 
 function sourceBadge(source: 'panel' | 'env' | 'default'): string {
   if (source === 'panel') return 'aus Admin-Panel';
@@ -80,6 +105,9 @@ export default function AdminPage() {
   // ── Server-Einstellungen ──
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [allowRegistration, setAllowRegistration] = useState(false);
+  const [photoUploadsEnabled, setPhotoUploadsEnabled] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [publicInstance, setPublicInstance] = useState(false);
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -110,6 +138,10 @@ export default function AdminPage() {
     getSettings().then((s) => {
       setSettings(s);
       setAllowRegistration(s.allowRegistration);
+      // Absent on a server older than #324: keep the defaults, which is what it does.
+      setPhotoUploadsEnabled(s.photoUploadsEnabled ?? true);
+      setAiEnabled(s.aiEnabled ?? true);
+      setPublicInstance(s.publicInstance ?? false);
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -135,6 +167,9 @@ export default function AdminPage() {
     try {
       await saveSettings({
         allowRegistration,
+        photoUploadsEnabled,
+        aiEnabled,
+        publicInstance,
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -304,6 +339,27 @@ export default function AdminPage() {
     }
   };
 
+  // ── Server-Log (#356) ── loaded on demand only: it is the one section that runs a
+  // subprocess on the server, and a panel that shells out to journalctl on every open
+  // would be a poor default.
+  const [logLines, setLogLines] = useState(100);
+  const [logs, setLogs] = useState<{ text: string; failed: boolean } | null>(null);
+  const [logsStatus, setLogsStatus] = useState<Status>('idle');
+  const [logsError, setLogsError] = useState('');
+
+  const loadLogs = async () => {
+    setLogsStatus('loading');
+    setLogsError('');
+    try {
+      const d = await getServerLogs(logLines);
+      setLogs({ text: d.logs, failed: !!d.error });
+      setLogsStatus('idle');
+    } catch (e) {
+      setLogsError(e instanceof Error ? e.message : 'Fehler');
+      setLogsStatus('error');
+    }
+  };
+
   // ── Audit-Log ──
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   useEffect(() => { getAuditLog().then((d) => setAudit(d.entries)).catch(() => { /* ignore */ }); }, []);
@@ -392,6 +448,28 @@ export default function AdminPage() {
           </div>
         </label>
 
+        <OnOffField
+          label="Foto-Uploads erlauben"
+          source={settings?.photoUploadsEnabledSource}
+          value={photoUploadsEnabled}
+          onChange={setPhotoUploadsEnabled}
+          help="Aus sperrt nur neue Uploads, für alle Konten und auch per API-Schlüssel. Vorhandene Fotos bleiben sichtbar und lassen sich löschen."
+        />
+        <OnOffField
+          label="KI-Funktionen erlauben"
+          source={settings?.aiEnabledSource}
+          value={aiEnabled}
+          onChange={setAiEnabled}
+          help="Aus nimmt keine neuen KI-Aufträge mehr an und hält bereits eingereihte an, bis die Funktion wieder eingeschaltet wird. Die Anbieter-Einstellungen bleiben erhalten."
+        />
+        <OnOffField
+          label="Öffentliche Instanz"
+          source={settings?.publicInstanceSource}
+          value={publicInstance}
+          onChange={setPublicInstance}
+          help="Für einen Server, auf dem sich Fremde registrieren können. Blendet in der Web-App den Knopf „Jetzt syncen“ aus; die Einleitungsseite vor der Anmeldung folgt in einem späteren Update. Die Android-App ist davon nicht betroffen."
+        />
+
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: '16px 0 12px', color: 'var(--md-on-surface-variant)' }}>
           SMTP {settings && <span className={styles.fieldHint}>({sourceBadge(settings.smtp.source)})</span>}
         </h3>
@@ -448,6 +526,10 @@ export default function AdminPage() {
           Neustart des Servers ist dafür nötig, das Panel zeigt den Wert nur an.
         </p>
       </section>
+
+      <BrandingSection />
+
+      <LegalSection />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>
@@ -593,6 +675,40 @@ export default function AdminPage() {
             {rotateStatus === 'loading' ? 'Rotiere…' : 'Schlüssel rotieren'}
           </button>
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Server-Log</h2>
+        <p className={styles.fieldHelpText}>
+          Die letzten Zeilen aus dem systemd-Journal dieses Dienstes. In einer Container-Installation gibt es kein
+          Journal; dort steht das Log bei <code>docker logs</code>.
+        </p>
+        <div className={styles.btnRow} style={{ alignItems: 'flex-end' }}>
+          <label className={styles.field} style={{ marginBottom: 0 }}>
+            <span>Zeilen</span>
+            <select value={logLines} onChange={(e) => setLogLines(Number(e.target.value))}>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={500}>500</option>
+            </select>
+          </label>
+          <button className={styles.syncBtn} onClick={() => void loadLogs()} disabled={logsStatus === 'loading'}>
+            {logsStatus === 'loading' ? 'Lade…' : logs ? 'Neu laden' : 'Log laden'}
+          </button>
+        </div>
+        {logsStatus === 'error' && <div className={styles.errorBanner}>{logsError}</div>}
+        {logs?.failed && <div className={styles.warningBanner}>Journal nicht lesbar: {logs.text}</div>}
+        {logs && !logs.failed && (
+          <pre
+            tabIndex={0}
+            aria-label="Server-Log"
+            style={{
+              maxHeight: 400, overflow: 'auto', marginTop: 12, padding: 12, fontSize: 11, lineHeight: 1.45,
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--md-surface-variant)',
+              borderRadius: 'var(--radius-md)', color: 'var(--md-on-surface-variant)',
+            }}
+          >{logs.text || '(leer)'}</pre>
+        )}
       </section>
 
       <section className={styles.section}>
