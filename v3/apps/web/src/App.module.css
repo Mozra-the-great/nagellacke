@@ -122,6 +122,18 @@
   flex: 1;
 }
 
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px 16px 32px;
+  font-size: 12px;
+}
+
+.footer a {
+  color: var(--md-on-surface-variant);
+}
+
 @media (max-width: 600px) {
   .header { padding: 0 12px; }
   .titleArea { padding: 12px 0 6px; }

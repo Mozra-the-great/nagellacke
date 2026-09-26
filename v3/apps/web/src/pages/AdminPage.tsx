@@ -8,6 +8,7 @@ import type { AdminUser, AdminSettings, AuditEntry, Role, UpdateInfo, UpdateProg
 import { saveAiSettings } from '../utils/ai';
 import type { AiProvider, SearchBackend } from '../utils/ai';
 import BrandingSection from '../components/BrandingSection';
+import LegalSection from '../components/LegalSection';
 import styles from './SettingsPage.module.css';
 
 type Status = 'idle' | 'loading' | 'saved' | 'error';
@@ -527,6 +528,8 @@ export default function AdminPage() {
       </section>
 
       <BrandingSection />
+
+      <LegalSection />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>KI-Assistenz</h2>

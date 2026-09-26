@@ -239,6 +239,19 @@ export function deleteBrandingLogo(): Promise<{ ok: true }> {
   return request('/api/admin/branding/logo', { method: 'DELETE' });
 }
 
+// ── Legal pages (#324 S12) ──
+
+export type LegalEditable = Record<'impressum' | 'datenschutz', { title: string; body: string; updatedAt: number } | null>;
+
+export function getLegalAdmin(): Promise<LegalEditable> {
+  return request('/api/admin/legal');
+}
+
+/** An omitted page stays; null or an empty body removes it. */
+export function saveLegal(input: Partial<Record<'impressum' | 'datenschutz', { title: string; body: string } | null>>): Promise<LegalEditable & { ok: true }> {
+  return request('/api/admin/legal', { method: 'POST', body: JSON.stringify(input) });
+}
+
 /**
  * The server's own journal lines (#356). Same auth as the rest of the panel; the server
  * clamps `lines` to 1–500. `error: true` means journalctl itself failed (e.g. a container
