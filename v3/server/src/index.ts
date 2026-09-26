@@ -25,7 +25,7 @@ import {
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
   photoUploadsAllowed, aiAllowed, publicInstanceEnabled, registrationPowEnabled, getBranding, setBranding, BRANDING_DIR,
-  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS, patchUser, findUsers, resetPassword,
+  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS, patchUser, findUsers, resetPassword, eraseAccount,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -1367,6 +1367,66 @@ export async function buildApp(): Promise<FastifyInstance> {
     // one again does not, "erneut senden" is for that.
     const verificationSent = changed ? await sendVerificationMail(username) : false;
     return { ok: true, verificationSent };
+  });
+
+  // ── Self-service export and deletion (#324 S20, S21) ─────────────────────────
+
+  // GET /api/me/export — everything the server holds about the caller, as JSON
+  // (DSGVO Art. 15). Photos appear as filenames; the files themselves come with the
+  // app's own ZIP export, and a second exporter here would only duplicate that.
+  // Secrets stay out: no password hash, no TOTP secret, no token hashes.
+  app.get('/api/me/export', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    const body = {
+      exportedAt: new Date().toISOString(),
+      account: {
+        username: user.username,
+        email: user.email ?? null,
+        emailVerified: !!user.email_verified,
+        createdAt: new Date(user.created_at).toISOString(),
+        role: user.role ?? 'user',
+        totpEnabled: !!user.totp_enabled,
+      },
+      reportSchedule: getScheduleConfig(username),
+      collection: getData(username),
+    };
+    const stamp = new Date().toISOString().slice(0, 10);
+    return reply
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="nagellacke-konto-${stamp}.json"`)
+      .send(JSON.stringify(body, null, 2));
+  });
+
+  // POST /api/me/delete — the account deletes itself, after re-entering its password.
+  // Erases rather than archives (eraseAccount in db.ts); the admin route keeps the
+  // recoverable variant.
+  app.post('/api/me/delete', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { password } = (request.body ?? {}) as { password?: unknown };
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    if (typeof password !== 'string' || !verifyPassword(password, user.password_hash)) {
+      return reply.code(403).send({ error: 'Passwort falsch' });
+    }
+    // Same rule as the admin route: never leave accounts behind with nobody able to
+    // administer them. The sole account of a server may go; the next registration then
+    // bootstraps a new admin.
+    if (isAdmin(username) && countAdmins() <= 1 && getUserCount() > 1) {
+      return reply.code(409).send({ error: 'Du bist der letzte Admin. Mach zuerst ein anderes Konto zum Admin.' });
+    }
+    const result = eraseAccount(username);
+    clearRefreshCookie(reply);
+    // Logged under the account's own name, like an admin action on itself; no content.
+    logAdminAction(username, 'account.self_deleted', username, result);
+    return { ok: true };
   });
 
   // ── Password reset and address verification (#324 S17, S19) ──────────────────

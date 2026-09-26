@@ -18,7 +18,7 @@ import type { UpdateProgress } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
-import { saveAccountEmail, resendVerification } from '../utils/account';
+import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -151,6 +151,40 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
       setAccountEmailStatus('error');
     }
+  };
+
+  const doExportAccount = async () => {
+    setExportStatus('loading');
+    setExportError('');
+    try {
+      await downloadAccountExport();
+      setExportStatus('idle');
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setExportStatus('error');
+    }
+  };
+
+  const doDeleteAccount = async () => {
+    setDeleteStep('loading');
+    setDeleteError('');
+    try {
+      await deleteOwnAccount(deletePassword);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setDeleteStep('confirm');
+      return;
+    }
+    // The server already cleared the refresh cookie; this is the local half of a logout.
+    saveSyncConfig(null);
+    setServerToken('');
+    setConfig(null);
+    clearPhotoToken();
+    if (deleteLocalToo) appData.clearLocalCollection();
+    setDeletePassword('');
+    setDeleteTypedName('');
+    setDeleteStep('done');
+    onAuthChange();
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -414,6 +448,16 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [accountEmailStatus, setAccountEmailStatus] = useState<'idle' | 'saving' | 'resending' | 'error'>('idle');
   const [accountEmailMessage, setAccountEmailMessage] = useState('');
 
+  // ── Eigene Daten und Konto löschen (#324 S20, S21) ──
+  const [meUsername, setMeUsername] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [exportError, setExportError] = useState('');
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'loading' | 'done'>('idle');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteTypedName, setDeleteTypedName] = useState('');
+  const [deleteLocalToo, setDeleteLocalToo] = useState(true);
+  const [deleteError, setDeleteError] = useState('');
+
   // ── KI-Assistenz ──
   const [aiProvider, setAiProvider] = useState<AiProvider>('openrouter');
   const [aiOpenrouterKey, setAiOpenrouterKey] = useState('');
@@ -490,7 +534,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     const controller = new AbortController();
     const { signal } = controller;
 
-    type MeResponse = { email?: string | null; emailVerified?: boolean; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
+    type MeResponse = { username?: string; email?: string | null; emailVerified?: boolean; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
     type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
 
     // Load email + smtp status + 2FA status
@@ -500,6 +544,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
         setAccountEmail(d.email ?? '');
+        setMeUsername(d.username ?? null);
         setSavedAccountEmail(d.email ?? null);
         // Absent on a server older than #324 S19: no status to show then.
         setEmailVerified(typeof d.emailVerified === 'boolean' ? d.emailVerified : null);
@@ -877,6 +922,63 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   </button>
                 )}
               </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '4px 0 8px' }}>Dein Konto</h3>
+              <p className={styles.fieldHelpText}>
+                Lädt alles herunter, was der Server über dein Konto speichert: Kontodaten, Sammlung und Berichtsplan, als
+                JSON-Datei. Fotos stehen darin als Dateinamen; die Bilder selbst enthält der ZIP-Export unter „Daten“.
+              </p>
+              {exportStatus === 'error' && <div className={styles.errorBanner}>{exportError}</div>}
+              <div className={styles.btnRow} style={{ marginBottom: 12 }}>
+                <button type="button" className={styles.syncBtn} disabled={exportStatus === 'loading'} onClick={() => void doExportAccount()}>
+                  {exportStatus === 'loading' ? 'Lade…' : 'Meine Kontodaten herunterladen'}
+                </button>
+              </div>
+              {deleteStep === 'idle' ? (
+                <button type="button" className={styles.logoutBtn} onClick={() => setDeleteStep('confirm')}>
+                  Konto löschen…
+                </button>
+              ) : (
+                <div className={styles.loginBox}>
+                  <p className={styles.fieldHelpText}>
+                    Löscht dein Konto endgültig: Sammlung, Berichtsplan, KI-Aufträge und die Fotos, die nur du verwendest.
+                    Das lässt sich nicht rückgängig machen, auch nicht durch einen Admin. Wenn du die Daten behalten
+                    möchtest, lade sie vorher herunter.
+                  </p>
+                  <label className={styles.field}>
+                    <span>Passwort</span>
+                    <input type="password" autoComplete="current-password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>Zur Bestätigung deinen Benutzernamen eintippen{meUsername ? `: ${meUsername}` : ''}</span>
+                    <input value={deleteTypedName} onChange={(e) => setDeleteTypedName(e.target.value)} autoComplete="off" />
+                  </label>
+                  <label className={styles.field} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={deleteLocalToo} onChange={(e) => setDeleteLocalToo(e.target.checked)} />
+                    <span>Auch die Kopie der Sammlung in diesem Browser löschen</span>
+                  </label>
+                  <div role="status" aria-live="polite" aria-atomic="true">
+                    {deleteError && <div className={styles.errorBanner}>{deleteError}</div>}
+                  </div>
+                  <div className={styles.btnRow}>
+                    <button
+                      type="button"
+                      className={styles.saveBtn}
+                      style={{ background: 'rgba(179, 38, 30, 0.85)', color: '#fff' }}
+                      disabled={!deletePassword || !meUsername || deleteTypedName.trim() !== meUsername || deleteStep === 'loading'}
+                      onClick={() => void doDeleteAccount()}
+                    >
+                      {deleteStep === 'loading' ? 'Lösche…' : 'Konto endgültig löschen'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.syncBtn}
+                      onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteTypedName(''); setDeleteError(''); }}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
               {logoutAllStatus === 'idle' ? (
                 <button type="button" className={styles.logoutBtn} onClick={() => setLogoutAllStatus('confirm')}>
                   Von allen Geräten abmelden…
@@ -915,7 +1017,12 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               )}
               </>
             ) : (
-              <ServerAuthForm serverUrl={serverUrl} onAuthenticated={applyLoginTokens} />
+              <>
+                {deleteStep === 'done' && (
+                  <div className={styles.successBanner} role="status">Dein Konto wurde gelöscht.</div>
+                )}
+                <ServerAuthForm serverUrl={serverUrl} onAuthenticated={applyLoginTokens} />
+              </>
             )}
           </>
         )}

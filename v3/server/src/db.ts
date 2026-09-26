@@ -705,6 +705,42 @@ export function deleteUser(username: string): void {
   }
 }
 
+/**
+ * Self-service account deletion (#324 S21). Unlike deleteUser() on its own, which an
+ * admin uses and which keeps the collection recoverable by hand, this erases: someone
+ * deleting their own account is asking for their data to be gone, not archived.
+ *
+ * Photos go too, but only those this account uploaded *and* no other account's records
+ * reference — a photo someone else still shows is theirs to keep. Photos with no
+ * recorded uploader (X-Api-Key uploads, or from before #352) are left alone, since
+ * nothing says whose they are. Schedule and AI jobs are removed by the caller-free
+ * helpers here so nothing keyed on the name survives.
+ */
+export function eraseAccount(username: string): { photosDeleted: number; photosKept: number } {
+  // Photos first, while the owner table still names this account.
+  const others = readUsers().map((u) => u.username).filter((u) => u !== username);
+  const owned = [...photoOwners()].filter(([, owner]) => owner === username).map(([f]) => f);
+  const photosRoot = path.resolve(PHOTOS_DIR);
+  let photosDeleted = 0;
+  let photosKept = 0;
+  for (const filename of owned) {
+    if (others.some((o) => userOwnsPhoto(o, filename))) { photosKept++; continue; }
+    const file = path.resolve(photosRoot, filename);
+    if (!file.startsWith(photosRoot + path.sep)) continue;
+    fs.rmSync(file, { force: true });
+    photosDeleted++;
+  }
+  deleteUser(username);
+  // The whole directory, including the data.json.deleted-* deleteUser just renamed.
+  const dir = path.resolve(USER_DATA_DIR, userDirName(username));
+  if (dir.startsWith(path.resolve(USER_DATA_DIR) + path.sep)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  deleteScheduleConfig(username);
+  deleteAiJobsOf(username);
+  return { photosDeleted, photosKept };
+}
+
 // ── Audit log (#173) ──────────────────────────────────────────────────────────
 
 export interface AuditEntry {
@@ -1153,6 +1189,13 @@ export function addAiJob(job: AiJob): void {
   jobs.push(job);
   // Keep the job log bounded — it's a processing queue/history, not primary data.
   writeAiJobs(jobs.slice(-MAX_STORED_AI_JOBS));
+}
+
+/** Drops every job of one account; they carry its inputs and results (#324 S21). */
+export function deleteAiJobsOf(username: string): void {
+  const jobs = readAiJobs();
+  const kept = jobs.filter((j) => j.username !== username);
+  if (kept.length !== jobs.length) writeAiJobs(kept);
 }
 
 export function updateAiJob(id: string, changes: Partial<Omit<AiJob, 'id'>>): void {

@@ -410,6 +410,9 @@ export function useAppData() {
     void sync();
   }, [commit, sync]);
 
+  /** Empties this browser's copy of the collection, e.g. after deleting the account (#324 S21). */
+  const clearLocalCollection = useCallback(() => { commit(() => EMPTY_DATA); }, [commit]);
+
   // Polishes
   const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
     const item: Polish = { ...p, id: generateId(), createdAt: now(), updatedAt: now() };
@@ -612,6 +615,7 @@ export function useAppData() {
     pendingAdoption,
     signIn,
     resolveAdoption,
+    clearLocalCollection,
     syncing,
     syncError,
     lastSyncAt,

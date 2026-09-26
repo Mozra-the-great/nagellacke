@@ -71,3 +71,26 @@ export async function saveAccountEmail(email: string): Promise<boolean> {
   if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
   return data.verificationSent === true;
 }
+
+/** GET /api/me/export as a file download (#324 S20). */
+export async function downloadAccountExport(): Promise<void> {
+  const { base, headers } = bearer();
+  const res = await fetch(`${base}/api/me/export`, { headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error ?? `Fehler ${res.status}`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? 'nagellacke-konto.json';
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** POST /api/me/delete (#324 S21). The caller ends the local session afterwards. */
+export async function deleteOwnAccount(password: string): Promise<void> {
+  const { base, headers } = bearer();
+  await post('/api/me/delete', { password }, base, headers);
+}
