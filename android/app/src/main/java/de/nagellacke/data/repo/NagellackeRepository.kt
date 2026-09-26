@@ -9,6 +9,7 @@ import de.nagellacke.data.local.NagellackeDatabase
 import de.nagellacke.data.local.toDomain
 import de.nagellacke.data.local.toEntity
 import de.nagellacke.domain.generateId
+import de.nagellacke.domain.photosOf
 import de.nagellacke.domain.model.AppData
 import de.nagellacke.domain.model.Category
 import de.nagellacke.domain.model.Manicure
@@ -26,6 +27,7 @@ class NagellackeRepository @Inject constructor(
     private val stickerDao: StickerDao,
     private val manicureDao: ManicureDao,
     private val categoryDao: CategoryDao,
+    private val pendingPhotoDeletes: PendingPhotoDeleteStore,
 ) {
     fun observeData(): Flow<AppData> = combine(
         polishDao.observeAll(),
@@ -64,10 +66,16 @@ class NagellackeRepository @Inject constructor(
         val now = System.currentTimeMillis()
         polishDao.upsert(p.copy(createdAt = now, updatedAt = now).toEntity())
     }
-    suspend fun updatePolish(p: Polish) = polishDao.upsert(p.copy(updatedAt = System.currentTimeMillis()).toEntity())
+    suspend fun updatePolish(p: Polish) {
+        val previous = polishDao.getAll().firstOrNull { it.id == p.id }?.toDomain()
+        polishDao.upsert(p.copy(updatedAt = System.currentTimeMillis()).toEntity())
+        // A replaced or removed photo is deleted on the sync target after the next sync (#348).
+        previous?.let { pendingPhotoDeletes.add(photosOf(it) - photosOf(p)) }
+    }
     suspend fun deletePolish(id: String) {
         val existing = polishDao.getAll().firstOrNull { it.id == id } ?: return
         polishDao.upsert(existing.copy(deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
+        pendingPhotoDeletes.add(photosOf(existing.toDomain()))
     }
 
     // Sticker CRUD
@@ -75,10 +83,15 @@ class NagellackeRepository @Inject constructor(
         val now = System.currentTimeMillis()
         stickerDao.upsert(s.copy(id = generateId(), createdAt = now, updatedAt = now).toEntity())
     }
-    suspend fun updateSticker(s: Sticker) = stickerDao.upsert(s.copy(updatedAt = System.currentTimeMillis()).toEntity())
+    suspend fun updateSticker(s: Sticker) {
+        val previous = stickerDao.getAll().firstOrNull { it.id == s.id }?.toDomain()
+        stickerDao.upsert(s.copy(updatedAt = System.currentTimeMillis()).toEntity())
+        previous?.let { pendingPhotoDeletes.add(photosOf(it) - photosOf(s)) }
+    }
     suspend fun deleteSticker(id: String) {
         val existing = stickerDao.getAll().firstOrNull { it.id == id } ?: return
         stickerDao.upsert(existing.copy(deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
+        pendingPhotoDeletes.add(photosOf(existing.toDomain()))
     }
 
     // Manicure CRUD
@@ -86,10 +99,15 @@ class NagellackeRepository @Inject constructor(
         val now = System.currentTimeMillis()
         manicureDao.upsert(m.copy(id = generateId(), createdAt = now, updatedAt = now).toEntity())
     }
-    suspend fun updateManicure(m: Manicure) = manicureDao.upsert(m.copy(updatedAt = System.currentTimeMillis()).toEntity())
+    suspend fun updateManicure(m: Manicure) {
+        val previous = manicureDao.getAll().firstOrNull { it.id == m.id }?.toDomain()
+        manicureDao.upsert(m.copy(updatedAt = System.currentTimeMillis()).toEntity())
+        previous?.let { pendingPhotoDeletes.add(photosOf(it) - photosOf(m)) }
+    }
     suspend fun deleteManicure(id: String) {
         val existing = manicureDao.getAll().firstOrNull { it.id == id } ?: return
         manicureDao.upsert(existing.copy(deletedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()))
+        pendingPhotoDeletes.add(photosOf(existing.toDomain()))
     }
 
     // Category CRUD
