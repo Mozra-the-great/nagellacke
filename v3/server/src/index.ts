@@ -25,6 +25,7 @@ import {
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
   photoUploadsAllowed, aiAllowed, publicInstanceEnabled, getBranding, setBranding, BRANDING_DIR,
+  getLegalPages, setLegalPages, LEGAL_PAGE_KEYS,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -1555,6 +1556,67 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(404).send({ error: 'Kein Logo gesetzt' });
     }
     return reply.type(logo.mimeType).send(fs.readFileSync(file));
+  });
+
+  // ── Legal pages (#324 S11) ──────────────────────────────────────────────────────
+
+  const MAX_LEGAL_TITLE = 120;
+  const MAX_LEGAL_BODY = 50_000;
+
+  // GET /api/legal — public: an Impressum has to be reachable without an account. A page
+  // nobody maintained comes back as null, and the web app then shows no link to it, so
+  // an install.sh instance looks exactly as before.
+  app.get('/api/legal', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const pages = getLegalPages();
+    return { impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
+  });
+
+  // Separate from /api/admin/settings on purpose: several KB of text would otherwise
+  // travel along with every panel load and every SMTP save.
+  app.get('/api/admin/legal', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const pages = getLegalPages();
+    return { impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
+  });
+
+  // POST /api/admin/legal — { impressum?: { title, body } | null, datenschutz?: … }.
+  // An omitted key is left alone; null or an empty body removes the page.
+  app.post('/api/admin/legal', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const pages = getLegalPages();
+    const changed: string[] = [];
+    for (const key of LEGAL_PAGE_KEYS) {
+      if (!(key in body)) continue;
+      const v = body[key] as { title?: unknown; body?: unknown } | null;
+      if (v === null || (v && typeof v.body === 'string' && !v.body.trim())) {
+        delete pages[key];
+        changed.push(key);
+        continue;
+      }
+      if (!v || typeof v.title !== 'string' || typeof v.body !== 'string') {
+        return reply.code(400).send({ error: `${key} braucht title und body als Text` });
+      }
+      if (v.title.length > MAX_LEGAL_TITLE) return reply.code(400).send({ error: `Titel darf höchstens ${MAX_LEGAL_TITLE} Zeichen lang sein` });
+      if (v.body.length > MAX_LEGAL_BODY) return reply.code(400).send({ error: `Text darf höchstens ${MAX_LEGAL_BODY} Zeichen lang sein` });
+      pages[key] = {
+        title: v.title.trim() || (key === 'impressum' ? 'Impressum' : 'Datenschutz'),
+        body: v.body,
+        updatedAt: Date.now(),
+      };
+      changed.push(key);
+    }
+    setLegalPages(pages);
+    // Which pages changed, never their content.
+    logAdminAction(actor, 'legal.updated', undefined, { pages: changed });
+    return { ok: true, impressum: pages.impressum ?? null, datenschutz: pages.datenschutz ?? null };
   });
 
   // GET /api/instance-config — deliberately public, like registration-status above

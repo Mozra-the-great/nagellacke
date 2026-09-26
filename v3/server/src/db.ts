@@ -799,6 +799,43 @@ export function setBranding(settings: BrandingSettings): void {
   fs.renameSync(tmp, BRANDING_FILE);
 }
 
+// ── Legal pages (#324 S11) ────────────────────────────────────────────────────
+//
+// Impressum and Datenschutz, maintained in the admin panel, never compiled in: install.sh
+// and the container image run the same code, and each instance needs its own text.
+// Plain text only. Like branding, kept out of server_settings.json because it is served
+// publicly while that file holds the SMTP password.
+
+export type LegalPageKey = 'impressum' | 'datenschutz';
+export const LEGAL_PAGE_KEYS: readonly LegalPageKey[] = ['impressum', 'datenschutz'];
+export interface LegalPage { title: string; body: string; updatedAt: number }
+export type LegalPages = Partial<Record<LegalPageKey, LegalPage>>;
+
+const LEGAL_FILE = path.join(DATA_DIR, 'legal.json');
+
+export function getLegalPages(): LegalPages {
+  try {
+    if (!fs.existsSync(LEGAL_FILE)) return {};
+    const raw = JSON.parse(fs.readFileSync(LEGAL_FILE, 'utf-8')) as Record<string, unknown>;
+    const pages: LegalPages = {};
+    for (const key of LEGAL_PAGE_KEYS) {
+      const p = raw[key] as Partial<LegalPage> | undefined;
+      if (p && typeof p.title === 'string' && typeof p.body === 'string' && typeof p.updatedAt === 'number') {
+        pages[key] = { title: p.title, body: p.body, updatedAt: p.updatedAt };
+      }
+    }
+    return pages;
+  } catch {
+    return {};
+  }
+}
+
+export function setLegalPages(pages: LegalPages): void {
+  const tmp = `${LEGAL_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(pages), { mode: 0o600 });
+  fs.renameSync(tmp, LEGAL_FILE);
+}
+
 // ── Report schedule config ────────────────────────────────────────────────────
 //
 // One schedule per user since #353. Before that, schedule.json held a single
