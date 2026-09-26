@@ -6,8 +6,12 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import de.nagellacke.BuildConfig
 import de.nagellacke.data.repo.SyncConfig
 import de.nagellacke.data.repo.SyncConfigStore
+import de.nagellacke.domain.Pow
 import de.nagellacke.domain.mergeData
 import de.nagellacke.domain.model.AppData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -208,10 +212,40 @@ class AuthRepository(private val baseUrl: String) {
         return AuthResult(token, response.refreshToken ?: "")
     }
 
+    /**
+     * Registers and returns the new account's tokens. A server with the registration proof
+     * of work switched on (#324 S13) wants a solved challenge alongside: it is solved up front
+     * when registration-status says so, and once more if the server still refuses with
+     * `powRequired` — the admin may have switched it on since, or the challenge ran out. A
+     * server predating the check has no status field and no challenge route, and gets exactly
+     * the request it always did.
+     */
     suspend fun register(username: String, password: String): AuthResult {
-        val response = api.register(LoginRequest(username, password))
+        val powUpFront = runCatching { api.registrationStatus().requiresPow }.getOrDefault(false)
+        val response = try {
+            api.register(RegisterRequest(username, password, if (powUpFront) solvedChallenge() else null))
+        } catch (e: HttpException) {
+            if (e.code() != 400 || !isPowRequired(e)) throw e
+            api.register(RegisterRequest(username, password, solvedChallenge()))
+        }
         val token = response.token
             ?: throw IllegalStateException("Registrierung fehlgeschlagen: kein Token erhalten.")
         return AuthResult(token, response.refreshToken ?: "")
     }
+
+    private suspend fun solvedChallenge(): PowSolution {
+        val c = api.powChallenge()
+        val n = withContext(Dispatchers.Default) { Pow.solve(c.salt, c.difficulty) }
+        return PowSolution(c.salt, c.difficulty, c.expires, c.sig, n)
+    }
+
+    private fun isPowRequired(e: HttpException): Boolean {
+        val body = runCatching { e.response()?.errorBody()?.string() }.getOrNull() ?: return false
+        return runCatching {
+            json.decodeFromString<RegisterError>(body).powRequired
+        }.getOrDefault(false)
+    }
 }
+
+@Serializable
+private data class RegisterError(val error: String? = null, val powRequired: Boolean = false)

@@ -5,6 +5,7 @@ import { normalizeFinish, type AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
 import { hashRecoveryCode } from './totp';
+import type { StoredPasskey } from './passkeys';
 import { BRANDING_PRESETS, DEFAULT_BRANDING_SETTINGS } from './branding';
 import type { BrandingPreset, BrandingSettings } from './branding';
 
@@ -284,9 +285,21 @@ export interface User {
   // and a wrong TOTP code are different failure modes with independent budgets.
   login_fail_count?: number;
   login_locked_until?: number;
-  // WebAuthn/passkeys (follow-up issue, not this PR — see #174 plan §9: no
-  // single fixed RP ID across this app's self-hosted deployment topologies).
-  // webauthn_credentials?: WebAuthnCredential[];
+  // Password reset (#324 S17). Only the sha256 of the emailed token is stored, the
+  // pattern recovery_codes uses: a leaked users.json does not hand out reset links.
+  reset_hash?: string;
+  reset_expires?: number;        // epoch ms
+  reset_sent_at?: number;        // epoch ms; throttles repeat mails to one address
+  // E-mail verification (#324 S19), same shape. Unverified accounts work fully; they
+  // only cannot trigger a password reset, since the reset mail goes to that address.
+  email_verified?: boolean;
+  verify_hash?: string;
+  verify_expires?: number;
+  verify_sent_at?: number;
+  // Passkeys (#228). The user handle is random rather than the username, so an
+  // authenticator's stored account list does not carry the name into other contexts.
+  webauthn_user_id?: string;     // base64url, 16 random bytes, fixed per account
+  webauthn_credentials?: StoredPasskey[];
 }
 
 function readUsers(): User[] {
@@ -346,13 +359,64 @@ export function bumpTokenVersion(username: string): number {
   return next;
 }
 
+/**
+ * Sets the account's e-mail address. A changed address is unverified again (#324 S19):
+ * whoever controlled the old one proved nothing about the new one. Setting the same
+ * address again keeps its status.
+ */
 export function updateUserEmail(username: string, email: string): void {
   const users = readUsers();
   const idx = users.findIndex((u) => u.username === username);
   if (idx >= 0) {
+    const unchanged = users[idx].email === email;
     users[idx] = { ...users[idx], email };
+    if (!unchanged) {
+      delete users[idx].email_verified;
+      delete users[idx].verify_hash;
+      delete users[idx].verify_expires;
+    }
     writeUsers(users);
   }
+}
+
+/** Shallow-merges `changes` into one user; a key set to undefined is removed. */
+export function patchUser(username: string, changes: Partial<Omit<User, 'username'>>): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  const next: User = { ...users[idx] };
+  for (const [k, v] of Object.entries(changes) as [keyof User, unknown][]) {
+    if (v === undefined) delete next[k];
+    else (next as unknown as Record<string, unknown>)[k] = v;
+  }
+  users[idx] = next;
+  writeUsers(users);
+}
+
+export function findUsers(predicate: (u: User) => boolean): User[] {
+  return readUsers().filter(predicate);
+}
+
+/**
+ * Replaces the password after a reset (#324 S17): clears the reset token so the link
+ * works once, clears the login lockout the forgotten password may have caused, and
+ * bumps token_version so every session and photo link issued before is dead.
+ */
+export function resetPassword(username: string, passwordHash: string): void {
+  const users = readUsers();
+  const idx = users.findIndex((u) => u.username === username);
+  if (idx < 0) return;
+  const next: User = {
+    ...users[idx],
+    password_hash: passwordHash,
+    token_version: (users[idx].token_version ?? 0) + 1,
+  };
+  delete next.reset_hash;
+  delete next.reset_expires;
+  delete next.login_fail_count;
+  delete next.login_locked_until;
+  users[idx] = next;
+  writeUsers(users);
 }
 
 // ── TOTP (2FA, #174) ─────────────────────────────────────────────────────────
@@ -643,6 +707,44 @@ export function deleteUser(username: string): void {
   }
 }
 
+/**
+ * Self-service account deletion (#324 S21). Unlike deleteUser() on its own, which an
+ * admin uses and which keeps the collection recoverable by hand, this erases: someone
+ * deleting their own account is asking for their data to be gone, not archived.
+ *
+ * Photos go too, but only those this account uploaded *and* no other account's records
+ * reference — a photo someone else still shows is theirs to keep. Photos with no
+ * recorded uploader (X-Api-Key uploads, or from before #352) are left alone, since
+ * nothing says whose they are. Schedule and AI jobs are removed by the caller-free
+ * helpers here so nothing keyed on the name survives.
+ */
+export function eraseAccount(username: string): { photosDeleted: number; photosKept: number } {
+  // Photos first, while the owner table still names this account.
+  const others = readUsers().map((u) => u.username).filter((u) => u !== username);
+  const owned = [...photoOwners()].filter(([, owner]) => owner === username).map(([f]) => f);
+  const photosRoot = path.resolve(PHOTOS_DIR);
+  let photosDeleted = 0;
+  let photosKept = 0;
+  for (const filename of owned) {
+    // Kept for the accounts that still show it. deleteUser() below drops this account's
+    // ownership records, so access to a kept photo falls back to those references.
+    if (others.some((o) => userOwnsPhoto(o, filename))) { photosKept++; continue; }
+    const file = path.resolve(photosRoot, filename);
+    if (!file.startsWith(photosRoot + path.sep)) continue;
+    fs.rmSync(file, { force: true });
+    photosDeleted++;
+  }
+  deleteUser(username);
+  // The whole directory, including the data.json.deleted-* deleteUser just renamed.
+  const dir = path.resolve(USER_DATA_DIR, userDirName(username));
+  if (dir.startsWith(path.resolve(USER_DATA_DIR) + path.sep)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  deleteScheduleConfig(username);
+  deleteAiJobsOf(username);
+  return { photosDeleted, photosKept };
+}
+
 // ── Audit log (#173) ──────────────────────────────────────────────────────────
 
 export interface AuditEntry {
@@ -738,6 +840,13 @@ export interface ServerSettings {
   aiEnabled?: boolean;
   /** Cloud operation: an instance open to strangers rather than a household LAN. */
   publicInstance?: { enabled?: boolean };
+  /** Require a proof of work on POST /api/auth/register (#324 S13). undefined = off. */
+  registrationPow?: boolean;
+  /**
+   * Narrows the passkey relying party to a parent domain of the App-URL's host (#228),
+   * e.g. `example.de` for `app.example.de`. Unset = the App-URL's host itself.
+   */
+  webauthnRpId?: string;
 }
 
 /** Whether new photos may be uploaded (#324). Deleting and reading are never affected. */
@@ -752,6 +861,11 @@ export function aiAllowed(): boolean {
 
 export function publicInstanceEnabled(): boolean {
   return getServerSettings().publicInstance?.enabled ?? false;
+}
+
+/** Whether registration requires a proof of work (#324 S13). Off unless switched on in the panel. */
+export function registrationPowEnabled(): boolean {
+  return getServerSettings().registrationPow ?? false;
 }
 
 const SERVER_SETTINGS_FILE = path.join(DATA_DIR, 'server_settings.json');
@@ -1084,6 +1198,13 @@ export function addAiJob(job: AiJob): void {
   jobs.push(job);
   // Keep the job log bounded — it's a processing queue/history, not primary data.
   writeAiJobs(jobs.slice(-MAX_STORED_AI_JOBS));
+}
+
+/** Drops every job of one account; they carry its inputs and results (#324 S21). */
+export function deleteAiJobsOf(username: string): void {
+  const jobs = readAiJobs();
+  const kept = jobs.filter((j) => j.username !== username);
+  if (kept.length !== jobs.length) writeAiJobs(kept);
 }
 
 export function updateAiJob(id: string, changes: Partial<Omit<AiJob, 'id'>>): void {

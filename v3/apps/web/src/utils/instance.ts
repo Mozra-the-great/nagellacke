@@ -75,6 +75,9 @@ export async function fetchInstanceConfig(signal?: AbortSignal): Promise<Instanc
 // components that need it (photo field, cart, polish form, settings) sit at very
 // different depths.
 let current: InstanceConfig | null = null;
+// Whether any answer (including "none") has arrived yet. Only the intro gate needs
+// this: it must not flash the app first and then snatch it away (#324 S16).
+let loaded = false;
 const listeners = new Set<() => void>();
 
 /** Re-reads the config, e.g. on startup and whenever the configured server may have changed. */
@@ -82,6 +85,7 @@ export async function refreshInstanceConfig(signal?: AbortSignal): Promise<void>
   const next = await fetchInstanceConfig(signal);
   if (signal?.aborted) return;
   current = next;
+  loaded = true;
   listeners.forEach((l) => l());
 }
 
@@ -92,6 +96,25 @@ function subscribe(listener: () => void): () => void {
 
 export function useInstanceConfig(): InstanceConfig | null {
   return useSyncExternalStore(subscribe, () => current, () => null);
+}
+
+export function useInstanceConfigLoaded(): boolean {
+  return useSyncExternalStore(subscribe, () => loaded, () => false);
+}
+
+/**
+ * Whether the public-instance intro gate stands in front of the app (#324 S16): only
+ * on a public instance, only for a visitor who has neither a sync setup nor chose to
+ * work without an account, and never over a standalone page: the legal pages the
+ * gate links to, or a reset/verification link opened from a mail.
+ */
+export function introGateVisible(opts: {
+  config: InstanceConfig | null;
+  hasSyncConfig: boolean;
+  localOnlyAck: boolean;
+  onStandalonePage: boolean;
+}): boolean {
+  return opts.config?.publicInstance === true && !opts.hasSyncConfig && !opts.localOnlyAck && !opts.onStandalonePage;
 }
 
 /** False only when the server has explicitly switched AI off. */

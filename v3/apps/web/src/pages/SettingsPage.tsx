@@ -17,6 +17,9 @@ import { bootstrapAdmin } from '../utils/admin';
 import type { UpdateProgress } from '../utils/admin';
 import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
+import ServerAuthForm from '../components/ServerAuthForm';
+import PasskeySection from '../components/PasskeySection';
+import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -106,152 +109,83 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [configSaveError, setConfigSaveError] = useState('');
   const [newCatLabel, setNewCatLabel] = useState('');
 
-  const [loginUser, setLoginUser] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [loginStatus, setLoginStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [loginError, setLoginError] = useState('');
-
-  // ── Self-registration (#278) ──
-  // The server has always accepted POST /api/auth/register and the Android app
-  // has always offered it; the web app had no form at all, which made the Admin
-  // panel's "Registrierung erlauben" toggle a no-op for this surface.
-  // `registrationAllowed === null` means "not asked yet, or the server didn't
-  // answer" - the register option stays hidden then, so a server predating the
-  // status route keeps showing exactly the login form it always did.
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [registrationAllowed, setRegistrationAllowed] = useState<boolean | null>(null);
-  const [registerPass2, setRegisterPass2] = useState('');
-  const [registerStatus, setRegisterStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [registerError, setRegisterError] = useState('');
-
-  // ── Two-step login (TOTP 2FA, #174) ──
-  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState('');
-  const [mfaUseRecovery, setMfaUseRecovery] = useState(false);
-  const [mfaStatus, setMfaStatus] = useState<'idle' | 'loading' | 'error'>('idle');
-  const [mfaError, setMfaError] = useState('');
-
   const applyLoginTokens = (token: string, refreshToken: string | undefined) => {
-    const c: SyncConfig = {
-      provider: 'server',
-      serverUrl,
-      serverToken: token,
-      serverRefreshToken: refreshToken,
-    };
-    saveSyncConfig(c);
-    setConfig(c);
+    // Stores the session and syncs — or, on a public instance with a collection
+    // already in this browser, first asks whether to take it along (#324 S16).
+    appData.signIn(serverUrl, token, refreshToken, instanceConfig?.publicInstance === true);
+    setConfig(loadSyncConfig());
     setServerToken(token);
     // A photo token cached for whoever was signed in before would be refused
     // for this account's photos until it expired (#352).
     clearPhotoToken();
-    setLoginPass('');
-    setLoginStatus('idle');
-    setMfaChallengeToken(null);
-    setMfaCode('');
-    setMfaUseRecovery(false);
-    setMfaStatus('idle');
-    setMfaError('');
-    void appData.sync();
     // Re-reads GET /api/auth/me so the Admin tab appears immediately for an
     // admin account (#173). Lives here rather than at the call site so the
     // two-step 2FA login refreshes the role too, not just the direct login.
     onAuthChange();
   };
 
-  const login = async () => {
-    setLoginStatus('loading');
-    setLoginError('');
-    const base = serverUrl.replace(/\/$/, '');
+  const doSaveAccountEmail = async () => {
+    setAccountEmailStatus('saving');
+    setAccountEmailMessage('');
     try {
-      const res = await fetch(`${base}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUser, password: loginPass }),
-      });
-      const data = await res.json() as { token?: string; refreshToken?: string; mfaRequired?: boolean; challengeToken?: string; error?: string };
-      // Check the 2FA challenge shape *before* the "no token" error branch —
-      // an account with 2FA enabled deliberately gets { mfaRequired: true,
-      // challengeToken } instead of real tokens at this step.
-      if (res.ok && data.mfaRequired && data.challengeToken) {
-        setMfaChallengeToken(data.challengeToken);
-        setLoginStatus('idle');
-        return;
-      }
-      if (!res.ok || !data.token) {
-        setLoginError(data.error ?? `Fehler ${res.status}`);
-        setLoginStatus('error');
-        return;
-      }
-      applyLoginTokens(data.token, data.refreshToken);
+      const sent = await saveAccountEmail(accountEmail.trim());
+      const normalized = accountEmail.trim().toLowerCase();
+      if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
+      setSavedAccountEmail(normalized);
+      setAccountEmail(normalized);
+      setAccountEmailStatus('idle');
+      setAccountEmailMessage(sent ? 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.' : 'Gespeichert.');
     } catch (e) {
-      setLoginError(e instanceof Error ? e.message : 'Verbindungsfehler');
-      setLoginStatus('error');
+      setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAccountEmailStatus('error');
     }
   };
 
-  const register = async () => {
-    if (loginPass !== registerPass2) {
-      setRegisterError('Die beiden Passwörter stimmen nicht überein.');
-      setRegisterStatus('error');
+  const doResendVerification = async () => {
+    setAccountEmailStatus('resending');
+    setAccountEmailMessage('');
+    try {
+      await resendVerification();
+      setAccountEmailStatus('idle');
+      setAccountEmailMessage('Mail gesendet.');
+    } catch (e) {
+      setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setAccountEmailStatus('error');
+    }
+  };
+
+  const doExportAccount = async () => {
+    setExportStatus('loading');
+    setExportError('');
+    try {
+      await downloadAccountExport();
+      setExportStatus('idle');
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setExportStatus('error');
+    }
+  };
+
+  const doDeleteAccount = async () => {
+    setDeleteStep('loading');
+    setDeleteError('');
+    try {
+      await deleteOwnAccount(deletePassword);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setDeleteStep('confirm');
       return;
     }
-    setRegisterStatus('loading');
-    setRegisterError('');
-    const base = serverUrl.replace(/\/$/, '');
-    try {
-      const res = await fetch(`${base}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUser, password: loginPass }),
-      });
-      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
-      if (!res.ok || !data.token) {
-        setRegisterError(data.error ?? `Fehler ${res.status}`);
-        setRegisterStatus('error');
-        return;
-      }
-      // Registration returns a usable token pair, so the new account is logged
-      // in straight away rather than being bounced back to the login form.
-      setRegisterStatus('idle');
-      setRegisterPass2('');
-      setAuthMode('login');
-      applyLoginTokens(data.token, data.refreshToken);
-    } catch (e) {
-      setRegisterError(e instanceof Error ? e.message : 'Verbindungsfehler');
-      setRegisterStatus('error');
-    }
-  };
-
-  const verifyMfaCode = async () => {
-    if (!mfaChallengeToken) return;
-    setMfaStatus('loading');
-    setMfaError('');
-    const base = serverUrl.replace(/\/$/, '');
-    try {
-      const res = await fetch(`${base}/api/auth/login/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken: mfaChallengeToken, code: mfaCode.trim() }),
-      });
-      const data = await res.json() as { token?: string; refreshToken?: string; error?: string };
-      if (!res.ok || !data.token) {
-        setMfaError(data.error ?? `Fehler ${res.status}`);
-        setMfaStatus('error');
-        return;
-      }
-      applyLoginTokens(data.token, data.refreshToken);
-    } catch (e) {
-      setMfaError(e instanceof Error ? e.message : 'Verbindungsfehler');
-      setMfaStatus('error');
-    }
-  };
-
-  const cancelMfaLogin = () => {
-    setMfaChallengeToken(null);
-    setMfaCode('');
-    setMfaUseRecovery(false);
-    setMfaStatus('idle');
-    setMfaError('');
+    // The server already cleared the refresh cookie; this is the local half of a logout.
+    saveSyncConfig(null);
+    setServerToken('');
+    setConfig(null);
+    clearPhotoToken();
+    if (deleteLocalToo) appData.clearLocalCollection();
+    setDeletePassword('');
+    setDeleteTypedName('');
+    setDeleteStep('done');
+    onAuthChange();
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -508,6 +442,23 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [scheduleSaveError, setScheduleSaveError] = useState('');
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
+  // ── Konto-E-Mail (#324 S19): the address a password reset goes to ──
+  const [accountEmail, setAccountEmail] = useState('');
+  const [savedAccountEmail, setSavedAccountEmail] = useState<string | null>(null);
+  const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
+  const [accountEmailStatus, setAccountEmailStatus] = useState<'idle' | 'saving' | 'resending' | 'error'>('idle');
+  const [accountEmailMessage, setAccountEmailMessage] = useState('');
+
+  // ── Eigene Daten und Konto löschen (#324 S20, S21) ──
+  const [meUsername, setMeUsername] = useState<string | null>(null);
+  const [exportStatus, setExportStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [exportError, setExportError] = useState('');
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'loading' | 'done'>('idle');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteTypedName, setDeleteTypedName] = useState('');
+  const [deleteLocalToo, setDeleteLocalToo] = useState(true);
+  const [deleteError, setDeleteError] = useState('');
+
   // ── KI-Assistenz ──
   const [aiProvider, setAiProvider] = useState<AiProvider>('openrouter');
   const [aiOpenrouterKey, setAiOpenrouterKey] = useState('');
@@ -575,32 +526,6 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     return () => clearInterval(id);
   }, [updateStatus, serverBase, apiKey]);
 
-  // Asks the server whether self-registration is open, so the register option
-  // is only offered when it would actually succeed (#278). Runs on the typed
-  // serverUrl rather than the saved config, because the whole point is the
-  // not-yet-configured visitor. A failure (offline, or a server predating this
-  // route) leaves the flag null, which hides the option entirely.
-  //
-  // An empty serverUrl is a legitimate case, not a "not configured yet" one —
-  // the field's own hint says "leer = diese Seite", and login()/register()
-  // both already work with an empty base (fetch resolves the relative URL
-  // against the current origin). Requiring serverUrl.trim() here meant a
-  // visitor who followed that hint literally never saw a register option at
-  // all, no matter what the server answered.
-  useEffect(() => {
-    if (provider !== 'server' || serverToken) {
-      setRegistrationAllowed(null);
-      return;
-    }
-    const controller = new AbortController();
-    const base = serverUrl.replace(/\/$/, '');
-    fetch(`${base}/api/auth/registration-status`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() as Promise<{ allowed?: boolean }> : null))
-      .then((data) => { setRegistrationAllowed(data?.allowed ?? null); })
-      .catch(() => { /* offline or older server - stay on login-only */ });
-    return () => controller.abort();
-  }, [provider, serverUrl, serverToken]);
-
   useEffect(() => {
     if (!isServerSync) return;
     const base = serverBase;
@@ -610,7 +535,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     const controller = new AbortController();
     const { signal } = controller;
 
-    type MeResponse = { email?: string | null; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
+    type MeResponse = { username?: string; email?: string | null; emailVerified?: boolean; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
     type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
 
     // Load email + smtp status + 2FA status
@@ -619,6 +544,11 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       .then(d => {
         if (signal.aborted) return;
         if (d.email) setReportEmail(d.email);
+        setAccountEmail(d.email ?? '');
+        setMeUsername(d.username ?? null);
+        setSavedAccountEmail(d.email ?? null);
+        // Absent on a server older than #324 S19: no status to show then.
+        setEmailVerified(typeof d.emailVerified === 'boolean' ? d.emailVerified : null);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
         setTotpEnabled(!!d.totpEnabled);
         setRecoveryCodesRemaining(d.recoveryCodesRemaining ?? 0);
@@ -957,6 +887,99 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   }}
                 >Abmelden</button>
               </div>
+              <label className={styles.field}>
+                <span>
+                  Konto-E-Mail
+                  {savedAccountEmail && emailVerified === true && <span className={styles.fieldHint}> (bestätigt)</span>}
+                  {savedAccountEmail && emailVerified === false && <span className={styles.fieldHint}> (nicht bestätigt)</span>}
+                </span>
+                <input type="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} autoComplete="email" />
+                <p className={styles.fieldHelpText}>
+                  An diese Adresse geht der Link, wenn du dein Passwort vergessen hast, aber erst, nachdem du sie bestätigt hast.
+                </p>
+              </label>
+              <div role="status" aria-live="polite" aria-atomic="true">
+                {accountEmailMessage && (
+                  <div className={accountEmailStatus === 'error' ? styles.errorBanner : styles.successBanner}>{accountEmailMessage}</div>
+                )}
+              </div>
+              <div className={styles.btnRow} style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className={styles.syncBtn}
+                  disabled={!accountEmail.trim() || accountEmail.trim().toLowerCase() === savedAccountEmail || accountEmailStatus === 'saving'}
+                  onClick={() => void doSaveAccountEmail()}
+                >
+                  {accountEmailStatus === 'saving' ? 'Speichere…' : 'Adresse speichern'}
+                </button>
+                {savedAccountEmail && emailVerified === false && (
+                  <button
+                    type="button"
+                    className={styles.syncBtn}
+                    disabled={accountEmailStatus === 'resending'}
+                    onClick={() => void doResendVerification()}
+                  >
+                    {accountEmailStatus === 'resending' ? 'Sende…' : 'Bestätigungsmail erneut senden'}
+                  </button>
+                )}
+              </div>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '4px 0 8px' }}>Dein Konto</h3>
+              <p className={styles.fieldHelpText}>
+                Lädt alles herunter, was der Server über dein Konto speichert: Kontodaten, Sammlung und Berichtsplan, als
+                JSON-Datei. Fotos stehen darin als Dateinamen; die Bilder selbst enthält der ZIP-Export unter „Daten“.
+              </p>
+              {exportStatus === 'error' && <div className={styles.errorBanner}>{exportError}</div>}
+              <div className={styles.btnRow} style={{ marginBottom: 12 }}>
+                <button type="button" className={styles.syncBtn} disabled={exportStatus === 'loading'} onClick={() => void doExportAccount()}>
+                  {exportStatus === 'loading' ? 'Lade…' : 'Meine Kontodaten herunterladen'}
+                </button>
+              </div>
+              {deleteStep === 'idle' ? (
+                <button type="button" className={styles.logoutBtn} onClick={() => setDeleteStep('confirm')}>
+                  Konto löschen…
+                </button>
+              ) : (
+                <div className={styles.loginBox}>
+                  <p className={styles.fieldHelpText}>
+                    Löscht dein Konto endgültig: Sammlung, Berichtsplan, KI-Aufträge und die Fotos, die nur du verwendest.
+                    Das lässt sich nicht rückgängig machen, auch nicht durch einen Admin. Wenn du die Daten behalten
+                    möchtest, lade sie vorher herunter.
+                  </p>
+                  <label className={styles.field}>
+                    <span>Passwort</span>
+                    <input type="password" autoComplete="current-password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
+                  </label>
+                  <label className={styles.field}>
+                    <span>Zur Bestätigung deinen Benutzernamen eintippen{meUsername ? `: ${meUsername}` : ''}</span>
+                    <input value={deleteTypedName} onChange={(e) => setDeleteTypedName(e.target.value)} autoComplete="off" />
+                  </label>
+                  <label className={styles.field} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={deleteLocalToo} onChange={(e) => setDeleteLocalToo(e.target.checked)} />
+                    <span>Auch die Kopie der Sammlung in diesem Browser löschen</span>
+                  </label>
+                  <div role="status" aria-live="polite" aria-atomic="true">
+                    {deleteError && <div className={styles.errorBanner}>{deleteError}</div>}
+                  </div>
+                  <div className={styles.btnRow}>
+                    <button
+                      type="button"
+                      className={styles.saveBtn}
+                      style={{ background: 'rgba(179, 38, 30, 0.85)', color: '#fff' }}
+                      disabled={!deletePassword || !meUsername || deleteTypedName.trim() !== meUsername || deleteStep === 'loading'}
+                      onClick={() => void doDeleteAccount()}
+                    >
+                      {deleteStep === 'loading' ? 'Lösche…' : 'Konto endgültig löschen'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.syncBtn}
+                      onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteTypedName(''); setDeleteError(''); }}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
               {logoutAllStatus === 'idle' ? (
                 <button type="button" className={styles.logoutBtn} onClick={() => setLogoutAllStatus('confirm')}>
                   Von allen Geräten abmelden…
@@ -994,116 +1017,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 </div>
               )}
               </>
-            ) : mfaChallengeToken ? (
-              <div className={styles.loginBox}>
-                <label className={styles.field}>
-                  <span>{mfaUseRecovery ? 'Wiederherstellungscode' : 'Code aus der Authenticator-App'}</span>
-                  <input
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    inputMode={mfaUseRecovery ? 'text' : 'numeric'}
-                    autoComplete="one-time-code"
-                    placeholder={mfaUseRecovery ? 'XXXXX-XXXXX' : '123456'}
-                    autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') void verifyMfaCode(); }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className={styles.logoutBtn}
-                  onClick={() => { setMfaUseRecovery((v) => !v); setMfaCode(''); setMfaError(''); }}
-                >
-                  {mfaUseRecovery ? 'Stattdessen Code aus der App verwenden' : 'Stattdessen Wiederherstellungscode verwenden'}
-                </button>
-                <div role="status" aria-live="polite" aria-atomic="true">
-                  {mfaStatus === 'loading' && <span className={styles.infoText}>Prüfe…</span>}
-                  {mfaStatus === 'error' && <div className={styles.errorBanner}>{mfaError}</div>}
-                </div>
-                <div className={styles.btnRow}>
-                  <button
-                    className={styles.saveBtn}
-                    onClick={() => void verifyMfaCode()}
-                    disabled={!mfaCode.trim() || mfaStatus === 'loading'}
-                  >
-                    {mfaStatus === 'loading' ? 'Prüfe…' : 'Bestätigen'}
-                  </button>
-                  <button className={styles.syncBtn} onClick={cancelMfaLogin}>Abbrechen</button>
-                </div>
-              </div>
             ) : (
-              <div className={styles.loginBox}>
-                <label className={styles.field}>
-                  <span>Benutzername</span>
-                  <input value={loginUser} onChange={(e) => setLoginUser(e.target.value)} autoComplete="username" />
-                </label>
-                <label className={styles.field}>
-                  <span>Passwort</span>
-                  <input
-                    type="password"
-                    value={loginPass}
-                    onChange={(e) => setLoginPass(e.target.value)}
-                    autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && authMode === 'login') void login(); }}
-                  />
-                  {authMode === 'register' && (
-                    <p className={styles.fieldHelpText}>Mindestens 8 Zeichen.</p>
-                  )}
-                </label>
-                {authMode === 'register' && (
-                  <label className={styles.field}>
-                    <span>Passwort wiederholen</span>
-                    <input
-                      type="password"
-                      value={registerPass2}
-                      onChange={(e) => setRegisterPass2(e.target.value)}
-                      autoComplete="new-password"
-                      onKeyDown={(e) => { if (e.key === 'Enter') void register(); }}
-                    />
-                  </label>
+              <>
+                {deleteStep === 'done' && (
+                  <div className={styles.successBanner} role="status">Dein Konto wurde gelöscht.</div>
                 )}
-                <div role="status" aria-live="polite" aria-atomic="true">
-                  {authMode === 'login' && loginStatus === 'loading' && <span className={styles.infoText}>Anmelden…</span>}
-                  {authMode === 'login' && loginStatus === 'error' && <div className={styles.errorBanner}>{loginError}</div>}
-                  {authMode === 'register' && registerStatus === 'loading' && <span className={styles.infoText}>Konto wird erstellt…</span>}
-                  {authMode === 'register' && registerStatus === 'error' && <div className={styles.errorBanner}>{registerError}</div>}
-                </div>
-                {authMode === 'login' ? (
-                  <button
-                    className={styles.saveBtn}
-                    onClick={login}
-                    disabled={!loginUser || !loginPass || loginStatus === 'loading'}
-                  >
-                    {loginStatus === 'loading' ? 'Anmelden…' : 'Anmelden'}
-                  </button>
-                ) : (
-                  <button
-                    className={styles.saveBtn}
-                    onClick={register}
-                    disabled={!loginUser || loginPass.length < 8 || !registerPass2 || registerStatus === 'loading'}
-                  >
-                    {registerStatus === 'loading' ? 'Konto wird erstellt…' : 'Konto erstellen'}
-                  </button>
-                )}
-                {/* Only offered when the server said registration is actually
-                    open (#278) - null means "didn't ask / older server", and
-                    then this stays a login-only box, exactly as before. */}
-                {registrationAllowed === true && (
-                  <button
-                    type="button"
-                    className={styles.syncBtn}
-                    onClick={() => {
-                      setAuthMode(authMode === 'login' ? 'register' : 'login');
-                      setRegisterPass2('');
-                      setRegisterError('');
-                      setRegisterStatus('idle');
-                      setLoginError('');
-                      setLoginStatus('idle');
-                    }}
-                  >
-                    {authMode === 'login' ? 'Noch kein Konto? Registrieren' : 'Zurück zum Anmelden'}
-                  </button>
-                )}
-              </div>
+                <ServerAuthForm serverUrl={serverUrl} onAuthenticated={applyLoginTokens} />
+              </>
             )}
           </>
         )}
@@ -1744,6 +1664,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 </div>
               </div>
             )}
+            {serverToken && <PasskeySection />}
           </>
         )}
       </section>

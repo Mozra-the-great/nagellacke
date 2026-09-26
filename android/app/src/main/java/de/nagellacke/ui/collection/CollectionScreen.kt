@@ -32,9 +32,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,9 +68,20 @@ fun CollectionScreen(vm: CollectionViewModel = hiltViewModel()) {
     val state by vm.uiState.collectAsState()
     var showForm by remember { mutableStateOf(false) }
     var editing  by remember { mutableStateOf<Polish?>(null) }
+    // Autofill result (#324 S22): success, nothing found, or why it failed — e.g. AI
+    // switched off on the server, which used to look exactly like a job still running.
+    val aiMessage by vm.aiMessage.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(aiMessage) {
+        aiMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.dismissAiMessage()
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Nagellacke", fontWeight = FontWeight.Bold) }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { editing = null; showForm = true },

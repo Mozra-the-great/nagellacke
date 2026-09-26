@@ -108,6 +108,10 @@ export default function AdminPage() {
   const [photoUploadsEnabled, setPhotoUploadsEnabled] = useState(true);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [publicInstance, setPublicInstance] = useState(false);
+  const [registrationPow, setRegistrationPow] = useState(false);
+  const [appUrl, setAppUrl] = useState('');
+  const [webauthnRpId, setWebauthnRpId] = useState('');
+  const [passkeyDropStatus, setPasskeyDropStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [smtpHost, setSmtpHost] = useState('');
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpUser, setSmtpUser] = useState('');
@@ -142,6 +146,9 @@ export default function AdminPage() {
       setPhotoUploadsEnabled(s.photoUploadsEnabled ?? true);
       setAiEnabled(s.aiEnabled ?? true);
       setPublicInstance(s.publicInstance ?? false);
+      setRegistrationPow(s.registrationPow ?? false);
+      setAppUrl(s.appUrl);
+      setWebauthnRpId(s.webauthnRpId ?? '');
       setSmtpHost(s.smtp.host);
       setSmtpPort(s.smtp.port);
       setSmtpUser(s.smtp.user);
@@ -170,6 +177,11 @@ export default function AdminPage() {
         photoUploadsEnabled,
         aiEnabled,
         publicInstance,
+        registrationPow,
+        // Only sent when changed, so saving the SMTP block never pins an env value into the panel.
+        ...(settings && appUrl.trim() !== settings.appUrl ? { appUrl: appUrl.trim() } : {}),
+        // Only a server that reports passkeys knows the field (#228).
+        ...(settings?.passkeys ? { webauthnRpId: webauthnRpId.trim() } : {}),
         smtp: { host: smtpHost, port: smtpPort, user: smtpUser, pass: smtpPass || undefined, from: smtpFrom, secure: smtpSecure },
       });
       setSmtpPass('');
@@ -449,6 +461,14 @@ export default function AdminPage() {
         </label>
 
         <OnOffField
+          label="Sicherheitsprüfung bei der Registrierung"
+          source={settings?.registrationPowSource}
+          value={registrationPow}
+          onChange={setRegistrationPow}
+          help="Lässt das Gerät vor jeder Registrierung etwa eine Sekunde rechnen. Für einen Menschen kaum spürbar, macht es massenhaft angelegte Konten teuer. Ohne Captcha-Anbieter und ohne Daten an Dritte. Gilt nicht für das allererste Konto."
+        />
+
+        <OnOffField
           label="Foto-Uploads erlauben"
           source={settings?.photoUploadsEnabledSource}
           value={photoUploadsEnabled}
@@ -467,7 +487,7 @@ export default function AdminPage() {
           source={settings?.publicInstanceSource}
           value={publicInstance}
           onChange={setPublicInstance}
-          help="Für einen Server, auf dem sich Fremde registrieren können. Blendet in der Web-App den Knopf „Jetzt syncen“ aus; die Einleitungsseite vor der Anmeldung folgt in einem späteren Update. Die Android-App ist davon nicht betroffen."
+          help="Für einen Server, auf dem sich Fremde registrieren können. Wer die Web-App ohne Anmeldung öffnet, sieht zuerst eine Einleitungsseite mit dem Einleitungstext aus dem Branding und wählt dort zwischen Konto und lokalem Arbeiten im Browser. Außerdem entfällt der Knopf „Jetzt syncen“. Die Android-App ist davon nicht betroffen."
         />
 
         <h3 style={{ fontSize: 14, fontWeight: 600, margin: '16px 0 12px', color: 'var(--md-on-surface-variant)' }}>
@@ -501,6 +521,49 @@ export default function AdminPage() {
           </div>
         </label>
 
+        <label className={styles.field}>
+          <span>App-URL {settings && <span className={styles.fieldHint}>({sourceBadge(settings.appUrlSource)})</span>}</span>
+          <input value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder="https://nagellack.example.de" inputMode="url" />
+          <p className={styles.fieldHelpText}>
+            Die öffentliche Adresse dieser Web-App. Daraus baut der Server die Links in Mails: Fotos in Berichten, Passwort
+            zurücksetzen, Adresse bestätigen. Ohne sie gibt es kein „Passwort vergessen?“. Wirkt sofort nach dem Speichern;
+            leer lassen, um auf die Umgebungsvariable <code>APP_URL</code> zurückzufallen.
+          </p>
+        </label>
+
+        {settings?.passkeys && (
+          <label className={styles.field}>
+            <span>Passkey-Domain <span className={styles.fieldHint}>(optional)</span></span>
+            <input value={webauthnRpId} onChange={(e) => setWebauthnRpId(e.target.value)} placeholder={settings.passkeys.rpId ?? 'example.de'} />
+            <p className={styles.fieldHelpText}>
+              Passkeys werden an eine Domain gebunden. Ohne Eintrag ist das der Host der App-URL
+              {settings.passkeys.rpId ? <> (derzeit <code>{settings.passkeys.rpId}</code>)</> : null}; eine übergeordnete
+              Domain lässt Passkeys auch auf weiteren Subdomains gelten. <strong>Wer die Domain oder den Host der App-URL
+              ändert, macht alle bestehenden Passkeys unbrauchbar</strong> – sie lassen sich nicht umziehen, die Konten
+              melden sich dann wieder mit Passwort an. Test- und Live-Instanz haben getrennte Passkeys.
+              {settings.passkeys.problem ? <> Derzeit nicht nutzbar: {settings.passkeys.problem}</> : null}
+            </p>
+          </label>
+        )}
+        {settings?.passkeys && settings.passkeys.stale > 0 && (
+          <div className={styles.warningBanner} style={{ gap: 12, flexWrap: 'wrap' }}>
+            <span>{settings.passkeys.stale} von {settings.passkeys.total} gespeicherten Passkeys gehören zu einer früheren Domain und funktionieren nicht mehr.</span>
+            <button
+              type="button"
+              className={styles.syncBtn}
+              disabled={passkeyDropStatus === 'loading'}
+              onClick={() => {
+                setPasskeyDropStatus('loading');
+                saveSettings({ dropStalePasskeys: true })
+                  .then(() => { setPasskeyDropStatus('idle'); loadSettings(); })
+                  .catch(() => setPasskeyDropStatus('error'));
+              }}
+            >
+              {passkeyDropStatus === 'loading' ? 'Entferne…' : 'Veraltete Passkeys entfernen'}
+            </button>
+          </div>
+        )}
+
         {settingsSaveStatus === 'error' && <div className={styles.errorBanner}>{settingsSaveError}</div>}
         <div className={styles.btnRow} style={{ marginBottom: 16 }}>
           <button className={styles.saveBtn} onClick={() => void saveServerSettings()} disabled={settingsSaveStatus === 'loading'}>
@@ -520,11 +583,6 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <p className={styles.fieldHelpText} style={{ marginTop: 16 }}>
-          App-URL {settings && <span className={styles.fieldHint}>({sourceBadge(settings.appUrlSource)}, aktuell: {settings.appUrl || '—'})</span>}<br />
-          Wird für Links in versendeten Berichten verwendet. Über die Umgebungsvariable <code>APP_URL</code> setzen — ein
-          Neustart des Servers ist dafür nötig, das Panel zeigt den Wert nur an.
-        </p>
       </section>
 
       <BrandingSection />

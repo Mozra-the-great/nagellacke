@@ -75,9 +75,14 @@ class WishlistViewModel @Inject constructor(
     private val _smartCartStatus = MutableStateFlow<SmartCartStatus>(SmartCartStatus.Idle)
     val smartCartStatus: StateFlow<SmartCartStatus> = _smartCartStatus.asStateFlow()
 
+    // Result of the last autofill run (#324 S22), shown once as a snackbar.
+    private val _aiMessage = MutableStateFlow<String?>(null)
+    val aiMessage: StateFlow<String?> = _aiMessage.asStateFlow()
+    fun dismissAiMessage() { _aiMessage.value = null }
+
     fun addPolish(p: Polish, autofill: Boolean = false) = viewModelScope.launch {
         repo.addPolish(p)
-        if (autofill) aiAssistant.runAutofill(p.id, p.name, p.brand, p.num)
+        if (autofill) _aiMessage.value = AiAssistant.message(aiAssistant.runAutofill(p.id, p.name, p.brand, p.num))
     }
     fun updatePolish(p: Polish)  = viewModelScope.launch { repo.updatePolish(p) }
     fun deletePolish(id: String) = viewModelScope.launch { repo.deletePolish(id) }

@@ -64,6 +64,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import de.nagellacke.data.repo.describeImport
 
 private val PROVIDERS = listOf(
     SyncProvider.Server    to "Eigener Server",
@@ -133,12 +134,7 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
             val result = vm.importZip(uri)
             exportStatus = null
             result.onSuccess { s ->
-                importMessage = true to (
-                    if (s.photosFailed > 0)
-                        "Import abgeschlossen: ${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosImported} Foto(s). ${s.photosFailed} Foto(s) konnten nicht importiert werden (Sync konfiguriert?)."
-                    else
-                        "Import erfolgreich: ${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosImported} Foto(s)."
-                )
+                importMessage = true to describeImport(s)
             }.onFailure { e -> importMessage = false to "Import fehlgeschlagen: ${e.message ?: "Ungültige ZIP-Datei"}" }
         }
     }

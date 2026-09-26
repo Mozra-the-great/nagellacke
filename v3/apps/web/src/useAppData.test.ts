@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { AppData, Polish } from '@nagellacke/core';
-import { mergeImport, loadLocal, STORAGE_KEY } from './useAppData';
+import { mergeImport, loadLocal, STORAGE_KEY, countLiveRecords, hasLocalOnlyAck, setLocalOnlyAck } from './useAppData';
 
 function emptyAppData(): AppData {
   return { polishes: [], customCats: [], manicures: [], stickers: [] };
@@ -107,5 +107,35 @@ describe('mergeImport', () => {
     const result = mergeImport(emptyAppData(), imported);
 
     expect(result.polishes[0].finish).toEqual(['Glitter', 'Top Coat']);
+  });
+});
+
+describe('public-instance local mode (#324 S16)', () => {
+  beforeEach(() => { vi.stubGlobal('localStorage', makeMockStorage()); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('counts live records across polishes, stickers and manicures, not tombstones', () => {
+    const data = {
+      ...emptyAppData(),
+      polishes: [{ id: 'a' }, { id: 'b', deletedAt: 5 }],
+      stickers: [{ id: 's' }],
+      manicures: [{ id: 'm' }, { id: 'n' }],
+    } as unknown as AppData;
+    expect(countLiveRecords(data)).toBe(4);
+    expect(countLiveRecords(emptyAppData())).toBe(0);
+  });
+
+  it('remembers the "without an account" choice, and forgets it again', () => {
+    expect(hasLocalOnlyAck()).toBe(false);
+    setLocalOnlyAck(true);
+    expect(hasLocalOnlyAck()).toBe(true);
+    setLocalOnlyAck(false);
+    expect(hasLocalOnlyAck()).toBe(false);
+  });
+
+  it('treats blocked storage as "not chosen" instead of throwing', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } });
+    expect(hasLocalOnlyAck()).toBe(false);
+    expect(() => setLocalOnlyAck(true)).not.toThrow();
   });
 });

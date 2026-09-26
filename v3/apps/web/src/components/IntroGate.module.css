@@ -1,0 +1,24 @@
+.choices {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.choice {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+
+/* Side by side once there is room; the account form is the longer one. */
+@media (min-width: 820px) {
+  .choices { grid-template-columns: 3fr 2fr; }
+  .choice + .choice { border-left: 1px solid var(--md-outline-variant); }
+}
+
+.caveats {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--md-on-surface-variant);
+}

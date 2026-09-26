@@ -18,9 +18,34 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import retrofit2.HttpException
 
 data class ExportSummary(val polishes: Int, val stickers: Int, val manicures: Int, val photosExported: Int, val photosSkipped: Int)
-data class ImportSummary(val polishes: Int, val stickers: Int, val manicures: Int, val photosImported: Int, val photosFailed: Int)
+/**
+ * [photosRefused] is the part of [photosFailed] the server turned down on purpose (403: an
+ * admin switched photo uploads off, #324 S22), as opposed to a missing sync setup or a
+ * network error — the two need different advice.
+ */
+data class ImportSummary(
+    val polishes: Int,
+    val stickers: Int,
+    val manicures: Int,
+    val photosImported: Int,
+    val photosFailed: Int,
+    val photosRefused: Int = 0,
+)
+
+/** The message Settings shows after an import. Pure, so it is unit-tested. */
+fun describeImport(s: ImportSummary): String {
+    val base = "${s.polishes} Lacke, ${s.stickers} Sticker, ${s.manicures} Maniküren, ${s.photosImported} Foto(s)"
+    if (s.photosFailed == 0) return "Import erfolgreich: $base."
+    val other = s.photosFailed - s.photosRefused
+    val parts = buildList {
+        if (s.photosRefused > 0) add("${s.photosRefused} Foto(s) nicht importiert: Der Server nimmt keine Foto-Uploads an.")
+        if (other > 0) add("$other Foto(s) konnten nicht importiert werden (Sync konfiguriert?).")
+    }
+    return "Import abgeschlossen: $base. " + parts.joinToString(" ")
+}
 
 /**
  * ZIP export/import matching SettingsPage.tsx's exportData()/importData(): a `data.json` at the
@@ -107,8 +132,21 @@ class ExportImportRepository @Inject constructor(
         val adapter = cfg?.let { createAdapter(it, configStore) }
         val filenameMap = mutableMapOf<String, String>()
         var photosFailed = 0
+        var photosRefused = 0
         for ((oldFilename, bytes) in photoBytesByName) {
-            val newFilename = adapter?.let { a -> runCatching { a.uploadPhoto(bytes, mimeTypeFromFilename(oldFilename)).filename }.getOrNull() }
+            // Uploads switched off server-side is a server-wide state: once one is refused,
+            // the rest would be too, so they are not even tried.
+            if (photosRefused > 0) { photosFailed++; photosRefused++; continue }
+            val newFilename = adapter?.let { a ->
+                try {
+                    a.uploadPhoto(bytes, mimeTypeFromFilename(oldFilename)).filename
+                } catch (e: HttpException) {
+                    if (e.code() == 403) photosRefused++
+                    null
+                } catch (e: Exception) {
+                    null
+                }
+            }
             if (newFilename != null) filenameMap[oldFilename] = newFilename else photosFailed++
         }
 
@@ -122,6 +160,7 @@ class ExportImportRepository @Inject constructor(
             manicures = remapped.manicures.size,
             photosImported = filenameMap.size,
             photosFailed = photosFailed,
+            photosRefused = photosRefused,
         )
     }
 

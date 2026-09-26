@@ -80,6 +80,37 @@ function saveLocal(data: AppData): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+// ── Public instance: working without an account, then adopting that work (#324 S16) ──
+
+const LOCAL_ONLY_ACK_KEY = 'nagellacke_v3_local_only_ack';
+const ADOPTION_PENDING_KEY = 'nagellacke_v3_adoption_pending';
+
+function readFlag(key: string): boolean {
+  try { return localStorage.getItem(key) === '1'; } catch { return false; }
+}
+
+function writeFlag(key: string, value: boolean): void {
+  try {
+    if (value) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
+  } catch { /* storage blocked: the choice simply isn't remembered */ }
+}
+
+/** Whether the visitor chose to keep working in this browser without an account. */
+export function hasLocalOnlyAck(): boolean {
+  return readFlag(LOCAL_ONLY_ACK_KEY);
+}
+
+export function setLocalOnlyAck(value: boolean): void {
+  writeFlag(LOCAL_ONLY_ACK_KEY, value);
+}
+
+/** Records that are not deleted — what "N Einträge" in the adoption question counts. */
+export function countLiveRecords(data: AppData): number {
+  const live = (list: unknown) => (Array.isArray(list) ? list.filter((r) => !(r as { deletedAt?: number }).deletedAt).length : 0);
+  return live(data.polishes) + live(data.stickers) + live(data.manicures);
+}
+
 export function hasFinishMigrationBackup(): boolean {
   return localStorage.getItem(FINISH_MIGRATION_BACKUP_KEY) !== null;
 }
@@ -307,7 +338,16 @@ export function useAppData() {
   // unrelated sync - syncPendingRef ensures one more run happens right after.
   const syncingRef = useRef(false);
   const syncPendingRef = useRef(false);
+  // While the adoption question is open, nothing may sync (#324 S16): the first sync
+  // merges the local collection into the account, which is exactly the decision the
+  // dialog is asking for — and every mutator syncs right after its commit. Persisted,
+  // so a reload with the dialog open asks again instead of silently choosing "keep".
+  const adoptionHoldRef = useRef(readFlag(ADOPTION_PENDING_KEY));
+  const [pendingAdoption, setPendingAdoption] = useState<number | null>(
+    () => (adoptionHoldRef.current ? countLiveRecords(dataRef.current) : null),
+  );
   const sync = useCallback(async () => {
+    if (adoptionHoldRef.current) return;
     const config = loadSyncConfig();
     if (!config) return;
     if (syncingRef.current) { syncPendingRef.current = true; return; }
@@ -337,6 +377,41 @@ export function useAppData() {
       }
     }
   }, [commit]);
+
+  /**
+   * Stores a fresh server session and starts syncing, the part every login path shares
+   * (Settings → Sync, the intro gate). With `askAdoption` and a non-empty local
+   * collection, it holds the first sync back and raises the adoption question instead;
+   * resolveAdoption() answers it.
+   */
+  const signIn = useCallback((serverUrl: string, token: string, refreshToken: string | undefined, askAdoption: boolean) => {
+    saveSyncConfig({ provider: 'server', serverUrl, serverToken: token, serverRefreshToken: refreshToken });
+    // Signed in, so the "without an account" choice no longer applies — and after a
+    // later logout the visitor should be asked again rather than dropped into it.
+    setLocalOnlyAck(false);
+    const count = countLiveRecords(dataRef.current);
+    if (askAdoption && count > 0) {
+      adoptionHoldRef.current = true;
+      writeFlag(ADOPTION_PENDING_KEY, true);
+      setPendingAdoption(count);
+      return;
+    }
+    void sync();
+  }, [sync]);
+
+  /** keep: merge the local collection into the account (the old behaviour); otherwise drop it first. */
+  const resolveAdoption = useCallback((keep: boolean) => {
+    // Empty, not tombstoned: tombstones would sync into the account and mean nothing
+    // there. "Verwerfen" is about this browser's copy only.
+    if (!keep) commit(() => EMPTY_DATA);
+    adoptionHoldRef.current = false;
+    writeFlag(ADOPTION_PENDING_KEY, false);
+    setPendingAdoption(null);
+    void sync();
+  }, [commit, sync]);
+
+  /** Empties this browser's copy of the collection, e.g. after deleting the account (#324 S21). */
+  const clearLocalCollection = useCallback(() => { commit(() => EMPTY_DATA); }, [commit]);
 
   // Polishes
   const addPolish = useCallback((p: Omit<Polish, 'id' | 'createdAt' | 'updatedAt'>): Polish => {
@@ -537,6 +612,10 @@ export function useAppData() {
     data,
     localLoadError,
     sessionRestored,
+    pendingAdoption,
+    signIn,
+    resolveAdoption,
+    clearLocalCollection,
     syncing,
     syncError,
     lastSyncAt,
