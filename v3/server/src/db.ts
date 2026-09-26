@@ -5,6 +5,8 @@ import { normalizeFinish, type AppData } from '@nagellacke/core';
 import type { WebSearchConfig } from './websearch';
 import { DEFAULT_WEB_SEARCH } from './websearch';
 import { hashRecoveryCode } from './totp';
+import { BRANDING_PRESETS, DEFAULT_BRANDING_SETTINGS } from './branding';
+import type { BrandingPreset, BrandingSettings } from './branding';
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
@@ -767,6 +769,34 @@ export function setServerSettings(settings: ServerSettings): void {
   const tmp = `${SERVER_SETTINGS_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(settings), { mode: 0o600 });
   fs.renameSync(tmp, SERVER_SETTINGS_FILE);
+}
+
+// ── Branding (#324 S6) ─────────────────────────────────────────────────────────
+//
+// Its own file rather than a field in server_settings.json: that one carries the SMTP
+// password, while branding is served publicly. Keeping them apart means the public
+// endpoint never reads a file that holds a secret.
+
+const BRANDING_FILE = path.join(DATA_DIR, 'branding.json');
+export const BRANDING_DIR = path.join(DATA_DIR, 'branding');
+
+export function getBranding(): BrandingSettings {
+  try {
+    if (!fs.existsSync(BRANDING_FILE)) return { ...DEFAULT_BRANDING_SETTINGS };
+    const raw = JSON.parse(fs.readFileSync(BRANDING_FILE, 'utf-8')) as Partial<BrandingSettings>;
+    return {
+      preset: BRANDING_PRESETS.includes(raw.preset as BrandingPreset) ? raw.preset as BrandingPreset : 'nagellacke',
+      custom: raw.custom && typeof raw.custom === 'object' ? raw.custom : undefined,
+    };
+  } catch {
+    return { ...DEFAULT_BRANDING_SETTINGS };
+  }
+}
+
+export function setBranding(settings: BrandingSettings): void {
+  const tmp = `${BRANDING_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(settings), { mode: 0o600 });
+  fs.renameSync(tmp, BRANDING_FILE);
 }
 
 // ── Report schedule config ────────────────────────────────────────────────────

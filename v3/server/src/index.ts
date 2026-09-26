@@ -24,8 +24,9 @@ import {
   isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
-  photoUploadsAllowed, aiAllowed, publicInstanceEnabled,
+  photoUploadsAllowed, aiAllowed, publicInstanceEnabled, getBranding, setBranding, BRANDING_DIR,
 } from './db';
+import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
 import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
 import type { SearchBackend } from './websearch';
@@ -283,6 +284,10 @@ const MAGIC: [Buffer, string][] = [
 function validImage(buf: Buffer): boolean {
   return MAGIC.some(([m]) => buf.slice(0, m.length).equals(m));
 }
+/** The MIME type the file's own magic bytes claim, or null for anything else. */
+function sniffImageType(buf: Buffer): string | null {
+  return MAGIC.find(([m]) => buf.slice(0, m.length).equals(m))?.[1] ?? null;
+}
 
 // ── Password hashing ──────────────────────────────────────────────────────────
 function hashPassword(password: string): string {
@@ -383,19 +388,6 @@ function httpsGet(url: string): Promise<string> {
  * because moving them into buildApp() would leave dangling timers/open
  * handles behind every test that calls this function.
  */
-/**
- * What GET /api/instance-config reports as branding until branding becomes configurable
- * (#324, S6): the app's current look. A resolved block rather than a preset name, so
- * the client has a single render path and never needs to know which presets exist.
- */
-const DEFAULT_BRANDING = {
-  name: 'Nail Lacquer',
-  tagline: null as string | null,
-  accentColor: null as string | null,
-  logoUrl: null as string | null,
-  introText: null as string | null,
-};
-
 export async function buildApp(): Promise<FastifyInstance> {
   // Must run before any request is served (#87, #173, #352, #353).
   migrateGlobalDataToFirstUser();
@@ -1468,6 +1460,103 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { allowed: registrationOpen(), firstUser: getUserCount() === 0 };
   });
 
+  // ── Branding (#324 S6) ──────────────────────────────────────────────────────────
+
+  // GET /api/admin/branding — the stored choice plus every preset resolved, so the
+  // panel can preview them and pre-fill "custom" from one.
+  app.get('/api/admin/branding', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    const settings = getBranding();
+    return {
+      settings,
+      resolved: resolveBranding(settings),
+      presets: { nagellacke: resolvePreset('nagellacke'), nailvault: resolvePreset('nailvault') },
+    };
+  });
+
+  app.post('/api/admin/branding', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const current = getBranding();
+    const parsed = parseBrandingInput(request.body, current);
+    if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+    // The logo is managed through its own route; never let this one drop or forge it.
+    parsed.settings.custom = { ...parsed.settings.custom, logo: current.custom?.logo };
+    setBranding(parsed.settings);
+    const body = (request.body ?? {}) as { custom?: Record<string, unknown> };
+    logAdminAction(actor, 'branding.updated', undefined, {
+      preset: parsed.settings.preset,
+      custom: body.custom && typeof body.custom === 'object' ? Object.keys(body.custom) : undefined,
+    });
+    return { ok: true, resolved: resolveBranding(parsed.settings) };
+  });
+
+  // POST /api/admin/branding/logo — the custom preset's logo. PNG, JPEG or WebP only,
+  // identified by its own magic bytes rather than the declared type: the file is served
+  // publicly from this origin, and an SVG or HTML upload would be a stored-XSS vector.
+  app.post('/api/admin/branding/logo', {
+    preHandler: requireAdmin,
+    bodyLimit: 3 * 1024 * 1024,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username: actor } = request.user as { username: string };
+    const { data } = (request.body ?? {}) as { data?: string };
+    if (!data) return reply.code(400).send({ error: 'data erforderlich' });
+    const buf = Buffer.from(data, 'base64');
+    const mimeType = sniffImageType(buf);
+    if (!mimeType) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
+    const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+    fs.mkdirSync(BRANDING_DIR, { recursive: true });
+    const filename = `logo.${ext}`;
+    const tmp = path.join(BRANDING_DIR, `${filename}.tmp`);
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, path.join(BRANDING_DIR, filename));
+    for (const other of ['logo.png', 'logo.jpg', 'logo.webp']) {
+      if (other !== filename) fs.rmSync(path.join(BRANDING_DIR, other), { force: true });
+    }
+    const current = getBranding();
+    setBranding({ ...current, custom: { ...current.custom, logo: { filename, mimeType, updatedAt: Date.now() } } });
+    logAdminAction(actor, 'branding.logo_updated');
+    return { ok: true, resolved: resolveBranding(getBranding()) };
+  });
+
+  app.delete('/api/admin/branding/logo', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request) => {
+    const { username: actor } = request.user as { username: string };
+    const current = getBranding();
+    if (current.custom?.logo) {
+      fs.rmSync(path.join(BRANDING_DIR, path.basename(current.custom.logo.filename)), { force: true });
+      setBranding({ ...current, custom: { ...current.custom, logo: undefined } });
+      logAdminAction(actor, 'branding.logo_removed');
+    }
+    return { ok: true };
+  });
+
+  // GET /api/branding/logo — public, it sits in the header before anyone logs in. The
+  // URL carries a version (?v=) from resolveBranding, so it can be cached for a day.
+  app.get('/api/branding/logo', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (_request, reply) => {
+    const settings = getBranding();
+    reply.header('Cache-Control', 'public, max-age=86400');
+    if (settings.preset === 'nailvault') {
+      return reply.type('image/svg+xml').send(NAILVAULT_WORDMARK_SVG);
+    }
+    const logo = settings.preset === 'custom' ? settings.custom?.logo : undefined;
+    const file = logo && path.join(BRANDING_DIR, path.basename(logo.filename));
+    if (!logo || !file || !fs.existsSync(file)) {
+      reply.header('Cache-Control', 'no-store');
+      return reply.code(404).send({ error: 'Kein Logo gesetzt' });
+    }
+    return reply.type(logo.mimeType).send(fs.readFileSync(file));
+  });
+
   // GET /api/instance-config — deliberately public, like registration-status above
   // and for the same reason: the web app has to know what this server offers before
   // anyone is logged in (#324). It carries the capability flags and not just the mode,
@@ -1482,7 +1571,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       publicInstance: publicInstanceEnabled(),
       photoUploads: photoUploadsAllowed(),
       ai: aiAllowed(),
-      branding: DEFAULT_BRANDING,
+      branding: resolveBranding(getBranding()),
     };
   });
 
