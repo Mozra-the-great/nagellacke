@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { FinishType, Polish } from '@nagellacke/core';
 import { FINISH_OPTIONS } from '@nagellacke/core';
 import {
-  getAiConfig, getNextPendingAiJob, updateAiJob, getData, setData,
+  getAiConfig, getNextPendingAiJob, updateAiJob, getData, setData, aiAllowed,
 } from './db';
 import type { AiConfig, AiJob, AiJobTraceStep } from './db';
 import type { WebSearchConfig } from './websearch';
@@ -413,6 +413,11 @@ async function runJob(job: AiJob): Promise<void> {
 
 export async function processAiJobQueue(): Promise<void> {
   if (processing) return;
+  // The admin switch (#324) must stop jobs that were queued before it was flipped, too:
+  // otherwise the 30-second poller drains the backlog and spends provider quota anyway,
+  // which on Gemini's ~20 requests a day is the whole point of switching it off. The
+  // jobs stay pending and run once AI is enabled again.
+  if (!aiAllowed()) return;
   const job = getNextPendingAiJob();
   if (!job) return;
   processing = true;

@@ -726,6 +726,30 @@ export interface ServerSettings {
   smtp?: { host: string; port: number; user: string; pass: string; from: string; secure?: boolean };
   /** Shadows APP_URL when set; env var is the fallback. */
   appUrl?: string;
+  // The next three have no env-var fallback: undefined simply means the default.
+  // Photos and AI sit at the top level rather than under publicInstance because
+  // they make sense on a LAN install too, and nested it would be unclear whether
+  // they still apply with the public mode off (#324).
+  /** Server-wide switch for new photo uploads. undefined = allowed. */
+  photoUploadsEnabled?: boolean;
+  /** Server-wide switch for AI jobs, on top of ai_config.json. undefined = allowed. */
+  aiEnabled?: boolean;
+  /** Cloud operation: an instance open to strangers rather than a household LAN. */
+  publicInstance?: { enabled?: boolean };
+}
+
+/** Whether new photos may be uploaded (#324). Deleting and reading are never affected. */
+export function photoUploadsAllowed(): boolean {
+  return getServerSettings().photoUploadsEnabled ?? true;
+}
+
+/** Whether AI jobs may be started or run (#324), independent of whether a provider is configured. */
+export function aiAllowed(): boolean {
+  return getServerSettings().aiEnabled ?? true;
+}
+
+export function publicInstanceEnabled(): boolean {
+  return getServerSettings().publicInstance?.enabled ?? false;
 }
 
 const SERVER_SETTINGS_FILE = path.join(DATA_DIR, 'server_settings.json');

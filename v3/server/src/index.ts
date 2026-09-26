@@ -24,6 +24,7 @@ import {
   isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
+  photoUploadsAllowed, aiAllowed, publicInstanceEnabled,
 } from './db';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
 import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
@@ -382,6 +383,19 @@ function httpsGet(url: string): Promise<string> {
  * because moving them into buildApp() would leave dangling timers/open
  * handles behind every test that calls this function.
  */
+/**
+ * What GET /api/instance-config reports as branding until branding becomes configurable
+ * (#324, S6): the app's current look. A resolved block rather than a preset name, so
+ * the client has a single render path and never needs to know which presets exist.
+ */
+const DEFAULT_BRANDING = {
+  name: 'Nail Lacquer',
+  tagline: null as string | null,
+  accentColor: null as string | null,
+  logoUrl: null as string | null,
+  introText: null as string | null,
+};
+
 export async function buildApp(): Promise<FastifyInstance> {
   // Must run before any request is served (#87, #173, #352, #353).
   migrateGlobalDataToFirstUser();
@@ -762,6 +776,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     preHandler: requireApiKeyOrJwt,
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request, reply) => {
+    // Server-wide switch (#324). Applies to X-Api-Key callers too; the key is not a
+    // way around a limit meant to cap disk use. DELETE and reads stay open, since
+    // deleting frees space and existing photos remain visible.
+    if (!photoUploadsAllowed()) {
+      return reply.code(403).send({ error: 'Foto-Uploads sind auf diesem Server deaktiviert' });
+    }
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
     const buf = Buffer.from(b64, 'base64');
@@ -1157,6 +1177,13 @@ export async function buildApp(): Promise<FastifyInstance> {
       appUrl: settings.appUrl || process.env.APP_URL || '',
       appUrlSource: settings.appUrl ? 'panel' : (process.env.APP_URL ? 'env' : 'default'),
       appUrlRequiresRestart: true,
+      // No env-var fallback for these three, so the source is only panel or default (#324).
+      photoUploadsEnabled: photoUploadsAllowed(),
+      photoUploadsEnabledSource: settings.photoUploadsEnabled !== undefined ? 'panel' : 'default',
+      aiEnabled: aiAllowed(),
+      aiEnabledSource: settings.aiEnabled !== undefined ? 'panel' : 'default',
+      publicInstance: publicInstanceEnabled(),
+      publicInstanceSource: settings.publicInstance?.enabled !== undefined ? 'panel' : 'default',
       ai: aiSettingsView(getAiConfig()),
       env: {
         port: PORT,
@@ -1181,6 +1208,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       allowRegistration: boolean;
       smtp: Partial<{ host: string; port: number; user: string; pass: string; from: string; secure: boolean }>;
       appUrl: string;
+      photoUploadsEnabled: boolean;
+      aiEnabled: boolean;
+      publicInstance: boolean;
     }>;
     const current = getServerSettings();
     const next: ServerSettings = { ...current };
@@ -1188,6 +1218,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (body.allowRegistration !== undefined) next.allowRegistration = !!body.allowRegistration;
 
     if (body.appUrl !== undefined) next.appUrl = body.appUrl.trim().replace(/\/$/, '');
+
+    if (body.photoUploadsEnabled !== undefined) next.photoUploadsEnabled = !!body.photoUploadsEnabled;
+    if (body.aiEnabled !== undefined) next.aiEnabled = !!body.aiEnabled;
+    if (body.publicInstance !== undefined) next.publicInstance = { ...current.publicInstance, enabled: !!body.publicInstance };
 
     if (body.smtp) {
       const currentSmtp = current.smtp;
@@ -1211,6 +1245,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     logAdminAction(actor, 'server_settings.updated', undefined, {
       allowRegistration: body.allowRegistration !== undefined,
       appUrl: body.appUrl !== undefined,
+      photoUploadsEnabled: body.photoUploadsEnabled !== undefined,
+      aiEnabled: body.aiEnabled !== undefined,
+      publicInstance: body.publicInstance !== undefined,
       smtp: body.smtp !== undefined ? Object.keys(body.smtp) : undefined,
     });
     return { ok: true };
@@ -1429,6 +1466,24 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async () => {
     return { allowed: registrationOpen(), firstUser: getUserCount() === 0 };
+  });
+
+  // GET /api/instance-config — deliberately public, like registration-status above
+  // and for the same reason: the web app has to know what this server offers before
+  // anyone is logged in (#324). It carries the capability flags and not just the mode,
+  // because today the web app hides AI features purely client-side and knows nothing
+  // the server decided; without the flags a user would get a 403 where the feature
+  // should simply not be offered. Nothing here is secret: each flag can already be
+  // learned by calling the endpoint it guards and reading the 403.
+  app.get('/api/instance-config', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async () => {
+    return {
+      publicInstance: publicInstanceEnabled(),
+      photoUploads: photoUploadsAllowed(),
+      ai: aiAllowed(),
+      branding: DEFAULT_BRANDING,
+    };
   });
 
   // POST /api/auth/register
@@ -1969,6 +2024,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username } = request.user as { username: string };
     const { name, brand, num } = request.body as { name?: string; brand?: string; num?: string };
     if (!name) return reply.code(400).send({ error: 'name erforderlich' });
+    if (!aiAllowed()) {
+      return reply.code(403).send({ error: 'KI-Funktionen sind auf diesem Server deaktiviert' });
+    }
     const config = getAiConfig();
     if (!isAiConfigured(config)) {
       return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
@@ -1991,6 +2049,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username } = request.user as { username: string };
     const { prompt } = request.body as { prompt?: string };
     if (!prompt || !prompt.trim()) return reply.code(400).send({ error: 'prompt erforderlich' });
+    if (!aiAllowed()) {
+      return reply.code(403).send({ error: 'KI-Funktionen sind auf diesem Server deaktiviert' });
+    }
     const config = getAiConfig();
     if (!isAiConfigured(config)) {
       return reply.code(400).send({ error: 'KI-Anbieter ist nicht konfiguriert (Einstellungen → KI-Assistenz)' });
