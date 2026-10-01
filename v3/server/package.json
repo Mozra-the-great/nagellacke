@@ -18,8 +18,8 @@
     "@fastify/static": "^10.1.2",
     "@nagellacke/core": "*",
     "@simplewebauthn/server": "^14.0.3",
-    "fastify": "^5.8.5",
-    "nodemailer": "^9.0.3",
+    "fastify": "^5.12.5",
+    "nodemailer": "^10.0.12",
     "otpauth": "^9.5.1",
     "uuid": "^11.1.1"
   },
