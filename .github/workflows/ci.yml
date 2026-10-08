@@ -18,7 +18,8 @@ on:
       - 'scripts/ci/**'
       - '.github/labels.json'
   # Deliberately unfiltered, unlike the push trigger above: `build` and
-  # `build-android` are required status checks on main, and a required check that
+  # `build-android` (the latter skipped via ANDROID_ENABLED since #372) are
+  # required status checks on main, and a required check that
   # never runs is reported as pending forever rather than skipped — a docs-only PR
   # would match no path, never report, and stay unmergeable. Paying a couple of
   # runner-minutes on such a PR is the cheaper side of that trade.
@@ -83,6 +84,16 @@ jobs:
         run: python3 -m unittest discover -s scripts/ci -p "test_*.py"
 
   build-android:
+    # FROZEN since #372 (Android EOL, tag `android-final`): the job is kept, not
+    # deleted, and only runs when the repository variable ANDROID_ENABLED is
+    # 'true' (Settings -> Secrets and variables -> Actions -> Variables).
+    # `build-android` is still a required status check on main; a job skipped
+    # through a job-level `if` reports as skipped, which GitHub counts as passing,
+    # so PRs stay mergeable without running Gradle. (A *workflow-level* skip, e.g.
+    # a path filter, would leave the check pending forever - do not move this
+    # condition up to the workflow.) To resume Android work see
+    # docs/android-wieder-aufnehmen.md.
+    if: ${{ vars.ANDROID_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:

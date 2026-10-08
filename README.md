@@ -1,6 +1,8 @@
 # Nail Lacquer Kollektion
 
-Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Cloud-Sync und nativer Android-App.
+Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem eigenen Server im Heimnetz, keine externe Cloud nötig. Mit optionalem Cloud-Sync.
+
+> **Status:** Web-App und Server werden weiterentwickelt. Die **Android-App ist eingefroren (EOL seit 2026-10)** — Code unter `android/`, Tag `android-final`, Wiederaufnahme: [docs/android-wieder-aufnehmen.md](docs/android-wieder-aufnehmen.md).
 
 ![Version](https://img.shields.io/badge/version-3.3.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
@@ -18,7 +20,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Statistiken** nach Marke, Finish, Status und Farbpalette — plus Wochen- und Monatsberichte, auf Wunsch automatisch per E-Mail
 - **Optionale KI-Hilfe** — Farbe und Finish automatisch ermitteln, Vorschläge für die Wunschliste; die Websuche läuft über den eigenen Server statt über kostenpflichtige Anbieter-Suche
 - **Sync zwischen Geräten** — eigener Server, Nextcloud, Google Drive, OneDrive oder Dropbox; jedes Konto hat seine eigene, private Sammlung, optional mit 2FA
-- **Native Android-App** (Kotlin, Jetpack Compose, Material 3)
+- **Android-App eingefroren (EOL seit 2026-10)** — Code unter `android/`, Tag `android-final`, [Wiederaufnahme](docs/android-wieder-aufnehmen.md); weiterentwickelt wird nur noch die Web-App
 - **Export und Import** als vollständiges Backup inklusive aller Fotos
 
 ## Installation
@@ -39,6 +41,7 @@ Debian/Ubuntu mit Node.js 20+, danach erreichbar unter `http://SERVER-IP:3000`.
 | [Sync einrichten](docs/sync.md) | Konto anlegen, 2FA, Cloud-Anbieter |
 | [Datenspeicherung & Backup](docs/datenspeicherung.md) | Wo was liegt, Backup und Export |
 | [Entwicklung](docs/entwicklung.md) | Lokal starten, Builds, Tests, Repo-Struktur |
+| [Android wieder aufnehmen](docs/android-wieder-aufnehmen.md) | Was beim Android-EOL stillgelegt wurde und wie man es wieder einschaltet |
 | [Architektur](ARCHITECTURE.md) | Datenfluss, Module, Entscheidungen |
 | [Sicherheit](SECURITY.md) | Sicherheitshinweise und Meldeweg |
 | [Änderungshistorie](CHANGELOG.md) | Was sich pro Version geändert hat |

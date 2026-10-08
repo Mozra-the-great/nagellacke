@@ -1,5 +1,9 @@
 # Nagellacke — Feature Inventory / Manual QA Checklist
 
+> **Android is frozen (EOL, #372):** the `AND-*` sections describe the last maintained state (tag
+> `android-final`) and are no longer part of the active QA plan; see
+> [android-wieder-aufnehmen.md](android-wieder-aufnehmen.md).
+
 Exhaustive checklist of every user-facing feature on the Web app (`v3/apps/web/`) and the
 Android app (`android/`), derived by walking every page/screen, component, modal/sheet and
 settings control in the source. Use this as the master manual-QA test plan.
