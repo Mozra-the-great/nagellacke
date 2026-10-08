@@ -122,7 +122,43 @@
   line-height: 1.5;
 }
 
-.count { padding: 0 24px 8px; font-size: 13px; color: var(--md-on-surface-variant); }
+.countRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.count { font-size: 13px; color: var(--md-on-surface-variant); }
+
+/* Cards / Farbraster switch (#375): same look as on the collection page. */
+.viewToggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 14px;
+  background: var(--md-surface-variant);
+  padding: 2px;
+}
+
+.viewBtn {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: var(--md-on-surface-variant);
+  font-size: 12px;
+  font-family: var(--font-body);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+.viewBtn[aria-pressed="true"] {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+  font-weight: 500;
+}
 
 .grid {
   display: grid;
