@@ -6,11 +6,14 @@ import { loadPhotoDefault } from '../useAppData';
 import PolishCard from '../components/PolishCard';
 import PolishFormModal from '../components/PolishFormModal';
 import NailBottle from '../components/NailBottle';
+import SwatchGrid from '../components/SwatchGrid';
 import { useSnackbar } from '../components/Snackbar';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { plural } from '../utils/plural';
 import { startAutofillJob, pollAiJob } from '../utils/ai';
 import { usePhotoUrl } from '../utils/photoToken';
+import { loadCollectionView, saveCollectionView } from '../utils/collectionView';
+import type { CollectionView } from '../utils/collectionView';
 import styles from './CollectionPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -21,6 +24,7 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
     search: '', finish: '', category: '', status: '', brand: '', sort: 'newest',
   });
   const [viewing, setViewing] = useState<Polish | null>(null);
+  const [view, setView] = useState<CollectionView>(loadCollectionView);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Polish | null>(null);
   const { showSnackbar } = useSnackbar();
@@ -32,6 +36,11 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
     const filtered = filterPolishes(appData.data.polishes, filter);
     return sortPolishes(filtered, filter.sort);
   }, [appData.data.polishes, filter]);
+
+  const chooseView = (next: CollectionView) => {
+    setView(next);
+    saveCollectionView(next);
+  };
 
   const activeCategories = appData.data.customCats.filter((c) => !c.deletedAt);
 
@@ -81,9 +90,13 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
       </div>
 
       <div className={styles.filters}>
-        <select aria-label="Sortieren nach" value={filter.sort} onChange={(e) => setFilter((f) => ({ ...f, sort: e.target.value as FilterState['sort'] }))}>
-          {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        {/* The swatch grid has its own fixed order (colour family, light to dark), so the sort
+            select would be a dead control there. */}
+        {view === 'cards' && (
+          <select aria-label="Sortieren nach" value={filter.sort} onChange={(e) => setFilter((f) => ({ ...f, sort: e.target.value as FilterState['sort'] }))}>
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
         <select aria-label="Status filtern" value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value as FilterState['status'] }))}>
           <option value="">Alle Status</option>
           {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -100,29 +113,52 @@ export default function CollectionPage({ appData }: { appData: AppData }) {
         )}
       </div>
 
-      <div className={styles.count}>{plural(visible.length, 'Lack', 'Lacke')}</div>
-
-      <div className={styles.grid}>
-        {visible.length === 0 && (
-          <div className={styles.empty}>
-            {filter.search || filter.finish || filter.status || filter.category
-              ? 'Keine Lacke gefunden — Filter anpassen.'
-              : 'Noch keine Lacke — füge deinen ersten Lack hinzu!'}
-          </div>
-        )}
-        {visible.map((p) => (
-          <PolishCard
-            key={p.id}
-            polish={p}
-            defaultShowPhoto={photoDefault}
-            onEdit={() => setViewing(p)}
-            onDelete={() => {
-              const cleanup = appData.deletePolish(p.id);
-              showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id), cleanup);
-            }}
-          />
-        ))}
+      <div className={styles.countRow}>
+        <div className={styles.count}>{plural(visible.length, 'Lack', 'Lacke')}</div>
+        <div className={styles.viewToggle} role="group" aria-label="Ansicht">
+          <button
+            type="button"
+            className={styles.viewBtn}
+            aria-pressed={view === 'cards'}
+            onClick={() => chooseView('cards')}
+          >Karten</button>
+          <button
+            type="button"
+            className={styles.viewBtn}
+            aria-pressed={view === 'grid'}
+            onClick={() => chooseView('grid')}
+          >Farbraster</button>
+        </div>
       </div>
+
+      {visible.length === 0 && (
+        <div className={styles.empty}>
+          {filter.search || filter.finish || filter.status || filter.category
+            ? 'Keine Lacke gefunden — Filter anpassen.'
+            : 'Noch keine Lacke — füge deinen ersten Lack hinzu!'}
+        </div>
+      )}
+
+      {view === 'cards' ? (
+        visible.length > 0 && (
+          <div className={styles.grid}>
+            {visible.map((p) => (
+              <PolishCard
+                key={p.id}
+                polish={p}
+                defaultShowPhoto={photoDefault}
+                onEdit={() => setViewing(p)}
+                onDelete={() => {
+                  const cleanup = appData.deletePolish(p.id);
+                  showSnackbar(`„${p.name}" gelöscht`, () => appData.restorePolish(p.id), cleanup);
+                }}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        <SwatchGrid polishes={visible} onOpen={setViewing} />
+      )}
 
       {viewing && (
         <div className={styles.overlay} onClick={() => setViewing(null)} onKeyDown={(e) => e.key === 'Escape' && setViewing(null)}>
