@@ -1,19 +1,19 @@
 # nagellacke
 
 ## Type
-Personal nail-polish collection app — self-hosted on a Linux server via systemd, with a web frontend and an Android app.
+Personal nail-polish collection app — self-hosted on a Linux server via systemd, with a web frontend. The native Android app is **frozen (EOL, #372)** — see Notes.
 
 ## Stack
 
 - Server: Fastify 4, TypeScript, JWT (`@fastify/jwt`), API-key auth — npm workspace under `v3/`
 - Web app: React 18, TypeScript, Vite — `v3/apps/web/`
-- Android: native Kotlin, Jetpack Compose, Hilt, KSP, Room — `android/` (root)
+- Android: native Kotlin, Jetpack Compose, Hilt, KSP, Room — `android/` (root) — **frozen since #372, do not build Android features**
 - Shared packages: `@nagellacke/core` (data types + merge logic, tsup + vitest), `@nagellacke/sync` — `v3/packages/`
 
 ## Structure
 
 ```
-android/          # native Kotlin/Jetpack Compose Android app
+android/          # native Kotlin/Jetpack Compose Android app — FROZEN (EOL #372, tag android-final)
 v3/
   packages/
     core/         # shared AppData types + mergeData()
@@ -48,6 +48,7 @@ npm start      # node dist/index.js
 
 ## Notes
 
+- **Android is frozen (EOL, #372; tag `android-final`).** Frozen, not deleted: `android/`, `android-release.yml`, the signing secrets (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`), the local keystore and every server/sync route Android used all stay. Do **not** add Android features or fixes, do not delete or move anything under `android/`, and do not remove server endpoints "because only Android used them" (none are Android-only anyway). New features are web + server only. The CI job `build-android` is gated by the repo variable `ANDROID_ENABLED` (unset = skipped; it remains a required check on `main`, and a job-level skip counts as passing — keep the `if:` on the job, never move it to the workflow level or add `paths` filters to `pull_request`). The `mergeData()` fixtures in `fixtures/merge/` are now only verified from the TypeScript side. Resume instructions: `docs/android-wieder-aufnehmen.md`. The "CI builds Android on every pull request" note below describes the state before the freeze.
 - Server deployment: `sudo bash install.sh` → installs to `/opt/nagellacke`, creates systemd service `nagellacke-v3`
 - `v3/Dockerfile` (multi-stage, `node:20-alpine`) is an alternative container-based deployment path for standalone cloud hosts — used by the public `nailvault.de` instance managed from the `homelab-infra` repo. `install.sh`/systemd remains the path for self-hosted LAN installs; the two deployments don't share data.
 - Auth: JWT (Bearer) for sync endpoints (`/api/sync`, `/api/auth/*`), photo endpoints (`/api/photos`), and report endpoints (`/api/reports/*`). **Admin endpoints** (`/api/update/apply`, `/api/update/check`, `/api/logs`, `/api/admin/api-key/rotate`) accept `X-Api-Key` **or** an admin-role JWT (#173) — `X-Api-Key` still works unchanged, this is additive. `/api/update/apply` additionally requires a fresh password re-confirmation on the JWT path. That guards specifically against a *stolen bearer token* held by someone who doesn't know the account password (e.g. exfiltrated via XSS) — not against someone who does, since that person could just log in again for a fresh JWT. The endpoint itself pulls the current `origin/main` HEAD with no signature/tag pinning and runs `npm install` (arbitrary `postinstall` scripts), so it stays a de-facto RCE/root credential either way (#73).

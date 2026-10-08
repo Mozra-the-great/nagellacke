@@ -1,9 +1,15 @@
+# FROZEN since #372 (Android EOL, tag `android-final`). Kept, not deleted: the
+# secrets KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD stay in
+# the repository. The `android-v*` tag trigger is switched off so a stray tag
+# cannot start a release; the workflow can still be run by hand via "Run
+# workflow". To resume releases, restore the tag trigger below - see
+# docs/android-wieder-aufnehmen.md.
 name: Android Release Build
 
 on:
-  push:
-    tags:
-      - 'android-v*'
+  # push:
+  #   tags:
+  #     - 'android-v*'
   workflow_dispatch:
 
 permissions:

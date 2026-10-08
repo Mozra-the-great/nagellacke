@@ -29,10 +29,10 @@ cd ../android
 Die Android-Tests sind reine JVM-Unit-Tests; ein `androidTest`/Instrumentation-Sourceset
 gibt es bewusst nicht.
 
-> Der Android-Build läuft in CI **nur** auf `android-v*`-Tags (`.github/workflows/android-release.yml`),
-> nicht bei Pull Requests. Änderungen unter `android/` sollten deshalb lokal mit
-> `./gradlew assembleDebug` gegengeprüft werden — oder der Workflow wird für den Branch
-> manuell über „Run workflow" angestoßen.
+> **Android ist eingefroren (EOL, #372).** Der Job `build-android` in `.github/workflows/ci.yml` läuft nur, wenn die
+> Repo-Variable `ANDROID_ENABLED` auf `true` steht; der Release-Workflow `.github/workflows/android-release.yml` ist nur noch
+> manuell auslösbar. Änderungen unter `android/` sind nicht vorgesehen — falls doch, lokal mit
+> `./gradlew testDebugUnitTest assembleDebug` prüfen. Wiederaufnahme: [Android wieder aufnehmen](android-wieder-aufnehmen.md).
 
 ## OAuth-Client-IDs für Cloud-Sync (Android)
 
@@ -62,7 +62,7 @@ Vorlage samt Kommentaren: `android/local.properties.example`.
 
 ```
 nagellacke/
-├── android/               ← Native Android-App (Kotlin/Jetpack Compose, Hilt, Room)
+├── android/               ← Native Android-App (Kotlin/Jetpack Compose, Hilt, Room) — eingefroren (EOL, Tag android-final)
 ├── docs/                  ← Projektseite auf GitHub Pages + Anleitungen (Markdown)
 │   ├── index.html          ← Landingpage
 │   ├── privacy-policy.html ← Datenschutzerklärung (auch für Play-Store-Listing verlinkt)
@@ -96,7 +96,7 @@ nagellacke/
 | Auth | API-Key (Admin) + JWT 7d/30d (Sync), optional TOTP-2FA |
 | Passwort-Hash | scrypt + Salt + timingSafeEqual |
 | Sync | Server / GDrive / OneDrive / Nextcloud / Dropbox |
-| Mobile | Native Android (Kotlin, Jetpack Compose, Hilt, Room) — Play Store |
+| Mobile | Native Android (Kotlin, Jetpack Compose, Hilt, Room) — eingefroren seit 2026-10, kein Play-Store-Eintrag |
 | Deployment | systemd + EnvironmentFile |
 | Monorepo | npm workspaces |
 | Projektseite | Statisches HTML unter `docs/`, GitHub Pages via Actions-Workflow |

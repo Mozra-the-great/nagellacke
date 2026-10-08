@@ -1,6 +1,8 @@
 # Play Store Listing — Nagellacke
 
 > Entwurf. Vor der Einreichung prüfen und ggf. anpassen.
+>
+> **Hinweis (#372):** Die Android-App ist eingefroren (EOL seit 2026-10); dieser Entwurf wurde nie eingereicht und bleibt als Vorlage für eine Wiederaufnahme erhalten, siehe [Android wieder aufnehmen](android-wieder-aufnehmen.md).
 
 ---
 
