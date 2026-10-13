@@ -5,6 +5,7 @@ import type { useAppData } from '../useAppData';
 import { loadPhotoDefault, loadAiEnabled } from '../useAppData';
 import { useInstanceConfig, aiOffered } from '../utils/instance';
 import PolishCard from '../components/PolishCard';
+import SwatchGrid from '../components/SwatchGrid';
 import PolishFormModal from '../components/PolishFormModal';
 import NailBottle from '../components/NailBottle';
 import { useSnackbar } from '../components/Snackbar';
@@ -13,6 +14,8 @@ import { plural } from '../utils/plural';
 import { hasServerSync, startAutofillJob, startSmartCartJob, pollAiJob } from '../utils/ai';
 import type { AiJobTraceStep } from '../utils/ai';
 import { usePhotoUrl } from '../utils/photoToken';
+import { loadCollectionView, saveCollectionView } from '../utils/collectionView';
+import type { CollectionView } from '../utils/collectionView';
 import styles from './CartPage.module.css';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -20,6 +23,8 @@ type AppData = ReturnType<typeof useAppData>;
 export default function CartPage({ appData }: { appData: AppData }) {
   const photoSrc = usePhotoUrl();
   const [viewing, setViewing] = useState<Polish | null>(null);
+  // Same stored preference as the collection page: one Karten/Farbraster choice per device.
+  const [view, setView] = useState<CollectionView>(loadCollectionView);
   const [showChooser, setShowChooser] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -109,6 +114,11 @@ export default function CartPage({ appData }: { appData: AppData }) {
     }
   };
 
+  const chooseView = (next: CollectionView) => {
+    setView(next);
+    saveCollectionView(next);
+  };
+
   const markBought = (p: Polish) => {
     appData.updatePolish(p.id, { status: 'ok' });
     setViewing(null);
@@ -170,25 +180,38 @@ export default function CartPage({ appData }: { appData: AppData }) {
       </section>
       )}
 
-      <div className={styles.count}>{plural(cartItems.length, 'Lack', 'Lacke')} im Einkaufswagen</div>
-
-      <div className={styles.grid}>
-        {cartItems.length === 0 && (
-          <div className={styles.empty}>Noch nichts im Einkaufswagen — füge einen Lack hinzu!</div>
-        )}
-        {cartItems.map((p) => (
-          <PolishCard
-            key={p.id}
-            polish={p}
-            defaultShowPhoto={photoDefault}
-            onEdit={() => setViewing(p)}
-            onDelete={() => {
-              const cleanup = appData.deletePolish(p.id);
-              showSnackbar(`„${p.name}" entfernt`, () => appData.restorePolish(p.id), cleanup);
-            }}
-          />
-        ))}
+      <div className={styles.countRow}>
+        <div className={styles.count}>{plural(cartItems.length, 'Lack', 'Lacke')} im Einkaufswagen</div>
+        <div className={styles.viewToggle} role="group" aria-label="Ansicht">
+          <button type="button" className={styles.viewBtn} aria-pressed={view === 'cards'} onClick={() => chooseView('cards')}>Karten</button>
+          <button type="button" className={styles.viewBtn} aria-pressed={view === 'grid'} onClick={() => chooseView('grid')}>Farbraster</button>
+        </div>
       </div>
+
+      {cartItems.length === 0 && (
+        <div className={styles.empty}>Noch nichts im Einkaufswagen — füge einen Lack hinzu!</div>
+      )}
+
+      {view === 'cards' ? (
+        cartItems.length > 0 && (
+          <div className={styles.grid}>
+            {cartItems.map((p) => (
+              <PolishCard
+                key={p.id}
+                polish={p}
+                defaultShowPhoto={photoDefault}
+                onEdit={() => setViewing(p)}
+                onDelete={() => {
+                  const cleanup = appData.deletePolish(p.id);
+                  showSnackbar(`„${p.name}" entfernt`, () => appData.restorePolish(p.id), cleanup);
+                }}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        <SwatchGrid polishes={cartItems} onOpen={setViewing} />
+      )}
 
       {showChooser && (
         <div className={styles.overlay} onClick={() => setShowChooser(false)} onKeyDown={(e) => e.key === 'Escape' && setShowChooser(false)}>
