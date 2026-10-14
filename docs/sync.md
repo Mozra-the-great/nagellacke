@@ -18,7 +18,7 @@ Auf einer öffentlichen Instanz kann zusätzlich eine kleine Rechenaufgabe (Proo
 
 - **Zwei-Faktor-Authentifizierung (2FA):** optional und jederzeit abschaltbar, unter **Mehr → Sicherheit**. Beim Aktivieren werden Recovery-Codes angezeigt — die einmalig sichern, sie sind der einzige Weg zurück ins Konto, wenn der Authenticator verloren geht.
 - **Passkeys:** unter **Mehr → Sicherheit** lassen sich Passkeys hinterlegen (nur über https oder localhost; ein Passkey-Login ersetzt Passwort und 2FA).
-- **Passwort vergessen:** erscheint auf der Anmeldemaske, sobald der Admin SMTP und die App-URL eingerichtet hat und die E-Mail-Adresse des Kontos bestätigt ist.
+- **Passwort vergessen:** erscheint auf der Anmeldemaske, sobald der Admin SMTP und die App-URL eingerichtet hat; die Mail geht nur an eine bereits bestätigte Adresse des Kontos raus.
 
 ## Andere Sync-Anbieter
 
