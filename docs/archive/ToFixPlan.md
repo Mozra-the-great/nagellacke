@@ -1,3 +1,5 @@
+> **Archived (#380).** Fix plan for the June 2026 audit (`ToFixFehler.md`, never committed). It was executed through the audit PRs and is superseded by `CHANGELOG.md` and the issue tracker; kept for its reasoning only. Paths and line numbers below describe the code as of 2026-06-17.
+
 # Fix Implementation Plan
 
 **Source audit:** `ToFixFehler.md` (2026-06-16) — 41 findings from Security, Code-Logic, and UI/UX-A11y reviews.

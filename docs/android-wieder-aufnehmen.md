@@ -71,7 +71,7 @@ Android-spezifisches Verhalten, das Server und Clients beachten:
 
 ## Play Store
 
-Es ist **kein Store-Eintrag dokumentiert**: `docs/store-listing.md` ist ein Entwurf, in `RoadToDeploy.md` sind
+Es ist **kein Store-Eintrag dokumentiert**: `docs/store-listing.md` ist ein Entwurf, in [`docs/archive/RoadToDeploy.md`](archive/RoadToDeploy.md) sind
 Play-Entwicklerkonto, Screenshots und Einreichung nicht abgehakt, und es gibt nur das GitHub-Pre-Release
 „Android v3.0.0 — Signed APK" (Tag `android-v3.0.0`). Die Play Console wurde im Zuge von #372 **nicht** angefasst. Falls dort
 doch ein Eintrag angelegt wurde: nur unveröffentlichen, nicht löschen. Der lokale Branch `feat/play-store-prep`
