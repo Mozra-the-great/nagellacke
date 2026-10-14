@@ -3,14 +3,14 @@
 ## Lokal starten
 
 ```bash
-# Terminal 1 – Server (der Vite-Proxy erwartet Port 3001; der Server-Default ist 3000)
-cd v3 && npm install && npm run build:core && npm run build:sync && PORT=3001 npm run dev:server
+# Terminal 1 – Server (Default-Port 3000)
+cd v3 && npm install && npm run build:core && npm run build:sync && npm run dev:server
 
 # Terminal 2 – Web-App
 cd v3 && npm run dev:web
 ```
 
-Frontend läuft auf **http://localhost:5173**, `/api` und `/photos` werden vom Vite-Dev-Server an `localhost:3001` weitergeleitet (`v3/apps/web/vite.config.ts`). Ein Produktions-Build wird dagegen vom Server selbst unter seinem Port (Default 3000) ausgeliefert.
+Frontend läuft auf **http://localhost:5173**, `/api` und `/photos` werden vom Vite-Dev-Server an `localhost:3000` weitergeleitet, oder an den Wert von `PORT`, falls gesetzt (`v3/apps/web/vite.config.ts`). Ein Produktions-Build wird dagegen vom Server selbst unter seinem Port (Default 3000) ausgeliefert.
 
 ## Build & Tests
 

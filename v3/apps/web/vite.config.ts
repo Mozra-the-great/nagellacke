@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
+// Same PORT the server reads (default 3000), so the dev proxy follows the server.
+const apiTarget = `http://localhost:${process.env.PORT ?? 3000}`;
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -12,8 +15,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/photos': 'http://localhost:3001',
+      '/api': apiTarget,
+      '/photos': apiTarget,
     },
   },
 });
