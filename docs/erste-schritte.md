@@ -9,10 +9,10 @@ Beim ersten Start wird ein Schlüssel generiert und in der Konsole angezeigt:
 └─────────────────────────────────────────────────────┘
 ```
 
-Diesen Schlüssel in der App unter dem **⚙-Button** (Footer) eintragen. Er wird im Browser gespeichert.
+Diesen Schlüssel in der App unter **Mehr → Admin** ins Feld „API-Schlüssel“ eintragen. Damit richtest du **einmalig** ein Admin-Konto ein (Benutzername + Passwort, mindestens 8 Zeichen); danach genügt die normale Anmeldung, und der Schlüssel wird für die Verwaltung nicht mehr gebraucht. Er wird im Browser gespeichert.
 
 > **⚠️ Dieser Schlüssel ist ein De-facto-Root-Credential, kein normaler API-Key.**
-> Er schaltet `/api/update/apply` frei — das zieht ungeprüft den aktuellen `origin/main`,
+> Er schaltet (wie ein Admin-Konto) `/api/update/apply` frei — das zieht ungeprüft den aktuellen `origin/main`,
 > installiert Dependencies (inkl. `postinstall`-Skripten) und baut/startet die App neu.
 > Wer den Schlüssel hat, kann effektiv beliebigen Code auf dem Server zur Ausführung
 > bringen. Genauso vertraulich behandeln wie ein root-Passwort — nicht in Screenshots,
@@ -43,7 +43,7 @@ systemctl restart nagellacke-v3
 journalctl -u nagellacke-v3 -n 20
 ```
 
-Danach den neuen Schlüssel in der App unter **⚙ → Einstellungen** eintragen.
+Danach den neuen Schlüssel in der App unter **Mehr → Admin** eintragen. Mit einem Admin-Konto rotierst du den Schlüssel im Tab **Admin → API-Schlüssel & Update → API-Schlüssel rotieren**.
 Ist der Schlüssel älter als 180 Tage, weist der Server beim Start darauf hin.
 
 ---
