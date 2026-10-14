@@ -4,6 +4,7 @@
 /opt/nagellacke/v3/server/data/users/<user>/data.json  ← Kollektion (pro Benutzer)
 /opt/nagellacke/v3/server/data/users.json     ← Konten (Passwort-Hashes, Rollen, 2FA, Passkeys)
 /opt/nagellacke/v3/server/data/photos/        ← Fotos (gemeinsames Verzeichnis, Zugriff nur mit Anmeldung)
+/opt/nagellacke/v3/server/data/photo_owners.json ← wer welches Foto hochgeladen hat (Besitzprüfung beim Löschen)
 /opt/nagellacke/v3/server/data/.api_key       ← API-Schlüssel
 /opt/nagellacke/v3/server/data/.jwt_secret    ← JWT-Signing-Schlüssel (falls JWT_SECRET nicht gesetzt ist)
 /opt/nagellacke/v3/server/data/server_settings.json ← Admin-Panel-Einstellungen inkl. SMTP (mode 0600, optional)
