@@ -1,3 +1,5 @@
+> **Archived (#380).** Google Play Store feasibility study from July 2026. The Android app is frozen (EOL #372) and was never submitted; kept as input for [docs/android-wieder-aufnehmen.md](../android-wieder-aufnehmen.md). Statements about SDK versions and signing describe the state of 2026-07-31.
+
 # Road to Deploy: Google Play Store Feasibility Study
 
 ## Executive Summary

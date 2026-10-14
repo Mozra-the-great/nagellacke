@@ -12,6 +12,8 @@ on:
       # Same for the setup guides (#213): they are Markdown read on GitHub,
       # not part of the static site, so editing one is not a site change.
       - '!docs/*.md'
+      # Archived documents (#380) are history, not part of the site.
+      - '!docs/archive/**'
   workflow_dispatch:
 
 permissions:
