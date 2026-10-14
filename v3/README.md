@@ -26,8 +26,8 @@ cd v3
 npm install
 npm run build:core && npm run build:sync
 
-# terminal 1: server. The Vite dev proxy forwards /api and /photos to port 3001.
-PORT=3001 npm run dev:server
+# terminal 1: server. The Vite dev proxy forwards /api and /photos to port 3000 (or PORT, if set).
+npm run dev:server
 
 # terminal 2: web app on http://localhost:5173
 npm run dev:web
