@@ -12,7 +12,7 @@ curl -X POST http://localhost:3000/api/auth/register \
   -d '{"username":"ich","password":"meinPasswort"}'
 ```
 
-Auf einer öffentlichen Instanz kann zusätzlich eine kleine Rechenaufgabe (Proof of Work) oder eine bestätigte E-Mail-Adresse verlangt werden; die Web-App löst das selbst.
+Der Admin kann für die Registrierung eine kleine Rechenaufgabe (Proof of Work) verlangen; die Web-App löst sie selbst. Eine E-Mail-Adresse ist optional und lässt sich nachträglich bestätigen (nötig für „Passwort vergessen“).
 
 ## Anmelden: Passwort, 2FA, Passkeys
 
