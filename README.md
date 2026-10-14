@@ -4,7 +4,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 
 > **Status:** Web-App und Server werden weiterentwickelt. Die **Android-App ist eingefroren (EOL seit 2026-10)** — Code unter `android/`, Tag `android-final`, Wiederaufnahme: [docs/android-wieder-aufnehmen.md](docs/android-wieder-aufnehmen.md).
 
-![Version](https://img.shields.io/badge/version-3.3.0--rc.1-pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20Kotlin-blueviolet) ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
+![Version](https://img.shields.io/github/v/release/Mozra-the-great/nagellacke?color=pink) ![Stack](https://img.shields.io/badge/stack-React%20%2B%20Fastify%20%2B%20TypeScript-blueviolet) ![License](https://img.shields.io/badge/license-GPLv3-lightgrey)
 
 ### → **[Projektseite ansehen](https://mozra-the-great.github.io/nagellacke/)**
 
@@ -19,7 +19,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 - **Wunschliste** mit „Gekauft ✓", Nail-Sticker-Inventar und ein **Maniküre-Tagebuch** mit vier Foto-Slots je Eintrag
 - **Statistiken** nach Marke, Finish, Status und Farbpalette — plus Wochen- und Monatsberichte, auf Wunsch automatisch per E-Mail
 - **Optionale KI-Hilfe** — Farbe und Finish automatisch ermitteln, Vorschläge für die Wunschliste; die Websuche läuft über den eigenen Server statt über kostenpflichtige Anbieter-Suche
-- **Sync zwischen Geräten** — eigener Server, Nextcloud, Google Drive, OneDrive oder Dropbox; jedes Konto hat seine eigene, private Sammlung, optional mit 2FA
+- **Sync zwischen Geräten** — über den eigenen Server oder Nextcloud; jedes Konto hat seine eigene, private Sammlung, optional mit 2FA oder Passkeys
 - **Android-App eingefroren (EOL seit 2026-10)** — Code unter `android/`, Tag `android-final`, [Wiederaufnahme](docs/android-wieder-aufnehmen.md); weiterentwickelt wird nur noch die Web-App
 - **Export und Import** als vollständiges Backup inklusive aller Fotos
 
@@ -43,6 +43,7 @@ Debian/Ubuntu mit Node.js 20+, danach erreichbar unter `http://SERVER-IP:3000`.
 | [Entwicklung](docs/entwicklung.md) | Lokal starten, Builds, Tests, Repo-Struktur |
 | [Android wieder aufnehmen](docs/android-wieder-aufnehmen.md) | Was beim Android-EOL stillgelegt wurde und wie man es wieder einschaltet |
 | [Architektur](ARCHITECTURE.md) | Datenfluss, Module, Entscheidungen |
+| [Archiv](docs/archive/README.md) | Überholte Planungsdokumente (Audit-Plan, Play-Store-Studie) |
 | [Sicherheit](SECURITY.md) | Sicherheitshinweise und Meldeweg |
 | [Änderungshistorie](CHANGELOG.md) | Was sich pro Version geändert hat |
 

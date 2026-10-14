@@ -3,17 +3,14 @@
 ## Lokal starten
 
 ```bash
-# Terminal 1 – Server
-cd v3 && npm install && npm run build:core && npm run dev:server
+# Terminal 1 – Server (der Vite-Proxy erwartet Port 3001; der Server-Default ist 3000)
+cd v3 && npm install && npm run build:core && npm run build:sync && PORT=3001 npm run dev:server
 
 # Terminal 2 – Web-App
 cd v3 && npm run dev:web
-
-# Android-App (Android Studio / Gradle)
-cd android && ./gradlew assembleDebug
 ```
 
-Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an `:3000` weitergeleitet.
+Frontend läuft auf **http://localhost:5173**, `/api` und `/photos` werden vom Vite-Dev-Server an `localhost:3001` weitergeleitet (`v3/apps/web/vite.config.ts`). Ein Produktions-Build wird dagegen vom Server selbst unter seinem Port (Default 3000) ausgeliefert.
 
 ## Build & Tests
 
@@ -21,20 +18,15 @@ Frontend läuft auf **http://localhost:5173**, API-Aufrufe werden automatisch an
 cd v3
 npm run build:core && npm run build:sync && npm run build:server && npm run build:web
 npm run test
-
-cd ../android
-./gradlew assembleDebug testDebugUnitTest
 ```
 
-Die Android-Tests sind reine JVM-Unit-Tests; ein `androidTest`/Instrumentation-Sourceset
-gibt es bewusst nicht.
-
-> **Android ist eingefroren (EOL, #372).** Der Job `build-android` in `.github/workflows/ci.yml` läuft nur, wenn die
+> **Android ist eingefroren (EOL, #372).** Es gibt keine Android-Builds oder -Tests mehr in der täglichen Arbeit.
+> Falls doch, lokal: `cd android && ./gradlew testDebugUnitTest assembleDebug` (reine JVM-Unit-Tests, ein
+> `androidTest`-Sourceset gibt es bewusst nicht). Der Job `build-android` in `.github/workflows/ci.yml` läuft nur, wenn die
 > Repo-Variable `ANDROID_ENABLED` auf `true` steht; der Release-Workflow `.github/workflows/android-release.yml` ist nur noch
-> manuell auslösbar. Änderungen unter `android/` sind nicht vorgesehen — falls doch, lokal mit
-> `./gradlew testDebugUnitTest assembleDebug` prüfen. Wiederaufnahme: [Android wieder aufnehmen](android-wieder-aufnehmen.md).
+> manuell auslösbar. Änderungen unter `android/` sind nicht vorgesehen. Wiederaufnahme: [Android wieder aufnehmen](android-wieder-aufnehmen.md).
 
-## OAuth-Client-IDs für Cloud-Sync (Android)
+## OAuth-Client-IDs für Cloud-Sync (Android, eingefroren)
 
 Google Drive, OneDrive und Dropbox brauchen jeweils eine **eigene** OAuth-Client-ID. Es gibt
 keine mitgelieferten: wer die App selbst hostet, registriert seine eigenen Clients. Bis #271
@@ -66,16 +58,24 @@ nagellacke/
 ├── docs/                  ← Projektseite auf GitHub Pages + Anleitungen (Markdown)
 │   ├── index.html          ← Landingpage
 │   ├── privacy-policy.html ← Datenschutzerklärung (auch für Play-Store-Listing verlinkt)
-│   ├── store-listing.md    ← Play-Store-Metadaten
-│   └── releases/           ← Release-Notes pro Version
+│   ├── FEATURES.md         ← Feature-Inventar / manuelle QA-Checkliste
+│   ├── store-listing.md    ← Play-Store-Entwurf (Android, nie eingereicht)
+│   ├── releases/           ← Release-Notes pro Tag (Eingabe für release.yml)
+│   └── archive/            ← überholte Planungsdokumente
+├── fixtures/merge/        ← gemeinsame mergeData()-Testfälle (core-Tests lesen sie)
+├── scripts/ci/            ← Label-Automatik (labels.py) und ihre Tests
+├── .github/               ← Workflows (ci, pages, release, claude*, labels, android-release) und labels.json
 ├── install.sh             ← Installer (Debian/Ubuntu, systemd)
 └── v3/                    ← Monorepo (npm workspaces)
+    ├── Dockerfile          ← Container-Image (öffentliche Instanz)
+    ├── scripts/            ← migrate-v2-to-v3.js (Legacy-Datenmigration)
     ├── packages/
     │   ├── core/          ← Typen, Business-Logik, Merge-Algorithmus (TypeScript)
     │   └── sync/          ← Sync-Adapter: Server, GDrive, OneDrive, Nextcloud, Dropbox
     ├── server/             ← Fastify-Server
     │   └── src/
-    │       ├── index.ts    ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
+    │       ├── index.ts    ← Alle Routen, JWT-Auth, Rate-Limiting, Security-Header
+    │       ├── update.ts   ← Selbst-Update-Pipeline und Statusdatei
     │       ├── db.ts       ← Datei-Persistenz (data.json, users.json, Fotos)
     │       ├── ai.ts       ← KI-Provider-Anbindung (Auto-Fill, Smart-Cart)
     │       ├── report.ts   ← Wochen-/Monatsberichte (HTML)
@@ -96,8 +96,8 @@ nagellacke/
 | Auth | API-Key (Admin) + JWT 7d/30d (Sync), optional TOTP-2FA |
 | Passwort-Hash | scrypt + Salt + timingSafeEqual |
 | Sync | Server / GDrive / OneDrive / Nextcloud / Dropbox |
-| Mobile | Native Android (Kotlin, Jetpack Compose, Hilt, Room) — eingefroren seit 2026-10, kein Play-Store-Eintrag |
-| Deployment | systemd + EnvironmentFile |
+| Mobile | Native Android (Kotlin, Jetpack Compose, Hilt, Room) — eingefroren seit 2026-10, kein Play-Store-Eintrag; die Web-App ist der Weg aufs Handy |
+| Deployment | systemd + EnvironmentFile (`install.sh`) oder Container (`v3/Dockerfile`) |
 | Monorepo | npm workspaces |
 | Projektseite | Statisches HTML unter `docs/`, GitHub Pages via Actions-Workflow |
 

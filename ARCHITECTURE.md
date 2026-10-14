@@ -4,13 +4,15 @@ Dieses Dokument erklärt den Aufbau der Nagellack-Kollektion-App, den verwendete
 
 > **Hinweis zur Historie:** Es gab eine frühere Generation ("v2": Express + einfaches React/Vite-Frontend unter `backend/`/`frontend/`, kein Sync, keine App). Sie wurde vollständig entfernt (siehe Änderungshistorie um v3.0.x); der aktuelle Code kennt nur noch den unten beschriebenen Stand. Wo Entscheidungen historisch v2 vs. v3 gegeneinander abgewogen haben, ist das nur noch für's Verständnis von Altdaten (z. B. `.api_key`-Kompatibilität) relevant.
 
+> **Stand:** Web-App und Server (`v3/`) sind das Produkt. Die native Android-App (`android/`) ist **eingefroren** (EOL, #372, Tag `android-final`); der Abschnitt „Android-App“ weiter unten beschreibt den letzten gepflegten Stand und ist nur noch für eine Wiederaufnahme relevant ([Anleitung](docs/android-wieder-aufnehmen.md)).
+
 ---
 
 ## Überblick
 
 ```
-Browser / Android-App
-  └── React-SPA (Web) / natives Kotlin+Compose (Android)
+Browser (oder die eingefrorene Android-App)
+  └── React-SPA (Web) / natives Kotlin+Compose (Android, eingefroren)
         ├── /api/photos, /api/version, /api/update/*, /api/logs, /api/admin/*
         │     → Fastify-Routen → data.json / Dateisystem (Foto-Uploads)
         ├── /api/auth/*  → JWT-Authentifizierung → users.json
@@ -25,27 +27,17 @@ Browser / Android-App
 
 ```
 nagellacke/
-├── android/                 ← Native Android-App (Kotlin/Jetpack Compose), Root-Ebene, NICHT im npm-Workspace
-│   └── app/src/main/java/de/nagellacke/
-│       ├── data/
-│       │   ├── local/       ← Room Entities, DAOs, AppDatabase
-│       │   ├── repo/        ← NagellackeRepository, PhotoRepository, SyncConfigStore, DisplayPrefsStore
-│       │   └── sync/        ← SyncAdapter Interface + ServerAdapter, NextcloudAdapter, …
-│       ├── domain/
-│       │   ├── model/       ← Polish, Sticker, Manicure, Category, AppData (kotlinx.serialization)
-│       │   └── Constants.kt ← FINISH_OPTIONS, SHIMMER_FINISHES, BRAND_SUGGESTIONS, …
-│       └── ui/
-│           ├── collection/  ← CollectionScreen, PolishCard, PolishFormSheet, CollectionViewModel
-│           ├── stickers/    ← StickersScreen, StickerFormSheet, StickersViewModel
-│           ├── diary/       ← DiaryScreen, DiaryFormSheet, DiaryViewModel
-│           ├── stats/       ← StatsScreen
-│           ├── settings/    ← SettingsScreen, SettingsViewModel
-│           └── common/      ← LoadingScreen, EmptyScreen, ErrorScreen, NailBottle
-├── docs/                    ← Projektseite auf GitHub Pages (statisch, kein Build nötig)
-│   ├── index.html           ← Landingpage
-│   ├── privacy-policy.html  ← Datenschutzerklärung
-│   ├── store-listing.md     ← Play-Store-Metadaten
-│   └── releases/            ← Release-Notes pro Version
+├── android/                 ← Native Android-App (Kotlin/Jetpack Compose) — EINGEFROREN (EOL #372), nicht im npm-Workspace
+│   └── app/src/main/java/de/nagellacke/   (data/ · domain/ · ui/; Details im Abschnitt „Android-App“)
+├── docs/                    ← Projektseite auf GitHub Pages (statisch, kein Build nötig) + Anleitungen
+│   ├── index.html, privacy-policy.html, assets/  ← die Website
+│   ├── *.md                 ← Anleitungen (Installation, Sync, Backup, Entwicklung), FEATURES.md (QA-Checkliste)
+│   ├── android-wieder-aufnehmen.md, store-listing.md  ← Android-Wiederaufnahme
+│   ├── releases/            ← Release-Notes pro Tag (Eingabe von release.yml)
+│   └── archive/             ← überholte Planungsdokumente
+├── fixtures/merge/           ← gemeinsame mergeData()-Testfälle (heute nur noch von TypeScript geprüft)
+├── scripts/ci/               ← Label-Automatik (labels.py) + Tests
+├── .github/                  ← Workflows (CI, Pages, Release, Review, Labels, Android-Release manuell), labels.json
 ├── install.sh                ← Installer/Updater (Debian/Ubuntu, systemd)
 ├── CHANGELOG.md              ← Vollständige Versionshistorie
 └── v3/                       ← Monorepo (npm workspaces, Node ≥20)
@@ -69,19 +61,26 @@ nagellacke/
     │               └── dropbox.ts      ← Dropbox API v2
     ├── server/                ← Fastify-Server
     │   └── src/
-    │       ├── index.ts       ← Alle Routen, JWT-Auth, Rate-Limiting, Update-Pipeline
+    │       ├── index.ts       ← Alle Routen, JWT-Auth, Rate-Limiting, Security-Header
     │       ├── db.ts          ← Datei-Persistenz (data.json pro User, users.json, Fotos)
+    │       ├── update.ts      ← Selbst-Update-Pipeline + Statusdatei (#335)
+    │       ├── totp.ts, passkeys.ts, pow.ts, accountMail.ts  ← 2FA, WebAuthn, Registrierungs-PoW, Reset-/Bestätigungs-Mails
+    │       ├── photoToken.ts  ← signierte Foto-Tokens (#269)
+    │       ├── branding.ts    ← Branding/Instanz-Konfiguration (#324)
     │       ├── ai.ts          ← KI-Provider-Anbindung (Auto-Fill, Smart-Cart, Tool-Loop)
     │       ├── tooling.ts     ← Tool-Definitionen/-Aufruf für den KI-Provider (web_search)
     │       ├── websearch.ts   ← Eigener web_search-Tool-Server (DuckDuckGo/SearXNG/Brave)
     │       ├── report.ts      ← Wochen-/Monatsberichte (HTML-Generator)
     │       └── email.ts       ← Berichtsversand per SMTP
+    ├── Dockerfile            ← Container-Image für eigenständige Hosts (öffentliche Instanz)
+    ├── scripts/              ← migrate-v2-to-v3.js (Legacy-Migration)
     └── apps/
         └── web/                ← Web-App (React 18 + TypeScript + Vite)
             └── src/
-                ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|cart|stats|settings)
+                ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|cart|stats|settings, +admin für Admins), Hash-Routen
                 ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
-                └── pages/               ← CollectionPage, StickersPage, DiaryPage, CartPage, StatsPage, SettingsPage
+                ├── components/, hooks/, utils/
+                └── pages/               ← CollectionPage, StickersPage, DiaryPage, CartPage, StatsPage, SettingsPage, AdminPage, AccountLinkPage, LegalPage
 ```
 
 ---
@@ -114,31 +113,21 @@ Native TypeScript-Unterstützung, Plugin-basierte Architektur (`@fastify/jwt`, `
 
 ### API-Routen
 
-| Endpoint | Methode | Auth | Funktion |
-|----------|---------|------|---------|
-| `/api/version` | GET | — | Server-Version |
-| `/api/auth/register` | POST | — | Neuer User → JWT (nur wenn noch kein User existiert oder `ALLOW_REGISTRATION=true`) |
-| `/api/auth/login` | POST | — | Login → Access-Token (7d) + Refresh-Token (30d) |
-| `/api/auth/refresh` | POST | Refresh-Token | Neues Access-Token ausstellen |
-| `/api/auth/me` | GET | JWT | Aktuellen User abrufen |
-| `/api/auth/logout-all` | POST | JWT | Alle Tokens invalidieren (Token-Version hochzählen) |
-| `/api/sync` | GET/POST | JWT | Datenstand abrufen / Client-Daten mergen (`mergeData` aus `@nagellacke/core`) |
-| `/api/sync/push` | POST | JWT | Gemergten Stand hochladen |
-| `/api/photos` | POST | API-Key oder JWT | Foto hochladen (Base64, Magic-Bytes-Check, UUID-Dateiname) |
-| `/api/photos/:filename` | DELETE | API-Key oder JWT | Foto löschen |
-| `/api/ai/settings` | GET/POST | JWT | KI-Provider/Modell/Schlüssel/Websuche-Backend konfigurieren |
-| `/api/ai/autofill` | POST | JWT | Farbe & Finish für einen Lack per KI ermitteln (Hintergrundjob) |
-| `/api/ai/smart-cart` | POST | JWT | Wunschlisten-Vorschläge per KI |
-| `/api/ai/jobs/:id` | GET | JWT | Status/Ergebnis eines KI-Hintergrundjobs |
-| `/api/reports/preview` | GET | JWT | Bericht als HTML generieren |
-| `/api/reports/send` | POST | JWT | Bericht per E-Mail versenden |
-| `/api/reports/schedule` | GET/POST | JWT | Automatischen Berichts-Zeitplan lesen/setzen |
-| `/api/update/check` | GET | API-Key | GitHub-Update-Check (Rate: 10/min) |
-| `/api/update/apply` | POST | API-Key | Update durchführen (Rate: 3/5min) |
-| `/api/admin/api-key/rotate` | POST | API-Key | API-Schlüssel rotieren |
-| `/api/logs` | GET | API-Key | systemd Journal (Rate: 30/min) |
+Gruppiert; die Routen stehen vollständig in `v3/server/src/index.ts`, Auth-Details und Eigenheiten pro Bereich in [CLAUDE.md](CLAUDE.md).
 
-**Admin-Endpunkte** (`/api/update/*`, `/api/admin/*`, `/api/logs`) akzeptieren bewusst nur `X-Api-Key`, kein JWT — der Schlüssel ist ein De-facto-Root-Credential (er löst `git pull` + `npm install` + Rebuild auf dem Host aus), siehe [README](README.md#erster-start--api-schlüssel-einrichten) und #73. JWT ist auf Daten-/Sync-Endpunkte beschränkt.
+| Bereich | Endpunkte | Auth |
+|---|---|---|
+| Öffentlich | `GET /api/version`, `GET /api/instance-config`, `GET /api/legal`, `GET /api/branding/logo`, `GET /api/auth/registration-status`, `GET /api/auth/pow-challenge` | — |
+| Konto | `POST /api/auth/register`, `/login`, `/login/verify` (2FA), `/refresh`, `/logout`, `/logout-all`; `GET`/`PATCH /api/auth/me`; Passwort vergessen/zurücksetzen und E-Mail bestätigen unter `/api/auth/password/*` und `/api/auth/email/*` | teils öffentlich (Login/Registrierung), sonst JWT |
+| 2FA / Passkeys | `/api/auth/totp/*` (setup, enable, disable, recovery-codes), `/api/auth/passkeys/*` | JWT bzw. öffentlich für den Passkey-Login |
+| Selbstbedienung | `GET /api/me/export`, `POST /api/me/delete` | JWT (+ Passwort) |
+| Sync | `GET`/`POST /api/sync`, `POST /api/sync/push` (`mergeData` aus `@nagellacke/core`) | JWT |
+| Fotos | `POST /api/photos`, `DELETE /api/photos/:filename`, `GET /api/photos/token`; Auslieferung `GET /photos/*` | JWT oder API-Key; Auslieferung zusätzlich mit signiertem `?t=`-Token (seit #269 nicht mehr öffentlich) |
+| KI | `/api/ai/settings`, `POST /api/ai/autofill`, `POST /api/ai/smart-cart`, `GET /api/ai/jobs/:id` | JWT (Einstellungen ändern: Admin) |
+| Berichte | `/api/reports/preview`, `/send`, `/schedule` (Zeitplan pro Benutzer) | JWT |
+| Admin | `/api/admin/*` (Benutzer, Rollen, Einstellungen, Branding, Legal, Audit, API-Key rotieren, Bootstrap), `/api/update/check`, `/api/update/status`, `/api/update/apply`, `/api/logs` | `X-Api-Key` **oder** Admin-JWT (#173); `update/apply` per JWT zusätzlich mit frischer Passwort-Bestätigung |
+
+Der API-Schlüssel bleibt ein De-facto-Root-Credential (er löst `git fetch` + `npm install` + Rebuild auf dem Host aus), siehe [Erster Start](docs/erste-schritte.md) und #73. Das Admin-Konto (erster registrierter Benutzer) ersetzt ihn im Alltag.
 
 ### Keine externe Datenbank
 
@@ -150,7 +139,7 @@ Die App ist für **eine Handvoll Personen** auf einem **privaten Server** ausgel
 
 ### API-Key-Authentifizierung
 
-Ein statischer API-Schlüssel im HTTP-Header (`X-Api-Key`) ist für Admin-Operationen im Heimnetz ausreichend. Der Schlüssel wird beim ersten Start generiert (`crypto.randomBytes(24).toString("hex")`), in `data/.api_key` persistiert (0o600) und einmalig in der Konsole ausgegeben. Rotierbar über `/api/admin/api-key/rotate` oder durch Löschen der Datei + Neustart.
+Ein statischer API-Schlüssel im HTTP-Header (`X-Api-Key`) ist für Admin-Operationen im Heimnetz ausreichend; seit #173 akzeptieren dieselben Endpunkte alternativ ein Admin-JWT. Der Schlüssel wird beim ersten Start generiert (`crypto.randomBytes(24).toString("hex")`), in `data/.api_key` persistiert (0o600) und einmalig in der Konsole ausgegeben. Rotierbar über `/api/admin/api-key/rotate` oder durch Löschen der Datei + Neustart.
 
 ### Passwort-Hashing
 
@@ -166,15 +155,16 @@ Kein Redis. Ein In-Memory-Limiter (`config: { rateLimit: {...} }` pro Route) rei
 
 ### Update-Pipeline
 
-1. Antwortet sofort mit `{ok: true}` (verhindert Reverse-Proxy-Timeout)
-2. `setImmediate()` startet Build im Hintergrund:
-   - `git pull origin main` (30 s Timeout)
-   - `npm install --omit=dev` (60 s)
-   - `npm run build:core` (60 s)
-   - `npm run build:server` (60 s)
-   - `npm run build:web` (120 s)
-   - Kopiert `v3/apps/web/dist` → `server/public/`
-3. Nach 300 ms: `process.exit(0)` — `Restart=always` in der systemd-Unit startet den Prozess automatisch neu
+Implementiert in `v3/server/src/update.ts` (#335, #338). Nur auf systemd-Installationen mit Git-Checkout; Container-Deployments melden `selfUpdate: unsupported`.
+
+1. `POST /api/update/apply` antwortet sofort mit `{ok: true}` (kein Reverse-Proxy-Timeout)
+2. Im Hintergrund laufen asynchron (der Event-Loop bleibt frei) nacheinander:
+   - `git fetch origin main` + `git reset --hard FETCH_HEAD` (kein `git pull`, weil `npm install` das Lockfile verändern kann)
+   - `npm install --include=dev` (ohne `NODE_ENV` im Kindprozess, sonst entfernt npm die Build-Toolchain)
+   - `npm run build:core`, `build:sync`, `build:server`, `build:web`
+   - Web-Build über ein Staging-Verzeichnis nach `server/public/` austauschen
+3. Jeder Schritt wird in `data/update_state.json` protokolliert; `GET /api/update/status` liefert den Stand, auch über den Neustart hinweg
+4. Danach `process.exit(0)` — `Restart=always` in der systemd-Unit startet den Prozess neu
 
 ---
 
@@ -280,6 +270,8 @@ interface SyncAdapter {
 
 ## Android-App
 
+> **Eingefroren (EOL, #372, Tag `android-final`).** Dieser Abschnitt beschreibt den letzten gepflegten Stand; neue Features entstehen nur für Web und Server.
+
 ### Native Kotlin / Jetpack Compose
 
 Die Android-App ist nativ in Kotlin geschrieben (kein React Native, kein Expo). Stack:
@@ -337,7 +329,7 @@ Foto-Anzeige (Sticker + Maniküren):
 Foto-URL-Konstruktion (nur Server-Provider):
 ```kotlin
 "${serverUrl.trimEnd('/')}/photos/${filename}"
-// /photos/ ist öffentliche statische Route in index.ts, kein Auth nötig
+// /photos/ ist seit #269 nicht mehr öffentlich: Bearer-JWT, API-Key oder signiertes ?t=-Token (die App hängt es in sync()/uploadPhoto() an)
 ```
 
 ### Berichte (`ReportGenerator.kt`)
@@ -364,9 +356,17 @@ Der Dienst läuft als systemd-Unit (`nagellacke-v3`) mit `EnvironmentFile` (`.en
 
 Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `server/public/`, wo Fastify es statisch ausliefert.
 
+### Container (öffentliche Instanz)
+
+`v3/Dockerfile` (mehrstufig, `node:20-alpine`) ist der Weg für eigenständige Cloud-Hosts; die öffentliche Instanz `nailvault.de` läuft so. Das Image enthält kein git, das Update in der App ist dort abgeschaltet. Welche App-Version läuft, wird im Infrastruktur-Repo `homelab-infra` festgelegt (Pin auf Tag oder Commit); die Daten liegen in einem Volume.
+
+### Release-Ablauf
+
+Änderungen laufen über Feature-Branch und PR nach `main` (Pflicht-Checks: `build`, `build-android` — übersprungen —, CodeQL, Analyze, `claude-review`). Ein Release entsteht mit dem Workflow `release.yml` (manuell ausgelöst, Eingaben: Tag, Pre-Release, Notizdatei `docs/releases/<tag>.md`) nach Pflege von `CHANGELOG.md`. Installationen holen ein Release über die Update-Funktion der App bzw. `install.sh`; das Container-Deployment wird über seinen Pin umgestellt.
+
 ### GitHub Pages
 
-Die Projektseite (`docs/`) ist statisch und unabhängig vom Server-Deployment. Der Workflow [`pages.yml`](.github/workflows/pages.yml) deployt sie bei jedem Push auf `main`, der etwas unter `docs/` ändert (außer reine Release-Notes unter `docs/releases/`), sowie manuell per `workflow_dispatch`. Läuft über die offiziellen `actions/configure-pages` + `actions/deploy-pages` Actions, kein eigener Build-Schritt nötig.
+Die Projektseite (`docs/`) ist statisch und unabhängig vom Server-Deployment. Der Workflow [`pages.yml`](.github/workflows/pages.yml) deployt sie bei jedem Push auf `main`, der etwas unter `docs/` ändert (außer reine Release-Notes, die Markdown-Anleitungen unter `docs/*.md` und `docs/archive/`), sowie manuell per `workflow_dispatch`. Läuft über die offiziellen `actions/configure-pages` + `actions/deploy-pages` Actions, kein eigener Build-Schritt nötig.
 
 ---
 
@@ -450,11 +450,13 @@ Die Projektseite (`docs/`) ist statisch und unabhängig vom Server-Deployment. D
 
 ## Sicherheitsmodell
 
-Die App ist für den Einsatz im **privaten Heimnetz** konzipiert, nicht für das öffentliche Internet.
+Die App ist primär für den Einsatz im **privaten Heimnetz** konzipiert. Für die öffentliche Instanz (`nailvault.de`) gibt es zusätzlich serverweite Schalter (Foto-Upload, KI, Registrierung mit Proof-of-Work), E-Mail-Bestätigung, Passwort-Reset und Passkeys — siehe [CLAUDE.md](CLAUDE.md).
 
 | Bedrohung | Maßnahme |
 |-----------|----------|
-| Unberechtigte Schreibzugriffe | API-Key (Admin) + JWT (Daten/Sync) |
+| Unberechtigte Schreibzugriffe | JWT (Daten/Sync), API-Key oder Admin-JWT (Admin), optional TOTP-2FA/Passkeys |
+| Fremde Fotos abrufen | `/photos/*` nur mit Bearer-JWT, API-Key oder signiertem Token (#269); Löschen nur für den Besitzer |
+| Clickjacking / MIME-Sniffing | `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff` auf jeder Antwort (#355) |
 | Passwort-Angriffe | scrypt + Salt + timingSafeEqual |
 | Replay / Brute-Force | In-Memory Rate-Limiting pro Route |
 | Riesige Payloads | Fastify body limit (Fotos: 15 MB) |

@@ -10,7 +10,7 @@ Benötigt **Debian/Ubuntu** mit Node.js 20+. Nach der Installation erreichbar un
 
 ## Update einspielen
 
-**In der App:** Footer → „Updates prüfen" → „Jetzt updaten"
+**In der App (Admin-Konto):** Tab **Admin → API-Schlüssel & Update → Update prüfen → Update installieren** (zur Bestätigung ist das Passwort nötig). Der Server holt den aktuellen Stand von `main`, baut neu und startet sich selbst neu; den Fortschritt zeigt die App. Ohne Admin-Konto geht es auch über **Mehr → Admin** (Abschnitt für den API-Schlüssel), siehe [Erster Start](erste-schritte.md).
 
 **Manuell:**
 ```bash
@@ -28,14 +28,7 @@ funktioniert dort nicht** und wird deshalb auch nicht angeboten. Die App zeigt
 stattdessen an, dass dieses Deployment über das Image aktualisiert wird; neue
 Versionen erkennt sie trotzdem.
 
-Update von Hand auf dem Host:
-
-```bash
-cd /opt/nailvault
-git -C src fetch origin main
-git -C src reset --hard FETCH_HEAD
-docker compose up -d --build
-```
+Welche App-Version dort läuft, ist **fest gepinnt** (Release-Tag oder Commit) und wird im Infrastruktur-Repo `homelab-infra` verwaltet; ein Update ist dort eine bewusste Änderung dieses Pins, nicht ein Pull von `main`. Wer das Image selbst betreibt, baut es aus dem gewünschten Stand neu (`docker compose up -d --build`).
 
 Die Daten liegen im Volume (`DATA_DIR=/data`) und bleiben davon unberührt.
 

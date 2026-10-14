@@ -1,112 +1,50 @@
 # Nagellacke v3
 
-Cross-platform nail polish collection — Android App, Web App, and sync server.
+The current generation of the app: a React web app, a Fastify server and two shared TypeScript packages, managed as an npm workspace.
 
-> **v2** (the original self-hosted PWA) lives in the root `/backend` + `/frontend` folders and is completely unchanged. v3 is isolated in this `/v3/` directory.
+> The native Android app in `../android/` is **frozen** (EOL, #372, tag `android-final`) and is not part of this workspace. New features are web + server only.
 
-## Structure
+## Layout
 
 ```
 v3/
 ├── packages/
-│   ├── core/        TypeScript types, business logic, merge algorithm
-│   └── sync/        Pluggable sync engine (server / GDrive / OneDrive / Nextcloud / Dropbox)
-├── server/          Fastify + SQLite sync server (self-hosted)
+│   ├── core/       @nagellacke/core: data types, filter/sort logic, mergeData(), constants
+│   └── sync/       @nagellacke/sync: sync adapters (own server, Nextcloud, Google Drive, OneDrive, Dropbox)
 ├── apps/
-│   ├── web/         React + Vite web app (Material Design 3)
-│   └── android/     Expo React Native app (Material You, Play Store ready)
-└── package.json     npm workspaces root
+│   └── web/        React 18 + TypeScript + Vite web app
+├── server/         Fastify 4 server (JSON-file storage, JWT/API-key auth, AI jobs, reports, self-update)
+├── scripts/        v2 -> v3 data migration script (legacy, see header)
+├── Dockerfile      Container image for standalone hosts (e.g. the public NailVault instance)
+└── package.json    Workspace root (Node >= 20)
 ```
 
-## Quick Start
+## Quick start
 
 ```bash
 cd v3
 npm install
-```
+npm run build:core && npm run build:sync
 
-### Run the server (local dev)
+# terminal 1: server. The Vite dev proxy forwards /api and /photos to port 3001.
+PORT=3001 npm run dev:server
 
-```bash
-npm run dev:server
-# → http://localhost:3001
-
-# Register an account:
-curl -X POST http://localhost:3001/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"me","password":"mysecretpassword"}'
-# → {"token":"eyJ..."}
-```
-
-### Run the web app
-
-```bash
+# terminal 2: web app on http://localhost:5173
 npm run dev:web
-# → http://localhost:5173
 ```
 
-Open Settings → enter your server URL + the token from registration → Save → Sync.
+The server picks `PORT` (default `3000`) from the environment; production installs listen on 3000 and serve the built web app themselves. On first start it prints the API key to the console, and the first account that registers becomes admin.
 
-### Run the Android app (Expo Go)
+## Build and test
 
 ```bash
-cd apps/android
-npx expo start
+npm run build:core && npm run build:sync && npm run build:server && npm run build:web
+npm run test        # vitest across all workspaces
 ```
 
-Scan the QR code with **Expo Go** on your Android phone.
+## More
 
-## Sync Providers
-
-In Settings you can choose one of:
-
-| Provider | How it works |
-|----------|--------------|
-| **Eigener Server** | REST API to your self-hosted server. Recommended. |
-| **Nextcloud** | WebDAV — stores `nagellacke-data.json` in your Nextcloud. |
-| **Google Drive** | Stores `nagellacke-data.json` in your Drive. Requires OAuth. |
-| **OneDrive** | Stores `nagellacke-data.json` via Microsoft Graph. Requires OAuth. |
-| **Dropbox** | Stores `nagellacke-data.json` via Dropbox API. Requires OAuth. |
-
-**Conflict resolution:** last `updatedAt` timestamp wins per item. Deleted items use soft-delete (`deletedAt`) so deletions propagate across devices.
-
-## Self-host the server (Linux)
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/v3/server/install.sh)
-```
-
-This installs Node 20, builds the server, and creates a systemd service on port **3001**.
-
-## Play Store Build
-
-```bash
-# Install Expo EAS CLI
-npm install -g eas-cli
-eas login
-
-cd apps/android
-
-# Development APK (for testing)
-eas build --platform android --profile development
-
-# Production AAB (for Play Store)
-eas build --platform android --profile production
-
-# Submit to Play Store (needs google-service-account.json)
-eas submit --platform android
-```
-
-Replace `apps/android/assets/*.png` with real artwork before publishing.
-
-## Run tests
-
-```bash
-cd packages/core
-npm test
-```
-
-## Versioning
-
-- v2 releases: tagged `v2.x.x` — drives the v2 in-app update checker
-- v3 releases: tagged `v3.x.x` — completely separate
+- Install, update, backup and sync guides: [`../docs/`](../docs/installation.md)
+- Development notes and repo structure: [`../docs/entwicklung.md`](../docs/entwicklung.md)
+- Architecture and decisions: [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+- Contributor/agent conventions: [`../CLAUDE.md`](../CLAUDE.md)

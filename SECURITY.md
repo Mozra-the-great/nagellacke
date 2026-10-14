@@ -2,14 +2,13 @@
 
 ## Supported Versions
 
-Hier findest du Informationen darüber, welche Versionen dieses Projekts derzeit aktiv mit Sicherheitsupdates versorgt werden.
+Sicherheitsupdates gibt es nur für die jeweils **neueste Release-Version** der Web-App und des Servers (aktuell die 3.4.x-Linie, siehe [Releases](https://github.com/Mozra-the-great/nagellacke/releases)). Ältere Versionen werden nicht gepatcht — bitte zuerst aktualisieren.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| Komponente | Supported |
+| ---------- | --------- |
+| Web-App + Server (`v3/`), neuester Release | :white_check_mark: |
+| Ältere Releases | :x: |
+| Native Android-App (`android/`, eingefroren seit #372, Tag `android-final`) | :x: — keine Updates mehr |
 
 ## Reporting a Vulnerability
 
