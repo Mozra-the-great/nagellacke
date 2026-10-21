@@ -1052,7 +1052,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
 
         {(provider === 'googledrive' || provider === 'onedrive' || provider === 'dropbox') && (
           <div className={styles.oauthHint}>
-            OAuth2-Login wird in der Android-App unterstützt. Für die Web-App wird der Eigene-Server-Adapter empfohlen.
+            Die OAuth2-Anmeldung für Google Drive, OneDrive und Dropbox ist noch nicht fertig. Bitte „Eigener Server“ oder Nextcloud verwenden.
           </div>
         )}
 

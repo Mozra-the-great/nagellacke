@@ -1139,7 +1139,7 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   font-size: 1.02rem;
 }
 
-/* real markup: <ul class="platform-row"><li>Android</li>… */
+/* real markup: <ul class="platform-row"><li>Web-App im Browser</li>… */
 .platform-row,
 .app-notes,
 #app .notes {
@@ -1154,6 +1154,14 @@ a:not(.btn):hover { text-decoration-thickness: 2px; }
   font-family: var(--font-hand);
   font-weight: 600;
   font-size: 1.25rem;
+  color: var(--ink-soft);
+}
+
+/* one quiet line under the platform row: the discontinued Android app */
+.platform-note {
+  margin-top: 1rem;
+  max-width: 62ch;
+  font-size: 0.95rem;
   color: var(--ink-soft);
 }
 

@@ -153,8 +153,8 @@
     'hero-cta-primary': 'Browse the shelf',
     'hero-cta-secondary': 'What the app can do',
     'hero-fact-1': 'no tracking',
-    'hero-fact-2': 'your data stays with you',
-    'hero-fact-3': 'works offline',
+    'hero-fact-2': 'no ads, no third parties',
+    'hero-fact-3': 'collection stored locally in your browser',
     'hero-svg-label': 'Favorite polish ♥',
 
     'regal-h2': 'Your shelf',
@@ -203,7 +203,11 @@
     'panel-sticker':
       'Also manage your nail art stickers and foils, ready for the next manicure.',
     'platform-web': 'Web app in the browser',
-    'platform-offline': 'works offline',
+    'platform-local': 'Collection stored locally in your browser',
+    'platform-sync': 'Sync is optional',
+    'platform-android-note':
+      'The former Android app has been discontinued (frozen since October 2026) and is no longer developed.',
+    'platform-android-link': 'Android code on GitHub',
 
     'zahlen-h2': 'What your shelf reveals',
     'zahlen-lead':
