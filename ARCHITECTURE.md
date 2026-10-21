@@ -469,7 +469,7 @@ Die App ist primär für den Einsatz im **privaten Heimnetz** konzipiert. Für d
 | Offene Registrierung | `/api/auth/register` nur beim ersten User oder mit `ALLOW_REGISTRATION=true` |
 
 Bekannte offene Punkte (für Heimnetz-Betrieb akzeptiert):
-- HTTP, kein HTTPS — im Heimnetz ohne externen Zugang akzeptabel; für externen Zugang: Reverse-Proxy (Nginx) mit Let's Encrypt
+- HTTP, kein HTTPS — im Heimnetz ohne externen Zugang akzeptabel; für externen Zugang: Reverse-Proxy (Nginx) mit Let's Encrypt. Dann `TRUST_PROXY` auf die Adresse des Proxys setzen (nur IP/CIDR, nie `true`), sonst teilen sich alle Clients ein Rate-Limit pro Route (#397)
 - `X-Api-Key` ist ein De-facto-Root-Credential (`/api/update/apply` zieht ungeprüft `origin/main` und führt `npm install`/`postinstall` aus) — bewusst akzeptiert für den Heimnetz-Anwendungsfall, siehe #73
 
 ---

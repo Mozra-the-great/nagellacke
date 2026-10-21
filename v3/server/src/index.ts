@@ -49,6 +49,7 @@ import {
   newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
+import { parseTrustProxy } from './trustProxy';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -420,12 +421,15 @@ export async function buildApp(): Promise<FastifyInstance> {
   migrateScheduleToPerUser();
   migratePhotoOwners();
 
-  // No trustProxy: the default deployment (install.sh) binds directly to 0.0.0.0,
-  // so req.ip (used as the rate-limit key below) is the real client IP. If you put
-  // this behind a reverse proxy, set trustProxy to that proxy's address specifically
-  // — never `true` — or every client collapses onto one rate-limit bucket and an
-  // X-Forwarded-For header lets anyone spoof their way around the limits.
-  const app = Fastify({ logger: { level: process.env.VITEST ? 'silent' : 'info' } });
+  // trustProxy is off unless TRUST_PROXY names the reverse proxies to believe (#397).
+  // The default deployment (install.sh) binds directly to 0.0.0.0, so req.ip (the
+  // rate-limit key below, and the remoteAddress in the log) is the real client IP.
+  // Behind a proxy (the nailvault.de container image sits behind Traefik) the peer
+  // is the proxy: without TRUST_PROXY every client collapses onto one rate-limit
+  // bucket. TRUST_PROXY takes IPs/CIDRs only - never `true`, or an X-Forwarded-For
+  // header would let anyone spoof their way around the limits (see trustProxy.ts).
+  const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
+  const app = Fastify({ trustProxy, logger: { level: process.env.VITEST ? 'silent' : 'info' } });
 
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
