@@ -16,69 +16,129 @@
 <main class="legal paper-card">
 
 <h1>Datenschutzerklärung – Nagellacke</h1>
-<p><strong>Zuletzt aktualisiert:</strong> Juli 2026</p>
+<p><strong>Zuletzt aktualisiert:</strong> Oktober 2026</p>
 
 <h2>1. Überblick</h2>
 <p>
-  Die App <em>Nagellacke</em> ist eine persönliche Nagellackverwaltung für Android.
-  Sie wurde von Mozra-the-great als private, selbst gehostete Anwendung entwickelt.
-  Diese Datenschutzerklärung erläutert, welche Daten die App verarbeitet und wie sie verwendet werden.
+  <em>Nagellacke</em> ist eine persönliche Nagellackverwaltung als <strong>Web-App</strong>: Sie läuft im Browser
+  und kann optional mit einem Server (Konto, Synchronisierung, Fotos) arbeiten. Sie wurde von Mozra-the-great als
+  private, werbefreie Anwendung entwickelt. Diese Datenschutzerklärung erläutert, welche Daten dabei verarbeitet werden.
+</p>
+<p>
+  Sie gilt für die Projektseite auf GitHub Pages und für die Web-App samt Server in der Instanz, die der Entwickler
+  unter <strong>nailvault.de</strong> betreibt. Wer den Server selbst betreibt, ist für seine Instanz selbst
+  verantwortlich und kann dort eigene Texte für Impressum und Datenschutz hinterlegen.
+</p>
+<p>
+  Die frühere native Android-App ist eingestellt (siehe Abschnitt 11).
 </p>
 
-<h2>2. Erhobene Daten</h2>
+<h2>2. Nutzung ohne Konto (nur lokal)</h2>
+<p>
+  Ohne Konto bleibt die Sammlung auf dem Gerät: Die Web-App speichert Lacke, Kategorien, Maniküren, Sticker und
+  Notizen sowie Anzeigeeinstellungen (z. B. Kartenansicht oder Farbraster, Foto- und KI-Voreinstellungen) im lokalen
+  Speicher (<code>localStorage</code>) des Browsers. Diese Daten werden nicht an einen Server übertragen. Sie lassen
+  sich über die Website-Daten-Einstellungen des Browsers löschen; einen Export als ZIP-Datei bietet die App unter
+  „Mehr → Daten“.
+</p>
+<p>
+  Fotos lassen sich nur hinzufügen, wenn ein Server eingerichtet ist (Anmeldung an einem Server oder API-Schlüssel);
+  ohne Server wird kein Foto hochgeladen. Die Funktion „Farbe aus Foto“ liest die Farbe eines Bildes im Browser aus,
+  das Bild wird dafür nicht übertragen.
+</p>
 
-<h3>2.1 Lokal auf dem Gerät gespeicherte Daten</h3>
+<h2>3. Konto und Server-Synchronisierung</h2>
+<p>
+  Wer sich an einem Nagellacke-Server (z. B. nailvault.de) registriert oder anmeldet, überträgt Daten an diesen Server
+  und speichert sie dort. Verarbeitet werden:
+</p>
 <ul>
-  <li><strong>Nagellack-Sammlung:</strong> Einträge (Name, Marke, Farbe, Notizen, Bilder) werden ausschließlich lokal in der App-Datenbank gespeichert.</li>
-  <li><strong>Fotos:</strong> Bilder von Maniküren, die über die Kamera aufgenommen oder aus der Galerie importiert werden, werden lokal gespeichert und sind nur innerhalb der App zugänglich.</li>
-  <li><strong>Sync-Zugangsdaten:</strong> Falls die optionale Synchronisierungsfunktion aktiviert wird, werden Zugangsdaten (z. B. OAuth-Token, Server-URL) verschlüsselt auf dem Gerät gespeichert (<code>androidx.security.crypto</code> / EncryptedSharedPreferences).</li>
+  <li><strong>Kontodaten:</strong> Benutzername, Passwort (nur als Hash mit Salt, nicht im Klartext), Zeitpunkt der Registrierung, Rolle (Administrator oder Nutzer) sowie Zähler für fehlgeschlagene Anmeldungen und eine zeitweilige Sperre nach zu vielen Fehlversuchen.</li>
+  <li><strong>E-Mail-Adresse (freiwillig):</strong> Sie wird für das Zurücksetzen des Passworts und für Berichts-E-Mails benötigt. Ob sie bestätigt ist, wird vermerkt; zur Bestätigung und zum Zurücksetzen wird ein einmaliger Link gesendet, von dem nur ein Hash gespeichert wird.</li>
+  <li><strong>Zwei-Faktor-Anmeldung und Passkeys (freiwillig):</strong> Geheimnis für die Authentifizierungs-App, Hashes der Wiederherstellungscodes sowie bei Passkeys der öffentliche Schlüssel, ein Name und ein Zähler.</li>
+  <li><strong>Sammlung:</strong> Lacke, Kategorien, Maniküren, Sticker und Notizen mit Zeitstempeln. Gelöschte Einträge werden zunächst als gelöscht markiert, damit der Abgleich zwischen Geräten funktioniert.</li>
+  <li><strong>Fotos:</strong> Die hochgeladenen Bilddateien werden unverändert gespeichert; enthalten sie Metadaten (z. B. den Aufnahmeort), bleiben diese erhalten. Der Server merkt sich, welches Konto ein Foto hochgeladen hat. Abrufbar sind Fotos nur nach Anmeldung oder über einen signierten, zeitlich begrenzten Link.</li>
+  <li><strong>Berichtsplan (freiwillig):</strong> Empfängeradresse und Zeitplan für automatische Berichts-E-Mails.</li>
+  <li><strong>KI-Aufträge (nur bei Nutzung):</strong> Eingaben und Ergebnisse der letzten Aufträge (siehe Abschnitt 6).</li>
+  <li><strong>Protokoll administrativer Aktionen:</strong> Wenn Administratoren Konten anlegen, löschen oder Rechte ändern, Einstellungen speichern oder ein Konto sich selbst löscht, werden Zeitpunkt, Aktion und Benutzernamen in einem auf die letzten 500 Einträge begrenzten Protokoll vermerkt.</li>
+</ul>
+<p>
+  Zweck ist die Bereitstellung der Web-App mit Konto, Abgleich und Fotos. Rechtsgrundlage ist die Durchführung des
+  Nutzungsverhältnisses (Art. 6 Abs. 1 lit. b DSGVO); für Sicherheitsmaßnahmen wie Sperren und Protokolle das
+  berechtigte Interesse am sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO).
+</p>
+
+<h2>4. Cookies und lokaler Speicher</h2>
+<ul>
+  <li><strong>Cookie <code>nl_refresh</code>:</strong> Nach der Anmeldung setzt der Server dieses Cookie, damit die Sitzung ein Neuladen der Seite überdauert. Es ist als <code>httpOnly</code> gesetzt (Skripte der Seite können es nicht lesen), gilt nur für Anfragen an <code>/api/auth</code> und läuft standardmäßig nach 30 Tagen ab. Bei „Abmelden“ wird es gelöscht. Es ist technisch erforderlich; eine Einwilligung ist dafür nicht nötig.</li>
+  <li><strong>Lokaler Speicher des Browsers:</strong> Die Web-App legt dort die Sammlung (siehe Abschnitt 2), die Sync-Einstellungen und Anzeigeeinstellungen ab. Die Sync-Einstellungen enthalten die Server-Adresse und den Benutzernamen; bei Nextcloud-Sync zusätzlich die Nextcloud-Adresse, den Benutzernamen und das App-Passwort, bei Nutzung eines API-Schlüssels auch diesen. Die Anmelde-Token der Sitzung werden nicht im lokalen Speicher abgelegt.</li>
+  <li><strong>Projektseite:</strong> Sie setzt keine Cookies. Sie merkt sich im lokalen Speicher nur die gewählte Sprache und die Lacke, die Besucher im Demo-Regal selbst hinzufügen; beides verlässt den Browser nicht.</li>
 </ul>
 
-<h3>2.2 Kamerazugriff</h3>
-<p>
-  Die App fordert die Berechtigung <code>CAMERA</code> an, um Fotos von Nagellacken und Maniküren direkt
-  in der App aufzunehmen. Die Kamera wird nur auf ausdrückliche Anforderung durch die Nutzerin / den Nutzer aktiviert.
-  Es werden keine Kamerabilder ohne Zustimmung gespeichert oder übertragen.
-</p>
+<h2>5. Server-Protokolle, Hosting und Sicherheit</h2>
+<ul>
+  <li><strong>Server-Protokolle:</strong> Der Server protokolliert Anfragen im Betriebsprotokoll (Zeitpunkt, Methode, aufgerufene Adresse samt Parametern, Statuscode, Antwortzeit und die IP-Adresse der anfragenden Verbindung, bei vorgeschaltetem Proxy gegebenenfalls die des Proxys). Der vorgeschaltete Reverse-Proxy (Traefik) schreibt keine eigenen Zugriffsprotokolle. Zweck ist der sichere und fehlerfreie Betrieb (Art. 6 Abs. 1 lit. f DSGVO).</li>
+  <li><strong>Schutz vor Missbrauch:</strong> Anfragen werden pro IP-Adresse im Arbeitsspeicher gezählt, um Überlastung und Passwort-Raten zu begrenzen. Diese Zähler werden nicht dauerhaft gespeichert und verfallen nach kurzer Zeit.</li>
+  <li><strong>Hosting nailvault.de:</strong> Die Instanz läuft in einem Container auf einer virtuellen Maschine bei Oracle Cloud Infrastructure in der Region Frankfurt (Deutschland). Die Verbindung ist per HTTPS (TLS-Zertifikat von Let’s Encrypt) verschlüsselt. Die DNS-Auflösung der Domain erfolgt über Cloudflare; der Datenverkehr selbst läuft nicht über Cloudflare.</li>
+  <li><strong>Projektseite:</strong> Sie wird über GitHub Pages ausgeliefert. Dabei verarbeitet GitHub technisch bedingt Verbindungsdaten wie die IP-Adresse; es gilt die <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener" target="_blank">Datenschutzerklärung von GitHub</a>.</li>
+  <li><strong>Schutz der Daten:</strong> Passwörter werden mit scrypt gehasht, Sitzungen laufen über signierte Token, wiederholte Fehlanmeldungen führen zu einer Sperre.</li>
+</ul>
 
-<h2>3. Optionale Synchronisierung</h2>
+<h2>6. Optionale Funktionen mit Weitergabe an Dritte</h2>
 <p>
-  Die App bietet eine freiwillige Synchronisierungsfunktion mit selbst gewählten Diensten:
+  Die folgenden Funktionen sind nur aktiv, wenn der Betreiber des Servers sie eingerichtet hat. Sie lassen sich in der
+  App abschalten (die Einstellung „KI-Funktionen“ blendet alle KI-Funktionen aus) oder schlicht nicht nutzen.
 </p>
 <ul>
-  <li>Nextcloud</li>
-  <li>Dropbox</li>
-  <li>Google Drive</li>
-  <li>OneDrive</li>
-  <li>Eigener Server (selbst gehostetes Nagellacke-Backend)</li>
+  <li><strong>KI-Funktionen (Auto-Fill, Smart-Cart):</strong> Der Server sendet die Anfrage an den vom Betreiber gewählten Anbieter, derzeit OpenRouter (openrouter.ai) oder Google Gemini (generativelanguage.googleapis.com). Bei Auto-Fill sind das Name, Marke und Nummer eines Lacks; beim Smart-Cart die Liste der Lacke in Sammlung und Einkaufswagen (Marke, Nummer, Name, Farbe, Finish) und der eingegebene Wunsch. Für die Verarbeitung gelten die Bedingungen des jeweiligen Anbieters.</li>
+  <li><strong>Websuche der KI:</strong> Kann das Modell im Internet recherchieren, stellt der Server Suchanfragen an DuckDuckGo, die Brave Search API oder eine vom Betreiber betriebene SearXNG-Instanz. Übermittelt werden die vom Modell formulierten Suchbegriffe; sie können sich aus Ihrer Anfrage und Ihrer Sammlung ableiten, Kontodaten gehören nicht dazu.</li>
+  <li><strong>E-Mail-Versand:</strong> Bestätigungs-, Passwort-Zurücksetzen- und Berichts-E-Mails werden über den vom Betreiber eingestellten SMTP-Server versendet. Dieser erhält dafür die Empfängeradresse und den Inhalt der Nachricht; Berichte enthalten signierte, zeitlich begrenzte Links auf Fotos.</li>
+  <li><strong>Nextcloud-Sync:</strong> Wählen Sie Nextcloud als Sync-Ziel, überträgt der Browser Sammlung und Fotos direkt an die von Ihnen angegebene Nextcloud-Adresse. Dort gelten deren Datenschutzbestimmungen. Google Drive, OneDrive und Dropbox stehen in der Auswahl, lassen sich in der Web-App aber noch nicht anmelden; es werden dorthin keine Daten übertragen.</li>
 </ul>
 <p>
-  Bei aktivierter Synchronisierung werden Nagellack-Einträge und Fotos an den gewählten Dienst übertragen.
-  Die Übertragung erfolgt ausschließlich auf Veranlassung der Nutzerin / des Nutzers.
-  Der Betreiber der App hat keinen Zugriff auf diese Daten.
-  Es gelten die Datenschutzbestimmungen des jeweiligen Dienstanbieters.
+  Darüber hinaus gibt die Web-App keine Daten an Dritte weiter. Es werden keine Analyse-, Tracking- oder Werbedienste
+  und keine extern geladenen Schriften oder Skripte verwendet; die Schriften der App und der Projektseite werden vom
+  eigenen Server ausgeliefert.
 </p>
 
-<h2>4. Keine Weitergabe an Dritte</h2>
+<h2>7. Kamera und Standort</h2>
 <p>
-  Die App übermittelt keine Daten an Dritte. Es werden keine Analyse-, Tracking- oder Werbedienste verwendet.
+  Die Web-App fragt weder Kamera noch Standort des Geräts ab. Beim Hinzufügen eines Fotos öffnet sich die
+  Dateiauswahl des Browsers beziehungsweise des Betriebssystems; ob dort die Kamera angeboten wird, entscheidet das
+  Gerät. Zu Metadaten in Fotos siehe Abschnitt 3.
 </p>
 
-<h2>5. Keine Standortdaten</h2>
-<p>Die App greift nicht auf den Standort des Geräts zu.</p>
+<h2>8. Speicherdauer, Auskunft und Löschung</h2>
+<ul>
+  <li><strong>Lokale Daten</strong> bleiben, bis sie im Browser gelöscht werden.</li>
+  <li><strong>Auskunft und Datenübertragbarkeit:</strong> Unter „Mehr → Sync“ lässt sich ein Konto mit „Meine Kontodaten herunterladen“ als JSON-Datei exportieren; der ZIP-Export unter „Mehr → Daten“ enthält zusätzlich die Fotos.</li>
+  <li><strong>Löschung:</strong> Unter „Mehr → Sync“ löscht „Konto löschen…“ nach Passwortabfrage das Konto endgültig samt Sammlung, Berichtsplan, KI-Aufträgen und den Fotos, die nur dieses Konto verwendet. Löscht ein Administrator ein Konto, bleibt eine Sicherungskopie der Sammlungsdatei auf dem Server liegen, bis der Betreiber sie entfernt. Einträge im Protokoll administrativer Aktionen (Abschnitt 3) bleiben bis zum Überschreiben durch neuere Einträge bestehen.</li>
+  <li><strong>Daten bei anderen Diensten</strong> (Nextcloud, KI-Anbieter, SMTP-Server) müssen dort gelöscht werden.</li>
+</ul>
 
-<h2>6. Datenlöschung</h2>
+<h2>9. Ihre Rechte</h2>
 <p>
-  Alle lokal gespeicherten Daten können jederzeit durch Deinstallation der App oder über die
-  Android-Einstellungen (App → Daten löschen) entfernt werden. Auf Sync-Diensten gespeicherte
-  Daten müssen direkt beim jeweiligen Dienst gelöscht werden.
+  Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Datenübertragbarkeit
+  sowie das Recht, der Verarbeitung auf Grundlage berechtigter Interessen zu widersprechen. Außerdem können Sie sich
+  bei einer Datenschutz-Aufsichtsbehörde beschweren. Für die Ausübung Ihrer Rechte nutzen Sie die Funktionen in
+  Abschnitt 8 oder den Kontakt in Abschnitt 10.
 </p>
 
-<h2>7. Kontakt</h2>
+<h2>10. Kontakt</h2>
 <p>
   Bei Fragen zum Datenschutz wenden Sie sich an:<br />
   <strong>Mozra-the-great</strong><br />
   E-Mail: <a href="mailto:nagellacke.dev@gmail.com">nagellacke.dev@gmail.com</a>
+</p>
+
+<h2>11. Frühere Android-App (eingestellt)</h2>
+<p>
+  Die native Android-App ist seit Oktober 2026 eingestellt und wird nicht mehr weiterentwickelt. Für noch installierte Exemplare gilt: Die Sammlung liegt in der lokalen Datenbank des
+  Geräts; Fotos werden lokal gespeichert, die Kameraberechtigung wird nur für Aufnahmen in der App genutzt, und
+  Zugangsdaten für die optionale Synchronisierung werden verschlüsselt auf dem Gerät gespeichert. Bei aktivierter
+  Synchronisierung werden Daten an das gewählte Ziel (eigener Server oder Nextcloud) übertragen; die Datenverarbeitung
+  dort entspricht den Abschnitten 3 und 6. Alle lokalen Daten lassen sich durch Deinstallation oder über die
+  Android-Einstellungen (App → Daten löschen) entfernen.
 </p>
 
 </main>
