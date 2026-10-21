@@ -1,0 +1,23 @@
+version: 2
+
+# Keeps the SHA-pinned actions in .github/workflows fresh: every `uses:` line is
+# pinned to a commit with a version comment, and Dependabot rewrites both.
+#
+# Only github-actions. The npm dependencies get Dependabot security updates (alerts)
+# only, and the frozen Android app (#372) is deliberately left out, see
+# docs/android-wieder-aufnehmen.md. Add an ecosystem here when that changes.
+#
+# cooldown (zizmor audit dependabot-cooldown): a new release is proposed only after
+# 7 days, so a compromised release is usually noticed before it reaches a PR.
+#
+# Dependabot cannot read repository secrets, so claude-review skips its PRs
+# (`github.actor != 'dependabot[bot]'`); a skipped required check counts as passing.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(actions)"
