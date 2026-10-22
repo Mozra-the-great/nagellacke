@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseDuckDuckGoHtml,
   isDuckDuckGoChallenge,
@@ -219,5 +219,49 @@ describe('formatResults', () => {
 
   it('says so explicitly when there is nothing', () => {
     expect(formatResults([])).toBe('Keine Suchergebnisse gefunden.');
+  });
+});
+
+describe('SearXNG target policy (#401)', () => {
+  const searx = (searxngUrl: string): WebSearchConfig => ({ ...DEFAULT_WEB_SEARCH, backend: 'searxng', searxngUrl });
+
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it.each([
+    'http://searx.example.org',
+    'https://127.0.0.1:8080',
+    'https://localhost',
+    'https://169.254.169.254',
+    'https://10.0.0.5',
+    'https://[::1]',
+    'https://user:pw@searx.example.org',
+  ])('does not call out for %s, even through an injected fetch', async (url) => {
+    const spy = vi.fn(fakeFetch(JSON.stringify({ results: [] })));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await searchWeb('essie', searx(url), spy as unknown as FetchLike)).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('uses the guarded transport by default and never the global fetch for a blocked target', async () => {
+    const globalFetch = vi.fn();
+    vi.stubGlobal('fetch', globalFetch);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await searchWeb('essie', searx('https://169.254.169.254/'))).toEqual([]);
+    expect(globalFetch).not.toHaveBeenCalled();
+    // The log line names the reason, not the query or the URL.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).not.toContain('essie');
+    expect(String(warn.mock.calls[0][0])).not.toContain('169.254');
+  });
+
+  it('still reaches a valid public https url', async () => {
+    const seen: string[] = [];
+    const spy: FetchLike = async (url) => {
+      seen.push(url);
+      return { ok: true, status: 200, text: async () => '', json: async () => ({ results: [{ title: 'T', url: 'https://e.com', content: 'S' }] }) };
+    };
+    const out = await searchWeb('essie', searx('https://searx.example.org:8443/base/'), spy);
+    expect(seen).toEqual(['https://searx.example.org:8443/base/search?q=essie&format=json']);
+    expect(out).toHaveLength(1);
   });
 });

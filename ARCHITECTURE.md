@@ -174,6 +174,10 @@ Implementiert in `v3/server/src/update.ts` (#335, #338). Nur auf systemd-Install
 
 Statt der kostenpflichtigen Websuche der KI-Anbieter (die z. B. auch bei kostenlosen Modellen extra berechnet wird oder im Free-Tier fehlt) stellt der Server selbst die Suchanfrage und bietet sie dem Modell als Werkzeug `web_search` an — für beide unterstützten Wire-Formate (OpenAI-kompatibel und Gemini `functionDeclarations`). Backend wählbar: DuckDuckGo (ohne Einrichtung, aber rate-limited bei Rechenzentrums-IPs — erkennt und loggt die HTTP-202-CAPTCHA-Antwort separat, `websearch.ts`), eigene SearXNG-Instanz oder Brave.
 
+### Ausgehende Anfragen und SSRF-Schutz
+
+Der Server ruft nur feste https-Hosts auf (OpenRouter, Gemini, Brave, DuckDuckGo, GitHub), mit einer Ausnahme: die vom Admin gesetzte SearXNG-Adresse. Diese läuft über `outbound.ts` (#401): nur `https://`, keine Zugangsdaten in der URL, und die Zieladresse wird im `lookup`-Hook des Sockets geprüft — die geprüfte Adresse ist also die, mit der verbunden wird (kein Zeitfenster für DNS-Rebinding). Abgelehnt werden Loopback, RFC 1918, Link-Local (inkl. Cloud-Metadaten), CGNAT/Tailnet, Unique-Local, Multicast und reservierte Bereiche, IPv4 wie IPv6 (auch IPv4-mapped, NAT64, 6to4). Weiterleitungen folgt der Server selbst (max. 3), jede Station wird neu geprüft; dazu Timeout und Größenlimit. `POST /api/ai/settings` lehnt solche Adressen schon beim Speichern ab, maßgeblich ist aber die Prüfung beim Abruf. Der Gemini-Schlüssel geht im Header `x-goog-api-key`, nie in der URL. Wer künftig weitere nutzerkonfigurierbare Ziele einführt (z. B. #400), nutzt dieselbe Funktion.
+
 ### Hintergrundjobs
 
 Auto-Fill (Lack-Formular) und Smart-Cart (Wunschliste) laufen als asynchrone Jobs (`data/ai_jobs.json`), damit ein mehrere Sekunden dauernder Tool-Loop den Request nicht blockiert. Ergebnisse werden über `/api/ai/jobs/:id` abgefragt und auf den frisch aus der DB gelesenen Datensatz angewendet (nicht auf eine veraltete Kopie), damit parallele Bearbeitung nicht durch Last-Write-Wins verloren geht.

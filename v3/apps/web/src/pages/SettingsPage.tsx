@@ -1461,7 +1461,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   placeholder="https://searx.example.org"
                 />
                 <p className={styles.fieldHelpText}>
-                  Eigene SearXNG-Instanz mit aktivierter JSON-API (<code>format=json</code>).
+                  Eigene SearXNG-Instanz mit aktivierter JSON-API (<code>format=json</code>). Sie muss per <code>https://</code> öffentlich erreichbar sein; Adressen im lokalen Netz oder per <code>http://</code> lehnt der Server ab.
                 </p>
               </label>
             )}
