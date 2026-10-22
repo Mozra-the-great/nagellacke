@@ -77,7 +77,8 @@
 
 <h2>5. Server-Protokolle, Hosting und Sicherheit</h2>
 <ul>
-  <li><strong>Server-Protokolle:</strong> Der Server protokolliert Anfragen im Betriebsprotokoll (Zeitpunkt, Methode, aufgerufene Adresse samt Parametern, Statuscode, Antwortzeit und die IP-Adresse der anfragenden Verbindung, bei vorgeschaltetem Proxy gegebenenfalls die des Proxys). Der vorgeschaltete Reverse-Proxy (Traefik) schreibt keine eigenen Zugriffsprotokolle. Zweck ist der sichere und fehlerfreie Betrieb (Art. 6 Abs. 1 lit. f DSGVO).</li>
+  <li><strong>Server-Protokolle:</strong> Der Server protokolliert Anfragen im Betriebsprotokoll: Zeitpunkt, Methode, aufgerufene Adresse samt Parametern (bei Foto-Links auch den zeitlich begrenzten Zugriffs-Token), Statuscode, Antwortzeit und die IP-Adresse des Besuchers. Hinter dem vorgeschalteten Reverse-Proxy (Traefik) ist das die vom Proxy weitergegebene Adresse des Besuchers; solange der Server diese Weitergabe nicht auswertet, steht dort stattdessen nur die Adresse des Proxys. Der Reverse-Proxy selbst schreibt keine Zugriffsprotokolle. Das Betriebsprotokoll liegt als Datei auf dem Server und wird in der Größe begrenzt rotiert (höchstens 5 Dateien zu je 10 MB; die ältesten Einträge werden überschrieben, je nach Auslastung nach einigen Tagen bis Wochen); beim Aktualisieren der Anwendung wird es zusätzlich gelöscht. Es wird nicht an Dritte übermittelt. Zweck ist der sichere und fehlerfreie Betrieb sowie die Abwehr von Missbrauch (Art. 6 Abs. 1 lit. f DSGVO).</li>
+  <li><strong>Betriebssystem-Protokolle:</strong> Das Betriebssystem des Servers protokolliert unabhängig von der App unter anderem Anmeldeversuche am Verwaltungszugang (SSH) mit der Quell-IP-Adresse. Diese Protokolle werden wöchentlich rotiert und nach etwa fünf Wochen gelöscht; das systemd-Journal wird nur in seiner Größe begrenzt, nicht zeitlich, und kann ältere Einträge enthalten. Sie enthalten keine Nutzungsdaten der Web-App, sondern betreffen Verbindungen zur Verwaltung des Servers (auch automatisierte Scans aus dem Internet).</li>
   <li><strong>Schutz vor Missbrauch:</strong> Anfragen werden pro IP-Adresse im Arbeitsspeicher gezählt, um Überlastung und Passwort-Raten zu begrenzen. Diese Zähler werden nicht dauerhaft gespeichert und verfallen nach kurzer Zeit.</li>
   <li><strong>Hosting nailvault.de:</strong> Die Instanz läuft in einem Container auf einer virtuellen Maschine bei Oracle Cloud Infrastructure in der Region Frankfurt (Deutschland). Die Verbindung ist per HTTPS (TLS-Zertifikat von Let’s Encrypt) verschlüsselt. Die DNS-Auflösung der Domain erfolgt über Cloudflare; der Datenverkehr selbst läuft nicht über Cloudflare.</li>
   <li><strong>Projektseite:</strong> Sie wird über GitHub Pages ausgeliefert. Dabei verarbeitet GitHub technisch bedingt Verbindungsdaten wie die IP-Adresse; es gilt die <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener" target="_blank">Datenschutzerklärung von GitHub</a>.</li>
@@ -88,11 +89,13 @@
 <p>
   Die folgenden Funktionen sind nur aktiv, wenn der Betreiber des Servers sie eingerichtet hat. Sie lassen sich in der
   App abschalten (die Einstellung „KI-Funktionen“ blendet alle KI-Funktionen aus) oder schlicht nicht nutzen.
+  Auf nailvault.de gilt (Stand Oktober 2026): Die KI-Funktionen sind abgeschaltet, die Websuche ist damit ebenfalls
+  nicht in Betrieb, und E-Mails werden über Gmail (Google) versendet.
 </p>
 <ul>
-  <li><strong>KI-Funktionen (Auto-Fill, Smart-Cart):</strong> Der Server sendet die Anfrage an den vom Betreiber gewählten Anbieter, derzeit OpenRouter (openrouter.ai) oder Google Gemini (generativelanguage.googleapis.com). Bei Auto-Fill sind das Name, Marke und Nummer eines Lacks; beim Smart-Cart die Liste der Lacke in Sammlung und Einkaufswagen (Marke, Nummer, Name, Farbe, Finish) und der eingegebene Wunsch. Für die Verarbeitung gelten die Bedingungen des jeweiligen Anbieters.</li>
-  <li><strong>Websuche der KI:</strong> Kann das Modell im Internet recherchieren, stellt der Server Suchanfragen an DuckDuckGo, die Brave Search API oder eine vom Betreiber betriebene SearXNG-Instanz. Übermittelt werden die vom Modell formulierten Suchbegriffe; sie können sich aus Ihrer Anfrage und Ihrer Sammlung ableiten, Kontodaten gehören nicht dazu.</li>
-  <li><strong>E-Mail-Versand:</strong> Bestätigungs-, Passwort-Zurücksetzen- und Berichts-E-Mails werden über den vom Betreiber eingestellten SMTP-Server versendet. Dieser erhält dafür die Empfängeradresse und den Inhalt der Nachricht; Berichte enthalten signierte, zeitlich begrenzte Links auf Fotos.</li>
+  <li><strong>KI-Funktionen (Auto-Fill, Smart-Cart):</strong> Auf nailvault.de derzeit abgeschaltet; es werden keine Daten an KI-Anbieter gesendet. Ist die Funktion auf einem Server eingeschaltet, sendet der Server die Anfrage an den vom Betreiber gewählten Anbieter, OpenRouter (openrouter.ai) oder Google Gemini (generativelanguage.googleapis.com). Bei Auto-Fill sind das Name, Marke und Nummer eines Lacks; beim Smart-Cart die Liste der Lacke in Sammlung und Einkaufswagen (Marke, Nummer, Name, Farbe, Finish) und der eingegebene Wunsch. Für die Verarbeitung gelten die Bedingungen des jeweiligen Anbieters.</li>
+  <li><strong>Websuche der KI:</strong> Die Websuche ist Teil der KI-Funktionen und arbeitet nur zusammen mit einem hinterlegten KI-Schlüssel; auf nailvault.de ist sie daher derzeit nicht in Betrieb. Kann das Modell auf einem Server im Internet recherchieren, stellt der Server Suchanfragen an den eingestellten Dienst, auf nailvault.de DuckDuckGo, auf anderen Servern auch die Brave Search API oder eine vom Betreiber betriebene SearXNG-Instanz. Übermittelt werden die vom Modell formulierten Suchbegriffe; sie können sich aus Ihrer Anfrage und Ihrer Sammlung ableiten, Kontodaten gehören nicht dazu.</li>
+  <li><strong>E-Mail-Versand:</strong> Bestätigungs-, Passwort-Zurücksetzen- und Berichts-E-Mails werden über den vom Betreiber eingestellten SMTP-Server versendet; auf nailvault.de ist das Gmail (Google), es gelten die <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Datenschutzbestimmungen von Google</a>. Der SMTP-Server erhält dafür die Empfängeradresse und den Inhalt der Nachricht; Berichte enthalten signierte, zeitlich begrenzte Links auf Fotos.</li>
   <li><strong>Nextcloud-Sync:</strong> Wählen Sie Nextcloud als Sync-Ziel, überträgt der Browser Sammlung und Fotos direkt an die von Ihnen angegebene Nextcloud-Adresse. Dort gelten deren Datenschutzbestimmungen. Google Drive, OneDrive und Dropbox stehen in der Auswahl, lassen sich in der Web-App aber noch nicht anmelden; es werden dorthin keine Daten übertragen.</li>
 </ul>
 <p>
@@ -113,6 +116,8 @@
   <li><strong>Lokale Daten</strong> bleiben, bis sie im Browser gelöscht werden.</li>
   <li><strong>Auskunft und Datenübertragbarkeit:</strong> Unter „Mehr → Sync“ lässt sich ein Konto mit „Meine Kontodaten herunterladen“ als JSON-Datei exportieren; der ZIP-Export unter „Mehr → Daten“ enthält zusätzlich die Fotos.</li>
   <li><strong>Löschung:</strong> Unter „Mehr → Sync“ löscht „Konto löschen…“ nach Passwortabfrage das Konto endgültig samt Sammlung, Berichtsplan, KI-Aufträgen und den Fotos, die nur dieses Konto verwendet. Löscht ein Administrator ein Konto, bleibt eine Sicherungskopie der Sammlungsdatei auf dem Server liegen, bis der Betreiber sie entfernt. Einträge im Protokoll administrativer Aktionen (Abschnitt 3) bleiben bis zum Überschreiben durch neuere Einträge bestehen.</li>
+  <li><strong>Datensicherungen:</strong> Für nailvault.de werden bewusst keine regelmäßigen Sicherungen (Backups) der Konto- und Sammlungsdaten angelegt. Gelöschte Konten und Einträge lassen sich daher nach der Löschung nicht wiederherstellen; umgekehrt gehen die Daten bei einem Ausfall des Servers möglicherweise unwiederbringlich verloren. Wer seine Sammlung behalten möchte, sollte sie regelmäßig über „Mehr → Daten“ exportieren.</li>
+  <li><strong>Protokolle</strong> werden nach den Fristen in Abschnitt 5 überschrieben beziehungsweise gelöscht.</li>
   <li><strong>Daten bei anderen Diensten</strong> (Nextcloud, KI-Anbieter, SMTP-Server) müssen dort gelöscht werden.</li>
 </ul>
 
@@ -123,10 +128,19 @@
   bei einer Datenschutz-Aufsichtsbehörde beschweren. Für die Ausübung Ihrer Rechte nutzen Sie die Funktionen in
   Abschnitt 8 oder den Kontakt in Abschnitt 10.
 </p>
+<p>
+  Die zuständige Aufsichtsbehörde ist:<br />
+  Der Landesbeauftragte für den Datenschutz und die Informationsfreiheit Baden-Württemberg (LfDI)<br />
+  Heilbronner Straße 35, 70191 Stuttgart<br />
+  Postfach 10 29 32, 70025 Stuttgart<br />
+  Telefon: 0711 / 61 55 41 – 0<br />
+  E-Mail: <a href="mailto:poststelle@lfdi.bwl.de">poststelle@lfdi.bwl.de</a><br />
+  Internet: <a href="https://www.baden-wuerttemberg.datenschutz.de" rel="noopener" target="_blank">www.baden-wuerttemberg.datenschutz.de</a>
+</p>
 
 <h2>10. Kontakt</h2>
 <p>
-  Bei Fragen zum Datenschutz wenden Sie sich an:<br />
+  Verantwortlich im Sinne der DSGVO und Ansprechpartner bei Fragen zum Datenschutz ist:<br />
   <strong>Mozra-the-great</strong><br />
   E-Mail: <a href="mailto:nagellacke.dev@gmail.com">nagellacke.dev@gmail.com</a>
 </p>
