@@ -7,6 +7,7 @@
  * instead keeps research available on a free key, and keeps what gets searched
  * visible in this repo rather than inside a provider's black box.
  */
+import { guardedFetch, parseOutboundUrl, OutboundBlockedError } from './outbound';
 
 /** Minimal fetch shape, injectable so the parsing can be tested offline. */
 export type FetchLike = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal }) => Promise<{
@@ -162,12 +163,18 @@ export function parseBraveJson(payload: unknown): SearchResult[] {
  * Runs one search. Never throws: research is an enhancement, so a failing
  * backend degrades to "no results" and the caller answers from model knowledge
  * rather than failing the whole job.
+ *
+ * `doFetch` is a test seam that replaces the transport for every backend. In
+ * production it is omitted: the fixed-host backends use the global fetch, and
+ * the admin-configured SearXNG URL goes through `guardedFetch` (#401), which
+ * refuses non-https, private and loopback targets and re-checks every redirect.
  */
 export async function searchWeb(
   query: string,
   config: WebSearchConfig,
-  doFetch: FetchLike = globalThis.fetch as unknown as FetchLike,
+  doFetch?: FetchLike,
 ): Promise<SearchResult[]> {
+  const plainFetch: FetchLike = doFetch ?? (globalThis.fetch as unknown as FetchLike);
   const q = query.trim();
   if (!q || !isWebSearchConfigured(config)) return [];
 
@@ -176,7 +183,7 @@ export async function searchWeb(
   try {
     switch (config.backend) {
       case 'duckduckgo': {
-        const res = await doFetch(
+        const res = await plainFetch(
           `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
           {
             // The HTML endpoint returns an empty page without a browser-ish UA.
@@ -200,8 +207,10 @@ export async function searchWeb(
         return parseDuckDuckGoHtml(html);
       }
       case 'searxng': {
-        const base = config.searxngUrl.replace(/\/$/, '');
-        const res = await doFetch(
+        // Judged before anything leaves the process, then again by guardedFetch
+        // on every connection and redirect hop.
+        const base = parseOutboundUrl(config.searxngUrl.trim()).toString().replace(/\/$/, '');
+        const res = await (doFetch ?? guardedFetch)(
           `${base}/search?q=${encodeURIComponent(q)}&format=json`,
           { headers: { Accept: 'application/json' }, signal: controller.signal },
         );
@@ -209,7 +218,7 @@ export async function searchWeb(
         return parseSearxngJson(await res.json());
       }
       case 'brave': {
-        const res = await doFetch(
+        const res = await plainFetch(
           `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=${MAX_RESULTS}`,
           {
             headers: { Accept: 'application/json', 'X-Subscription-Token': config.braveApiKey },
@@ -222,7 +231,12 @@ export async function searchWeb(
       case 'off':
         return [];
     }
-  } catch {
+  } catch (e) {
+    // Reason only, no URL: the query is user text and the base URL may carry a
+    // token in its path.
+    if (e instanceof OutboundBlockedError) {
+      console.warn(`[websearch] SearXNG-Anfrage blockiert: ${e.message}`);
+    }
     return [];
   } finally {
     clearTimeout(timer);

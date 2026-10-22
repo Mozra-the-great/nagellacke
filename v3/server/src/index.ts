@@ -31,6 +31,7 @@ import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
 import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
 import type { SearchBackend } from './websearch';
+import { assertPublicOutboundUrl, OutboundBlockedError } from './outbound';
 import { generateReportHtml, getPeriodBounds } from './report';
 import { isEmailConfigured, sendHtmlEmail, sendTestEmail } from './email';
 import { generateTotpSecret, buildOtpauthUri, verifyTotpCode, generateRecoveryCodes } from './totp';
@@ -2640,6 +2641,21 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     if (body.openrouter?.freeOnly !== undefined && typeof body.openrouter.freeOnly !== 'boolean') {
       return reply.code(400).send({ error: 'openrouter.freeOnly muss ein Boolean sein' });
+    }
+    // Early reject (#401): the SearXNG address is fetched by the server, so a
+    // private, loopback or non-https target is refused when it is entered, not
+    // only silently on every search. An empty value clears the setting. The
+    // check at fetch time (outbound.ts) stays the authoritative one.
+    const searxngUrl = body.webSearch?.searxngUrl?.trim();
+    if (searxngUrl) {
+      try {
+        await assertPublicOutboundUrl(searxngUrl);
+      } catch (e) {
+        if (e instanceof OutboundBlockedError) {
+          return reply.code(400).send({ error: `webSearch.searxngUrl: ${e.message}` });
+        }
+        throw e;
+      }
     }
     const current = getAiConfig();
     const config: AiConfig = {
