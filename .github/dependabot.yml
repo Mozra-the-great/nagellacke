@@ -18,8 +18,10 @@ version: 2
 #
 # The runtime is Node 24 LTS (v3/Dockerfile node:24-alpine, ci.yml, install.sh,
 # engines + engine-strict in v3). @types/node must stay on the runtime major:
-# a Dependabot PR for a higher major types APIs the runtime lacks, so close it
-# and take the bump together with the next runtime move.
+# a Dependabot PR for a higher major types APIs the runtime lacks. The npm entry
+# therefore ignores @types/node from 25.0.0 on (#420); minor/patch updates of
+# the 24 line still arrive. Raise the bound together with the next runtime move
+# (Dockerfile, ci.yml, install.sh, engines), never on its own.
 #
 # Dependabot cannot read repository secrets, so claude-review skips its PRs
 # (`github.actor != 'dependabot[bot]'`); a skipped required check counts as passing.
@@ -39,6 +41,10 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    ignore:
+      # Runtime is Node 24 - see the header comment.
+      - dependency-name: "@types/node"
+        versions: [">=25.0.0"]
     groups:
       npm-minor-patch:
         update-types:
