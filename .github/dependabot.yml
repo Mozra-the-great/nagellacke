@@ -28,9 +28,9 @@ version: 2
 # packages/core and packages/sync through that API: its own parseCompilerOptions calls
 # ts.parseJsonConfigFileContent, which fails with TS 7 even with the
 # @typescript/typescript6 fallback installed, so `npm run build:core` breaks (upstream:
-# egoist/tsup#1405, #1408). The v3/server tsconfig also needs a new moduleResolution
-# (node10 is removed in 7). Remove this ignore once tsup (or whatever replaces it for
-# declaration output) supports TS 7, and migrate server/tsconfig.json in the same PR.
+# egoist/tsup#1405, #1408). The v3/server tsconfig is already migrated off node10
+# (moduleResolution bundler, #428), so tsup is the only remaining blocker. Remove this
+# ignore once tsup (or whatever replaces it for declaration output) supports TS 7.
 # TypeScript 6 is not ignored; it arrives as its own PR.
 #
 # Dependabot cannot read repository secrets, so claude-review skips its PRs
