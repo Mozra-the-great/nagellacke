@@ -1,0 +1,262 @@
+name: Server image
+
+# Builds the server image from v3/Dockerfile and publishes it to
+# ghcr.io/mozra-the-great/nagellacke-server (#420, decision F41).
+#
+# Why here and not on the host: nailvault.de runs on an OCI E2.1.Micro (1 GB
+# RAM). Building the image there took over 20 minutes and once froze the host
+# outright. The host now only pulls a finished image (homelab-infra role
+# nagellacke_public); this workflow is where it gets built and smoke-tested.
+#
+# Tags:
+#   sha-<7 hex>  the commit the image was built from. Never moved: if the tag
+#                already exists in the registry, the run publishes nothing and
+#                reports the existing digest instead. A rebuild of the same
+#                commit is not bit-identical, so overwriting would silently
+#                change what a pin in homelab-infra points at.
+#   main         latest build of main. Moves on every publish from main; a
+#                convenience for looking around, never something to deploy
+#                from (homelab-infra pins sha-<7 hex>@sha256:<digest>).
+#
+# Platform: linux/amd64 only. nailvault-public is VM.Standard.E2.1.Micro
+# (AMD EPYC, x86_64); no arm64 host runs this image.
+#
+# Visibility: the repository is public, so the package is public as well and
+# the host pulls without credentials. A package created by GITHUB_TOKEN starts
+# out private on a personal account; the one-time switch is Package settings ->
+# Danger Zone -> Change visibility -> Public (there is no REST endpoint for it).
+#
+# Two jobs on purpose: `build` (read-only token) builds and smoke-tests and also
+# runs on pull requests that touch the image; `publish` holds the only
+# `packages: write` grant, never runs for a pull request, and pushes exactly the
+# image `build` tested (handed over as an artifact, not rebuilt).
+#
+# Rollback images: workflow_dispatch with `ref` builds an older commit of main
+# (e.g. the one nailvault.de ran before the move to GHCR) and publishes it as
+# sha-<7 hex> only - never as `main`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v3/**'
+      - '.github/workflows/server-image.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'v3/**'
+      - '.github/workflows/server-image.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Full 40-character commit SHA on main to build (empty = the selected branch head)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # One publish per ref at a time; a newer push to main supersedes a queued one.
+  group: server-image-${{ github.event_name }}-${{ github.ref }}-${{ inputs.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+env:
+  IMAGE: ghcr.io/mozra-the-great/nagellacke-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+      short: ${{ steps.ref.outputs.short }}
+    steps:
+      - name: Validate requested ref
+        id: want
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_REF}" ] && ! [[ "${INPUT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be a full 40-character commit SHA, got '${INPUT_REF}'"
+            exit 1
+          fi
+          echo "ref=${INPUT_REF}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.want.outputs.ref }}
+          # main's history is needed to check that a requested ref is on main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve commit
+        id: ref
+        env:
+          INPUT_REF: ${{ steps.want.outputs.ref }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          if [ -n "${INPUT_REF}" ] && ! git merge-base --is-ancestor "${sha}" origin/main; then
+            echo "::error::${sha} is not on main - only commits that went through review are published"
+            exit 1
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "short=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          SHA: ${{ steps.ref.outputs.sha }}
+          SHORT: ${{ steps.ref.outputs.short }}
+        run: |
+          set -euo pipefail
+          # org.opencontainers.image.source links the package to this repository
+          # (permissions, and the package page shows the README).
+          docker build \
+            --platform linux/amd64 \
+            --pull \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${SHA}" \
+            --label "org.opencontainers.image.created=$(git show -s --format=%cI HEAD)" \
+            --label "org.opencontainers.image.description=nagellacke server (Fastify API + web app)" \
+            --label "org.opencontainers.image.licenses=GPL-3.0-only" \
+            -t "${IMAGE}:sha-${SHORT}" \
+            v3
+
+      - name: Smoke test
+        # What the host relies on: Node 24 in the runtime stage, the server
+        # starting with the production env (JWT_SECRET from the environment,
+        # TRUST_PROXY set as on nailvault.de), the API answering and the web app
+        # being served. The secret is a throwaway, generated here.
+        #
+        # The Node major is only enforced for the current tree: a rollback build
+        # of an older commit (`ref` input) legitimately carries that commit's
+        # runtime (node:20 before #421).
+        env:
+          SHORT: ${{ steps.ref.outputs.short }}
+          INPUT_REF: ${{ inputs.ref }}
+          WANT_NODE_MAJOR: '24'
+        run: |
+          set -euo pipefail
+          ref="${IMAGE}:sha-${SHORT}"
+          node_version="$(docker run --rm --entrypoint node "${ref}" --version)"
+          echo "node ${node_version}"
+          if [ -z "${INPUT_REF}" ] && [[ "${node_version}" != "v${WANT_NODE_MAJOR}."* ]]; then
+            echo "::error::image runs Node ${node_version}, expected v${WANT_NODE_MAJOR}.x"
+            exit 1
+          fi
+          if [ "$(docker run --rm --entrypoint id "${ref}" -un)" != "nagellacke" ]; then
+            echo "::error::image does not run as the unprivileged nagellacke user"
+            exit 1
+          fi
+
+          docker run -d --name smoke -p 127.0.0.1:3000:3000 \
+            -e NODE_ENV=production -e PORT=3000 -e DATA_DIR=/data \
+            -e ALLOWED_ORIGIN=http://localhost:3000 -e APP_URL=http://localhost:3000 \
+            -e TRUST_PROXY=172.18.0.2 \
+            -e JWT_SECRET="$(openssl rand -hex 32)" \
+            "${ref}"
+
+          ok=""
+          for _ in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/api/version; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "${ok}" ]; then
+            echo "::error::server did not answer /api/version within 60 s"
+            docker logs smoke || true
+            exit 1
+          fi
+          for path in /api/version /api/instance-config /; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000${path}")"
+            echo "GET ${path} -> ${code}"
+            if [ "${code}" != "200" ]; then
+              echo "::error::GET ${path} returned ${code}, expected 200"
+              docker logs smoke || true
+              exit 1
+            fi
+          done
+          curl -fsS http://127.0.0.1:3000/api/version
+          echo
+          docker rm -f smoke >/dev/null
+
+      - name: Export image
+        if: github.event_name != 'pull_request'
+        env:
+          SHORT: ${{ steps.ref.outputs.short }}
+        run: docker save "${IMAGE}:sha-${SHORT}" | gzip -1 > image.tar.gz
+
+      - name: Upload image
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-image
+          path: image.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: server-image
+
+      - name: Log in to GHCR
+        # GITHUB_TOKEN only, on stdin (never argv).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "${GH_TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+
+      - name: Push
+        env:
+          SHA: ${{ needs.build.outputs.sha }}
+          SHORT: ${{ needs.build.outputs.short }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          ref="${IMAGE}:sha-${SHORT}"
+          if docker manifest inspect "${ref}" >/dev/null 2>&1; then
+            # sha-<7 hex> is immutable: keep the published image, do not move
+            # `main` either (this run is a re-run of an already published commit).
+            digest="$(docker buildx imagetools inspect "${ref}" --format '{{json .Manifest}}' | jq -r .digest)"
+            echo "::notice::${ref} already published (${digest}); not overwritten"
+          else
+            gunzip -c image.tar.gz | docker load
+            docker push "${ref}"
+            digest="$(docker inspect --format '{{index .RepoDigests 0}}' "${ref}")"
+            digest="${digest#*@}"
+            # `main` only for a push to main, never for a rollback build of an
+            # older commit and never for a dispatch from another branch.
+            if [ -z "${INPUT_REF}" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+              docker tag "${ref}" "${IMAGE}:main"
+              docker push "${IMAGE}:main"
+            fi
+          fi
+          {
+            echo "### Server image"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${SHA}\` |"
+            echo "| Tag | \`${ref}\` |"
+            echo "| Digest | \`${digest}\` |"
+            echo
+            echo "Pin for homelab-infra (\`nagellacke_public_image\`):"
+            echo
+            echo '```'
+            echo "${ref}@${digest}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Server image::${ref}@${digest}"
+
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io
