@@ -121,6 +121,19 @@ describe('e-mail verification (#324 S19)', () => {
     expect(db.getUser('ben')).toBeUndefined();
   });
 
+  it('refuses an address that nodemailer would parse as more than one recipient (#409)', async () => {
+    const candidates = ['a@example.org,b@example.org', 'a@example.org;b@example.org', 'x<b@example.org>@example.org', 'a@example.org (c@example.org)', 'a b@example.org', '"a"@example.org'];
+    for (const [i, email] of candidates.entries()) {
+      // A fresh app per address: registration is rate-limited per IP.
+      const { app, db } = await createTestApp();
+      const res = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { username: `user${i}`, password: 'password123', email } });
+      expect(res.statusCode, email).toBe(400);
+      expect(db.getUser(`user${i}`)).toBeUndefined();
+    }
+    await flush();
+    expect(sent).toHaveLength(0);
+  });
+
   it('refuses a malformed or unknown token', async () => {
     const { app } = await createTestApp();
     for (const token of ['x', 'a'.repeat(64), undefined]) {
