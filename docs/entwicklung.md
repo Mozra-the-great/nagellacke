@@ -82,7 +82,7 @@ nagellacke/
     │       ├── email.ts    ← Berichtsversand per SMTP
     │       └── websearch.ts ← eigener web_search-Tool-Server (DuckDuckGo/SearXNG/Brave)
     ├── apps/
-    │   └── web/            ← Web-App (React 18 + TypeScript + Vite)
+    │   └── web/            ← Web-App (React 19 + TypeScript + Vite)
     └── package.json        ← Monorepo-Root (npm workspaces, Node ≥20)
 ```
 
@@ -90,7 +90,7 @@ nagellacke/
 
 | Schicht | Technologie |
 |--------|-------------|
-| Frontend | React 18 + Vite + TypeScript |
+| Frontend | React 19 + Vite + TypeScript |
 | Backend | Fastify 4 (TypeScript strict) |
 | Speicher | JSON-Datei |
 | Auth | API-Key (Admin) + JWT 7d/30d (Sync), optional TOTP-2FA |
