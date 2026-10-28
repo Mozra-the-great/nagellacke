@@ -26,10 +26,10 @@ name: Server image
 # out private on a personal account; the one-time switch is Package settings ->
 # Danger Zone -> Change visibility -> Public (there is no REST endpoint for it).
 #
-# Two jobs on purpose: `build` (read-only token) builds and smoke-tests and also
+# Two jobs on purpose: `image` (read-only token) builds and smoke-tests and also
 # runs on pull requests that touch the image; `publish` holds the only
 # `packages: write` grant, never runs for a pull request, and pushes exactly the
-# image `build` tested (handed over as an artifact, not rebuilt).
+# image `image` tested (handed over as an artifact, not rebuilt).
 #
 # Rollback images: workflow_dispatch with `ref` builds an older commit of main
 # (e.g. the one nailvault.de ran before the move to GHCR) and publishes it as
@@ -66,7 +66,9 @@ env:
   IMAGE: ghcr.io/mozra-the-great/nagellacke-server
 
 jobs:
-  build:
+  # Not named `build`: that name is a required status check on main (ci.yml),
+  # and a second job with the same name would answer for it.
+  image:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.ref.outputs.sha }}
@@ -160,7 +162,7 @@ jobs:
 
           ok=""
           for _ in $(seq 1 30); do
-            if curl -fsS -o /dev/null http://127.0.0.1:3000/api/version; then ok=1; break; fi
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/api/version 2>/dev/null; then ok=1; break; fi
             sleep 2
           done
           if [ -z "${ok}" ]; then
@@ -197,7 +199,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: image
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -217,8 +219,8 @@ jobs:
 
       - name: Push
         env:
-          SHA: ${{ needs.build.outputs.sha }}
-          SHORT: ${{ needs.build.outputs.short }}
+          SHA: ${{ needs.image.outputs.sha }}
+          SHORT: ${{ needs.image.outputs.short }}
           INPUT_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
