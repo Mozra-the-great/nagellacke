@@ -1800,6 +1800,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     // likely already neutralizes this, but this makes it explicit).
     // eslint-disable-next-line no-control-regex
     if (/[\x00-\x1f\x7f]/.test(s)) return false;
+    // Whitespace and the address-list, angle-addr, comment and group delimiters
+    // are never part of an address we accept: nodemailer parses its `to` string
+    // as an address list, so "a@x.org,b@y.org" or "x<b@y.org>@x.org" would add
+    // a second recipient (nodemailer addressparser advisories, #409).
+    if (/[\s,;<>()[\]":\\]/.test(s)) return false;
     const at = s.lastIndexOf('@');
     if (at <= 0 || at >= s.length - 1) return false;
     const domain = s.slice(at + 1);

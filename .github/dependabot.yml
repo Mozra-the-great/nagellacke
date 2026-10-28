@@ -3,12 +3,18 @@ version: 2
 # Keeps the SHA-pinned actions in .github/workflows fresh: every `uses:` line is
 # pinned to a commit with a version comment, and Dependabot rewrites both.
 #
-# Only github-actions. The npm dependencies get Dependabot security updates (alerts)
-# only, and the frozen Android app (#372) is deliberately left out, see
+# npm covers the v3 workspace (packages/*, apps/*, server): one lockfile at
+# v3/package-lock.json, so a single `/v3` entry reaches every workspace. Routine
+# minor/patch bumps arrive as one grouped PR a week; major bumps stay separate
+# PRs so a breaking change is reviewed on its own. Security updates keep working
+# independently of this schedule (alerts open their own PRs, as with #408).
+#
+# The frozen Android app (#372) is deliberately left out (no gradle entry), see
 # docs/android-wieder-aufnehmen.md. Add an ecosystem here when that changes.
 #
 # cooldown (zizmor audit dependabot-cooldown): a new release is proposed only after
 # 7 days, so a compromised release is usually noticed before it reaches a PR.
+# Dependabot's security updates ignore the cooldown.
 #
 # Dependabot cannot read repository secrets, so claude-review skips its PRs
 # (`github.actor != 'dependabot[bot]'`); a skipped required check counts as passing.
@@ -21,3 +27,17 @@ updates:
       default-days: 7
     commit-message:
       prefix: "chore(actions)"
+
+  - package-ecosystem: "npm"
+    directory: "/v3"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(deps)"
