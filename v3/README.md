@@ -16,7 +16,7 @@ v3/
 ├── server/         Fastify 4 server (JSON-file storage, JWT/API-key auth, AI jobs, reports, self-update)
 ├── scripts/        v2 -> v3 data migration script (legacy, see header)
 ├── Dockerfile      Container image for standalone hosts (e.g. the public NailVault instance)
-└── package.json    Workspace root (Node >= 20)
+└── package.json    Workspace root (Node >= 24)
 ```
 
 ## Quick start

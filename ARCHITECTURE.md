@@ -40,7 +40,7 @@ nagellacke/
 ├── .github/                  ← Workflows (CI, Pages, Release, Review, Labels, Android-Release manuell), labels.json
 ├── install.sh                ← Installer/Updater (Debian/Ubuntu, systemd)
 ├── CHANGELOG.md              ← Vollständige Versionshistorie
-└── v3/                       ← Monorepo (npm workspaces, Node ≥20)
+└── v3/                       ← Monorepo (npm workspaces, Node ≥24)
     ├── package.json          ← Monorepo-Root, Scripts für alle Workspaces
     ├── packages/
     │   ├── core/             ← @nagellacke/core — Typen, Logic, Merge-Algo, Konstanten
@@ -362,7 +362,7 @@ Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `server/pu
 
 ### Container (öffentliche Instanz)
 
-`v3/Dockerfile` (mehrstufig, `node:20-alpine`) ist der Weg für eigenständige Cloud-Hosts; die öffentliche Instanz `nailvault.de` läuft so. Das Image enthält kein git, das Update in der App ist dort abgeschaltet. Welche App-Version läuft, wird im Infrastruktur-Repo `homelab-infra` festgelegt (Pin auf Tag oder Commit); die Daten liegen in einem Volume.
+`v3/Dockerfile` (mehrstufig, `node:24-alpine`) ist der Weg für eigenständige Cloud-Hosts; die öffentliche Instanz `nailvault.de` läuft so. Das Image enthält kein git, das Update in der App ist dort abgeschaltet. Welche App-Version läuft, wird im Infrastruktur-Repo `homelab-infra` festgelegt (Pin auf Tag oder Commit); die Daten liegen in einem Volume.
 
 ### Release-Ablauf
 

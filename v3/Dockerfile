@@ -2,7 +2,7 @@
 # The systemd/install.sh path (see ../install.sh) remains the primary deployment
 # method for self-hosted LAN installs; this image targets Docker-based hosts.
 
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -18,7 +18,7 @@ RUN npm run build:core \
 
 RUN mkdir -p server/public && cp -r apps/web/dist/. server/public/
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
 WORKDIR /app
