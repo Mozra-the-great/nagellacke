@@ -109,6 +109,10 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          # v6 defaults to the proprietary gradle-actions-caching component (Gradle Terms of Use);
+          # "basic" is the MIT-licensed cache built on @actions/cache (setup-gradle >= 6.1).
+          cache-provider: basic
 
       - name: Unit tests
         # Runs before the APK build on purpose: assembleDebug only proves the
