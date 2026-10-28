@@ -6,7 +6,7 @@ Personal nail-polish collection app — self-hosted on a Linux server via system
 ## Stack
 
 - Server: Fastify 4, TypeScript, JWT (`@fastify/jwt`), API-key auth — npm workspace under `v3/`
-- Web app: React 18, TypeScript, Vite — `v3/apps/web/`
+- Web app: React 19, TypeScript, Vite — `v3/apps/web/`
 - Android: native Kotlin, Jetpack Compose, Hilt, KSP, Room — `android/` (root) — **frozen since #372, do not build Android features**
 - Shared packages: `@nagellacke/core` (data types + merge logic, tsup + vitest), `@nagellacke/sync` — `v3/packages/`
 
