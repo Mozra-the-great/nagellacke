@@ -12,7 +12,7 @@ v3/
 │   ├── core/       @nagellacke/core: data types, filter/sort logic, mergeData(), constants
 │   └── sync/       @nagellacke/sync: sync adapters (own server, Nextcloud, Google Drive, OneDrive, Dropbox)
 ├── apps/
-│   └── web/        React 18 + TypeScript + Vite web app
+│   └── web/        React 19 + TypeScript + Vite web app
 ├── server/         Fastify 4 server (JSON-file storage, JWT/API-key auth, AI jobs, reports, self-update)
 ├── scripts/        v2 -> v3 data migration script (legacy, see header)
 ├── Dockerfile      Container image for standalone hosts (e.g. the public NailVault instance)

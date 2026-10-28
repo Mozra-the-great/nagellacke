@@ -75,7 +75,7 @@ nagellacke/
     ├── Dockerfile            ← Container-Image für eigenständige Hosts (öffentliche Instanz)
     ├── scripts/              ← migrate-v2-to-v3.js (Legacy-Migration)
     └── apps/
-        └── web/                ← Web-App (React 18 + TypeScript + Vite)
+        └── web/                ← Web-App (React 19 + TypeScript + Vite)
             └── src/
                 ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|cart|stats|settings, +admin für Admins), Hash-Routen
                 ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
