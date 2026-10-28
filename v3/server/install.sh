@@ -15,10 +15,10 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# Node.js 20+ prüfen / installieren
-if ! command -v node &>/dev/null || [[ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 20 ]]; then
-  echo "Installiere Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+# Node.js 24+ prüfen / installieren
+if ! command -v node &>/dev/null || [[ "$(node -e 'console.log(process.versions.node.split(".")[0])')" -lt 24 ]]; then
+  echo "Installiere Node.js 24..."
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
   apt-get install -y nodejs
 fi
 echo "Node.js: $(node -v)"

@@ -29,7 +29,7 @@ Persönliche Nagellack-Verwaltung als Self-hosted Web-App — läuft auf einem e
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
-Debian/Ubuntu mit Node.js 20+, danach erreichbar unter `http://SERVER-IP:3000`.
+Debian/Ubuntu mit Node.js 24+, danach erreichbar unter `http://SERVER-IP:3000`.
 → **[Ausführliche Anleitung](docs/installation.md)**
 
 ## Dokumentation

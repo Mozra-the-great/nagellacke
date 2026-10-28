@@ -83,7 +83,7 @@ nagellacke/
     │       └── websearch.ts ← eigener web_search-Tool-Server (DuckDuckGo/SearXNG/Brave)
     ├── apps/
     │   └── web/            ← Web-App (React 19 + TypeScript + Vite)
-    └── package.json        ← Monorepo-Root (npm workspaces, Node ≥20)
+    └── package.json        ← Monorepo-Root (npm workspaces, Node ≥24)
 ```
 
 ## Technik

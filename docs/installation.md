@@ -6,7 +6,7 @@
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/Mozra-the-great/nagellacke/main/install.sh)
 ```
 
-Benötigt **Debian/Ubuntu** mit Node.js 20+. Nach der Installation erreichbar unter **http://SERVER-IP:3000**
+Benötigt **Debian/Ubuntu** mit Node.js 24+. Nach der Installation erreichbar unter **http://SERVER-IP:3000**
 
 ## Update einspielen
 
@@ -18,6 +18,20 @@ sudo bash /opt/nagellacke/install.sh
 ```
 
 Daten bleiben dabei **immer erhalten**.
+
+### Node.js 24 erforderlich
+
+Server und Build brauchen **Node.js 24 oder neuer** (die aktuelle LTS-Linie; Node 20 ist seit April 2026 ohne Support, und aktuelle Build-Werkzeuge laufen darauf nicht mehr). `install.sh` erkennt eine ältere Node-Version, stellt die NodeSource-Paketquelle auf 24.x um und aktualisiert Node; liegt danach noch eine andere Installation (nvm, `/usr/local/bin`) vor dem apt-Paket im PATH, bricht es mit einer klaren Meldung ab. Die Daten bleiben unberührt.
+
+**Bestehende Installation mit Node 20 oder 22:** Das Update in der App bricht in diesem Fall im Schritt „Abhängigkeiten installieren“ mit `EBADENGINE` ab (`v3/.npmrc` setzt `engine-strict`); der laufende Server bleibt dabei unverändert in Betrieb. Dann einmal per Hand auf dem Server:
+
+```bash
+sudo git -C /opt/nagellacke fetch origin main
+sudo git -C /opt/nagellacke reset --hard origin/main
+sudo bash /opt/nagellacke/install.sh
+```
+
+Wer Node selbst verwaltet (nvm, eigenes Paket), installiert Node 24 selbst und sorgt dafür, dass `/usr/bin/node` darauf zeigt, denn der systemd-Dienst startet genau dieses Binary.
 
 ## Container-Deployment (Docker)
 
