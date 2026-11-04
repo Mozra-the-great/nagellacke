@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -466,5 +466,168 @@ describe('GET /photos/* ownership (#352)', () => {
 
     expect((await get(filename, { bearer: adminToken })).statusCode).toBe(200);
     expect((await get(filename, { t: await mintSessionToken(adminToken) })).statusCode).toBe(200);
+  });
+});
+
+/**
+ * #435: an unknown path under /photos/ fell through to the SPA fallback and
+ * answered 200 with index.html for admin and API-key requests - the same class
+ * of bug as #67 for /api/*. /photos/* is a server namespace, so an unmatched
+ * path there is a 404, while real SPA routes keep getting the shell.
+ */
+describe('unknown /photos/* paths are 404, not the SPA shell (#435)', () => {
+  const SHELL = '<!doctype html><title>spa-shell-435</title>';
+  const SECRET = 'sentinel-outside-photos-435';
+  let webRoot: string;
+
+  beforeAll(() => {
+    // The fallback reads <cwd>/public/index.html. Point cwd at a scratch tree
+    // so the test neither depends on nor creates v3/server/public.
+    webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-photos-spa-'));
+    fs.mkdirSync(path.join(webRoot, 'public', 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(webRoot, 'public', 'index.html'), SHELL);
+    fs.writeFileSync(path.join(webRoot, 'public', 'assets', 'app.js'), 'console.log("asset-435");');
+    fs.writeFileSync(path.join(webRoot, 'secret.txt'), SECRET);
+  });
+
+  // Declared after the file-level beforeEach, which already built `app`; the
+  // static handler needs public/ at build time, so rebuild under the spy.
+  beforeEach(async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue(webRoot);
+    app = await buildApp();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const apiKey = () => fs.readFileSync(path.join(process.env.DATA_DIR as string, '.api_key'), 'utf-8').trim();
+
+  async function adminSession(): Promise<string> {
+    const name = freshUsername();
+    const { token } = await register(name);
+    const db = await import('./db');
+    db.setUserRole(name, 'admin');
+    return token;
+  }
+
+  function expectNotFoundJson(res: { statusCode: number; body: string; headers: Record<string, unknown> }): void {
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain('spa-shell-435');
+    expect(String(res.headers['content-type'])).toContain('application/json');
+    expect(JSON.parse(res.body)).toEqual({ error: 'Not found' });
+  }
+
+  it('answers 404 JSON for an unknown photo path to an admin bearer, X-Api-Key and a session token', async () => {
+    const adminToken = await adminSession();
+    const missing = '/photos/00000000-0000-4000-8000-000000000000.png';
+
+    expectNotFoundJson(await app.inject({ method: 'GET', url: missing, headers: { authorization: `Bearer ${adminToken}` } }));
+    expectNotFoundJson(await app.inject({ method: 'GET', url: missing, headers: { 'x-api-key': apiKey() } }));
+    const t = await mintSessionToken(adminToken);
+    expectNotFoundJson(await app.inject({ method: 'GET', url: `${missing}?t=${encodeURIComponent(t)}` }));
+    expectNotFoundJson(await app.inject({ method: 'GET', url: '/photos/some/nested/path.png', headers: { 'x-api-key': apiKey() } }));
+  });
+
+  it('answers 404 (not the shell) for HEAD and for the bare /photos and /photos/ paths', async () => {
+    const headers = { 'x-api-key': apiKey() };
+    expect((await app.inject({ method: 'HEAD', url: '/photos/missing.png', headers })).statusCode).toBe(404);
+    for (const url of ['/photos', '/photos/']) {
+      const res = await app.inject({ method: 'GET', url, headers });
+      expect(res.statusCode, url).toBe(404);
+      expect(res.body, url).not.toContain('spa-shell-435');
+    }
+  });
+
+  it('keeps the auth answers for an unknown photo path: 401 without credentials, 403 for a non-owner', async () => {
+    const missing = '/photos/00000000-0000-4000-8000-000000000001.png';
+    expect((await app.inject({ method: 'GET', url: missing })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: missing, headers: { 'x-api-key': 'wrong' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: `${missing}?t=garbage` })).statusCode).toBe(401);
+
+    const { token } = await register(freshUsername());
+    const res = await app.inject({ method: 'GET', url: missing, headers: { authorization: `Bearer ${token}` } });
+    expect(res.statusCode).toBe(403);
+    expect(res.body).not.toContain('spa-shell-435');
+  });
+
+  it('still serves a real photo with every auth type', async () => {
+    const adminToken = await adminSession();
+    const { token } = await register(freshUsername());
+    const filename = await uploadPhoto(token);
+    const url = `/photos/${filename}`;
+
+    for (const headers of [
+      { 'x-api-key': apiKey() },
+      { authorization: `Bearer ${adminToken}` },
+      { authorization: `Bearer ${token}` },
+    ]) {
+      const res = await app.inject({ method: 'GET', url, headers });
+      expect(res.statusCode).toBe(200);
+      expect(res.rawPayload.equals(PNG_BYTES)).toBe(true);
+    }
+    const t = await mintSessionToken(token);
+    const viaToken = await app.inject({ method: 'GET', url: `${url}?t=${encodeURIComponent(t)}` });
+    expect(viaToken.statusCode).toBe(200);
+    expect(viaToken.rawPayload.equals(PNG_BYTES)).toBe(true);
+  });
+
+  it('never leaks file contents for traversal and encoding variants', async () => {
+    const adminToken = await adminSession();
+    const key = apiKey();
+    const variants = [
+      '/photos/../secret.txt',
+      '/photos/%2e%2e/secret.txt',
+      '/photos/..%2fsecret.txt',
+      '/photos/%2e%2e%2fsecret.txt',
+      '/photos/..%5csecret.txt',
+      '/photos/%2e%2e%5csecret.txt',
+      '/photos/....//secret.txt',
+      '/photos/%252e%252e/secret.txt',
+      '/photos/..%2f..%2f.api_key',
+      '/photos/%00',
+      '/photos/%',
+      '//photos/secret.txt',
+      '/%70hotos/secret.txt',
+    ];
+    for (const url of variants) {
+      for (const headers of [{ 'x-api-key': key }, { authorization: `Bearer ${adminToken}` }]) {
+        const res = await app.inject({ method: 'GET', url, headers });
+        expect(res.body, url).not.toContain(SECRET);
+        expect(res.body, url).not.toContain(key);
+        // inject() resolves dot segments like a browser does (`..` and `%2e%2e`),
+        // so those variants land outside /photos and are ordinary SPA paths that
+        // answer with the public shell. Whatever stays in the namespace is refused.
+        if (new URL(url, 'http://localhost').pathname.startsWith('/photos')) {
+          expect(res.body, url).not.toContain('spa-shell-435');
+          expect(res.statusCode, url).not.toBe(200);
+        }
+      }
+    }
+  });
+
+  it('also refuses an unknown photo path written with a doubled slash or percent-encoding', async () => {
+    const headers = { 'x-api-key': apiKey() };
+    for (const url of ['//photos/x.png', '/%70hotos/x.png', '/photos%2fx.png']) {
+      const res = await app.inject({ method: 'GET', url, headers });
+      // 404 from the fallback, or 403 where @fastify/static already refuses
+      // the doubled slash itself; what matters is that it is never the shell.
+      expect([403, 404], url).toContain(res.statusCode);
+      expect(res.body, url).not.toContain('spa-shell-435');
+    }
+  });
+
+  it('keeps the SPA fallback for real SPA routes and still serves static assets', async () => {
+    for (const url of ['/', '/index.html', '/collection', '/settings/sync', '/photo', '/photos-archive', '/apiary']) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body, url).toBe(SHELL);
+    }
+    const asset = await app.inject({ method: 'GET', url: '/assets/app.js' });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.body).toContain('asset-435');
+  });
+
+  it('still answers 404 JSON for an unknown /api/* route (#67)', async () => {
+    expectNotFoundJson(await app.inject({ method: 'GET', url: '/api/totally-fake-endpoint-xyz' }));
   });
 });
