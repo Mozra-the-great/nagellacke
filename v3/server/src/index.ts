@@ -2755,8 +2755,23 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   // ── SPA Fallback ──────────────────────────────────────────────────────────────
+  // The SPA shell is only the answer for a path the web app itself could own.
+  // /api/* (#67) and /photos/* (#435) are server namespaces: an unknown path in
+  // there is a plain 404, not a 200 with index.html that looks like a resource.
+  // The path is normalised first (query dropped, percent-encoding decoded,
+  // leading slashes collapsed) so `//photos/x` or `/%70hotos/x` cannot dodge it.
+  const isServerNamespace = (rawUrl: string): boolean => {
+    let pathname = rawUrl.split('?')[0];
+    try {
+      pathname = decodeURIComponent(pathname);
+    } catch {
+      // malformed percent-encoding: judge the raw path
+    }
+    pathname = pathname.replace(/^\/+/, '/');
+    return pathname.startsWith('/api/') || pathname === '/photos' || pathname.startsWith('/photos/');
+  };
   app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/')) {
+    if (isServerNamespace(request.url)) {
       reply.code(404).send({ error: 'Not found' });
       return;
     }
