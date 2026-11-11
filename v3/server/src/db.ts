@@ -57,7 +57,11 @@ function readDataFile(file: string): AppData {
       stickers:   raw.stickers    ?? [],
     };
   } catch (e) {
-    console.error(`${file} corrupt — returning empty:`, e);
+    // The path embeds the (user-chosen) username, so it must never be the
+    // format string itself: console.error treats %s/%d/%o in its first
+    // argument as directives (CodeQL js/tainted-format-string). Pass it as an
+    // argument to a constant format instead.
+    console.error('%s corrupt — returning empty:', file, e);
     return EMPTY_DATA;
   }
 }
