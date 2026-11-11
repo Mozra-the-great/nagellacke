@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Nagellacke Startseite</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/flower-designs/tokens.css">
+<link rel="stylesheet" href="ds/flower-designs/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#F6F0E0}
+a{color:var(--accent-text)}
+a:hover{text-decoration-thickness:2px}
+.nl-link{color:var(--ink);text-decoration:none;font:600 15px/20px var(--font-sans);padding:12px 16px;border-radius:9999px}
+.nl-link:hover{background:var(--surface-sunken)}
+.fd-btn[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.nl-tab[aria-selected="true"]{background:var(--cream);border-color:var(--cream);color:var(--forest-900)}
+.nl-tab{color:var(--cream);border-color:var(--sage-400)}
+.nl-tab:hover{background:var(--forest-600)}
+.nl-tab[aria-selected="true"]:hover{background:var(--cream)}
+@media (max-width:720px){
+  .fd-hero-plant-bl,.fd-hero-plant-br{display:none}
+  .nl-hero{padding:48px 20px !important;min-height:560px !important}
+  .nl-title{font-size:56px !important;line-height:60px !important}
+  .nl-pad{padding-left:16px !important;padding-right:16px !important}
+  .nl-block{padding:32px 20px !important}
+  .nl-h2{font-size:34px !important;line-height:40px !important}
+  .nl-nav{justify-content:center !important}
+  .nl-plant-deco{display:none}
+  .nl-shelf{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:12px !important}
+  .nl-shelf .fd-card-body{padding:12px 14px 16px !important}
+  .fd-hero-plant-tl,.fd-hero-plant-tr{width:100px !important;top:-24px !important}
+  .nl-hero{padding-top:112px !important}
+}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="background: var(--surface); color: var(--ink); font-family: var(--font-sans); width: 100%; box-sizing: border-box; padding: 0 0 32px">
+
+<!-- Kopfzeile -->
+<header class="nl-pad" style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 20px 32px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<a href="#top" style="font: 800 28px/34px var(--font-sans); letter-spacing: -0.01em; color: var(--ink); text-decoration: none">Nagellacke</a>
+<nav class="nl-nav" aria-label="Hauptnavigation" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px">
+<a class="nl-link" href="#regal">Regal</a>
+<a class="nl-link" href="#tagebuch">Tagebuch</a>
+<a class="nl-link" href="#app">App</a>
+<a class="nl-link" href="#zahlen">Zahlen</a>
+<a class="nl-link" href="privacy-policy.html">Datenschutz</a>
+<span role="group" aria-label="Sprache wählen" style="display: flex; gap: 4px; margin-left: 8px">
+<button class="fd-btn fd-btn-sm" type="button" aria-pressed="true">DE</button>
+<button class="fd-btn fd-btn-sm" type="button" aria-pressed="false">EN</button>
+</span>
+</nav>
+</header>
+
+<main id="top" class="nl-pad" style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 0 32px; display: flex; flex-direction: column; gap: 112px">
+
+<!-- Hero -->
+<section data-theme="creme" class="fd-hero nl-hero" style="min-height: 660px; padding: 72px 48px 120px">
+<div class="fd-hero-hill fd-hero-hill-back"></div>
+<div class="fd-hero-hill"></div>
+<img class="fd-hero-plant fd-hero-plant-tl" style="width: 230px; top: -40px; left: 24px" src="/_blob/0a80e782a6fdd79c410178de100958fc" alt="">
+<img class="fd-hero-plant fd-hero-plant-tr" style="width: 210px; top: -36px; right: 40px" src="/_blob/2a5ae7d23a6795a123094444a3aa5de0" alt="">
+<img class="fd-hero-plant fd-hero-plant-bl" style="width: 270px; bottom: 0; left: 12px" src="/_blob/847d5ae7256521da25cceb5fbad915e3" alt="">
+<img class="fd-hero-plant fd-hero-plant-br" style="width: 250px; bottom: 0; right: 24px" src="/_blob/209f263e5e23115e9e1048463d4bdd33" alt="">
+<div class="fd-hero-text" style="max-width: 600px; display: flex; flex-direction: column; align-items: center; gap: 24px">
+<div>
+<h1 class="fd-hero-title nl-title" style="font-size: 96px; line-height: 96px">Nagellacke</h1>
+<p class="fd-hero-lead" style="margin-top: 12px">Deine Lacksammlung als Skizzenbuch</p>
+</div>
+<p style="margin: 0; font: 400 17px/28px var(--font-sans); color: var(--forest-900)">Führ dein Regal, probier Farben und Finishes aus und halt jede Mani im Tagebuch fest – mit Foto, Datum und der Notiz, warum genau dieser Lack es an dem Tag sein musste.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: center">
+<a class="fd-btn fd-btn-primary fd-btn-lg" href="#regal">Ins Regal schauen</a>
+<a class="fd-btn fd-btn-lg" href="#app">Was die App kann</a>
+</div>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center">
+<li class="fd-tag">kein Tracking</li>
+<li class="fd-tag fd-tag-coral">keine Werbung</li>
+<li class="fd-tag fd-tag-lilac">Sammlung lokal im Browser</li>
+</ul>
+</div>
+</section>
+
+<!-- Regal -->
+<section id="regal" style="display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 680px">
+<h2 class="nl-h2" style="margin: 0; font: 800 48px/52px var(--font-sans); letter-spacing: -0.015em">Dein Regal</h2>
+<p style="margin: 0; font: 500 22px/32px var(--font-sans); color: var(--ink-muted)">Was du besitzt, was noch auf die Wunschliste soll und was leider schon leer getropft ist – alles auf einen Blick.</p>
+</div>
+<div role="group" aria-label="Regal filtern" style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+<button class="fd-btn" type="button" aria-pressed="{{f.pressed}}" onClick="{{f.pick}}">{{f.label}}</button>
+</sc-for>
+</div>
+<div class="nl-shelf" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px">
+<sc-for list="{{bottles}}" as="b" hint-placeholder-count="6">
+<article class="fd-card">
+<div class="fd-card-motif" style="background: var(--cream)">
+<svg viewBox="0 0 100 100" role="img" aria-label="{{b.alt}}" style="position: absolute; left: 12%; top: 8%; width: 76%; height: 84%">
+<defs><clipPath id="nlBody"><rect x="24" y="36" width="52" height="50" rx="16"></rect></clipPath></defs>
+<ellipse cx="50" cy="89" rx="32" ry="5" fill="#C2C8AB"></ellipse>
+<rect x="40" y="5" width="20" height="26" rx="7" fill="#6C5D49"></rect>
+<rect x="43" y="8" width="4" height="17" rx="2" fill="#8A6753"></rect>
+<rect x="44" y="29" width="12" height="10" rx="2" fill="#D7D6BA"></rect>
+<rect x="24" y="36" width="52" height="50" rx="16" fill="#EDEAD6"></rect>
+<rect x="24" y="{{b.ly}}" width="52" height="{{b.lh}}" fill="{{b.color}}" clip-path="url(#nlBody)"></rect>
+<rect x="31" y="45" width="6" height="28" rx="3" fill="#F6F0E0" opacity="0.45"></rect>
+</svg>
+</div>
+<div class="fd-card-body" style="gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h3 class="fd-card-title">{{b.name}}</h3>
+<p class="fd-card-meta">{{b.meta}}</p>
+</div>
+<p style="margin: 0; font: 400 15px/22px var(--font-sans); color: var(--ink-muted)">{{b.note}}</p>
+<div><span class="{{b.tagClass}}">{{b.statusLabel}}</span></div>
+</div>
+</article>
+</sc-for>
+</div>
+</section>
+
+<!-- Tagebuch -->
+<section id="tagebuch" class="nl-block" style="background: var(--sage-300); color: var(--forest-900); border-radius: 24px; padding: 64px; display: flex; flex-direction: column; gap: 40px">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 620px">
+<h2 class="nl-h2" style="margin: 0; font: 800 48px/52px var(--font-sans); letter-spacing: -0.015em; color: var(--forest-900)">Das Tagebuch</h2>
+<p style="margin: 0; font: 500 22px/32px var(--font-sans); color: var(--forest-900)">Welche Mani wann dran war, mit einer kleinen Notiz dazu – zum Zurückblättern, wenn du wieder nicht weißt, was du dir wünschst.</p>
+</div>
+<img class="nl-plant-deco" src="/_blob/0ff50d2bc9b824dcdad8a88362bb8b93" alt="" style="height: 170px; width: auto; margin-bottom: -64px; display: block">
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 24px">
+<sc-for list="{{diary}}" as="d" hint-placeholder-count="4">
+<article class="fd-card" data-theme="creme" style="padding: 24px; gap: 16px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span class="fd-tag fd-tag-coral">{{d.date}}</span>
+<span role="img" aria-label="{{d.rating}}" style="display: flex; gap: 4px">
+<sc-for list="{{d.dots}}" as="dot" hint-placeholder-count="5">
+<span style="width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--leaf-600); background: {{dot.fill}}"></span>
+</sc-for>
+</span>
+</div>
+<h3 style="margin: 0; font: 800 22px/28px var(--font-sans); letter-spacing: -0.01em; color: var(--ink)">{{d.polish}}</h3>
+<p style="margin: 0; font: 400 16px/26px var(--font-sans); color: var(--ink-muted)">{{d.note}}</p>
+</article>
+</sc-for>
+</div>
+<p style="margin: 0; font: 500 13px/18px var(--font-sans); letter-spacing: 0.01em; color: var(--forest-900)">4 von 132 Einträgen</p>
+</section>
+
+<!-- App -->
+<section id="app" class="nl-block" style="background: var(--forest-900); color: var(--cream); border-radius: 24px; padding: 72px 64px; display: flex; flex-wrap: wrap; align-items: center; gap: 56px">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h2 class="nl-h2" style="margin: 0; font: 800 48px/52px var(--font-sans); letter-spacing: -0.015em; color: var(--cream)">So sieht’s im Alltag aus</h2>
+<p style="margin: 0; font: 500 22px/32px var(--font-sans); color: var(--sage-200)">Wisch durch die Ansichten und schau, was dich mit der App erwartet.</p>
+</div>
+<div role="tablist" aria-label="App-Ansicht wählen" style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+<button class="fd-btn nl-tab" type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}">{{t.label}}</button>
+</sc-for>
+</div>
+<p style="margin: 0; font: 400 18px/30px var(--font-sans); color: var(--cream); max-width: 460px; min-height: 90px">{{tabText}}</p>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px">
+<li class="fd-tag">Web-App im Browser</li>
+<li class="fd-tag fd-tag-coral">lokal gespeichert</li>
+<li class="fd-tag fd-tag-lilac">Sync optional</li>
+</ul>
+</div>
+<div style="flex: 1 1 320px; display: flex; justify-content: center">
+<div style="width: 300px; height: 600px; box-sizing: border-box; border-radius: 44px; background: var(--forest-700); padding: 10px; flex: none">
+<div style="width: 100%; height: 100%; box-sizing: border-box; border-radius: 34px; background: var(--cream); color: var(--forest-900); overflow: hidden; padding: 28px 20px 20px; display: flex; flex-direction: column; gap: 16px">
+<div style="font: 800 24px/30px var(--font-sans); letter-spacing: -0.01em">{{screenTitle}}</div>
+
+<sc-if value="{{showSammlung}}" hint-placeholder-val="{{true}}">
+<div style="height: 40px; box-sizing: border-box; border-radius: 9999px; border: 1.5px solid var(--olive-500); background: #FCF9F0; padding: 0 16px; display: flex; align-items: center; font: 400 14px/20px var(--font-sans); color: var(--leaf-600)">Farbe, Marke oder Finish</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<sc-for list="{{phoneRows}}" as="r" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 12px; background: #EDEAD6; border-radius: 14px; padding: 10px 12px">
+<span style="width: 28px; height: 28px; border-radius: 50%; flex: none; background: {{r.color}}"></span>
+<span style="display: flex; flex-direction: column; min-width: 0"><span style="font: 600 14px/18px var(--font-sans)">{{r.name}}</span><span style="font: 500 12px/16px var(--font-sans); color: var(--leaf-600)">{{r.meta}}</span></span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{showTagebuch}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{phoneDiary}}" as="e" hint-placeholder-count="3">
+<div style="background: #EDEAD6; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+<span style="font: 500 12px/16px var(--font-sans); color: var(--leaf-600)">{{e.date}}</span>
+<span style="font: 800 16px/22px var(--font-sans)">{{e.polish}}</span>
+<span style="font: 400 13px/19px var(--font-sans); color: var(--leaf-600)">{{e.note}}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{showStatistik}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 14px; padding-top: 4px">
+<sc-for list="{{phoneBars}}" as="p" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font: 600 13px/18px var(--font-sans)">{{p.label}}</span>
+<span style="height: 18px; border-radius: 9999px; background: #EDEAD6; display: block"><span style="display: block; height: 100%; border-radius: 9999px; background: {{p.color}}; width: {{p.w}}"></span></span>
+</div>
+</sc-for>
+<span style="font: 500 12px/16px var(--font-sans); color: var(--leaf-600)">Marken und Farbfamilien deines Regals</span>
+</div>
+</sc-if>
+
+<sc-if value="{{showSticker}}" hint-placeholder-val="{{false}}">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div style="background: #EDEAD6; border-radius: 14px; aspect-ratio: 1; padding: 8px; box-sizing: border-box"><img src="/_blob/2a5ae7d23a6795a123094444a3aa5de0" alt="" style="width: 100%; height: 100%; object-fit: contain; display: block"></div>
+<div style="background: #EDEAD6; border-radius: 14px; aspect-ratio: 1; padding: 8px; box-sizing: border-box"><img src="/_blob/9e60b17677ec677bcc638789f638d4a5" alt="" style="width: 100%; height: 100%; object-fit: contain; display: block"></div>
+<div style="background: #EDEAD6; border-radius: 14px; aspect-ratio: 1; padding: 8px; box-sizing: border-box"><img src="/_blob/ac3f29bc3aef24dec7c5677c5368742e" alt="" style="width: 100%; height: 100%; object-fit: contain; display: block"></div>
+<div style="background: #EDEAD6; border-radius: 14px; aspect-ratio: 1; padding: 8px; box-sizing: border-box"><img src="/_blob/0801742c292ac476909a57a3d08010ab" alt="" style="width: 100%; height: 100%; object-fit: contain; display: block"></div>
+</div>
+</sc-if>
+
+</div>
+</div>
+</div>
+</section>
+
+<!-- Zahlen -->
+<section id="zahlen" style="display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 680px">
+<h2 class="nl-h2" style="margin: 0; font: 800 48px/52px var(--font-sans); letter-spacing: -0.015em">Was das Regal verrät</h2>
+<p style="margin: 0; font: 500 22px/32px var(--font-sans); color: var(--ink-muted)">Nach ein paar Monaten Sammeln erzählt das Regal einiges über den eigenen Geschmack.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px">
+<div class="fd-card" style="padding: 32px; gap: 20px">
+<h3 style="margin: 0; font: 800 28px/34px var(--font-sans); letter-spacing: -0.01em">Top Marken</h3>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<sc-for list="{{brandBars}}" as="r" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="width: 104px; flex: none; font: 600 15px/20px var(--font-sans)">{{r.label}}</span>
+<span style="flex: 1 1 0; min-width: 0; height: 18px; border-radius: 9999px; background: var(--surface-sunken); display: block"><span style="display: block; height: 100%; box-sizing: border-box; border-radius: 9999px; border: 1.5px solid var(--line-strong); background: {{r.color}}; width: {{r.w}}"></span></span>
+<span style="width: 28px; text-align: right; font: 600 15px/20px var(--font-sans)">{{r.value}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div class="fd-card" style="padding: 32px; gap: 20px">
+<h3 style="margin: 0; font: 800 28px/34px var(--font-sans); letter-spacing: -0.01em">Farbfamilien</h3>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<sc-for list="{{colorBars}}" as="r" hint-placeholder-count="5">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="width: 104px; flex: none; font: 600 15px/20px var(--font-sans)">{{r.label}}</span>
+<span style="flex: 1 1 0; min-width: 0; height: 18px; border-radius: 9999px; background: var(--surface-sunken); display: block"><span style="display: block; height: 100%; box-sizing: border-box; border-radius: 9999px; border: 1.5px solid var(--line-strong); background: {{r.color}}; width: {{r.w}}"></span></span>
+<span style="width: 28px; text-align: right; font: 600 15px/20px var(--font-sans)">{{r.value}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px">
+<div style="background: var(--sage-300); color: var(--on-accent); border-radius: 24px; padding: 32px; display: flex; flex-direction: column; gap: 4px"><span style="font: 800 96px/96px var(--font-sans); letter-spacing: -0.02em">48</span><span style="font: 600 20px/26px var(--font-sans)">Lacke</span></div>
+<div style="background: var(--coral-300); color: var(--on-accent); border-radius: 24px; padding: 32px; display: flex; flex-direction: column; gap: 4px"><span style="font: 800 96px/96px var(--font-sans); letter-spacing: -0.02em">132</span><span style="font: 600 20px/26px var(--font-sans)">Manis</span></div>
+<div style="background: var(--lilac-400); color: var(--on-accent); border-radius: 24px; padding: 32px; display: flex; flex-direction: column; gap: 4px"><span style="font: 800 96px/96px var(--font-sans); letter-spacing: -0.02em">7</span><span style="font: 600 20px/26px var(--font-sans)">Wünsche</span></div>
+</div>
+</section>
+
+<!-- Fuß -->
+<footer data-theme="creme" class="fd-hero" style="min-height: 340px; padding: 48px 48px 96px; place-items: start; background: var(--cream)">
+<div class="fd-hero-hill fd-hero-hill-back"></div>
+<div class="fd-hero-hill"></div>
+<img class="fd-hero-plant nl-plant-deco" style="width: 220px; bottom: 0; right: 24px" src="/_blob/0801742c292ac476909a57a3d08010ab" alt="">
+<img class="fd-hero-plant nl-plant-deco" style="width: 120px; bottom: 0; right: 260px" src="/_blob/ebe34ce8e60ae7e32017b17376cbf6b1" alt="">
+<div style="position: relative; display: flex; flex-direction: column; gap: 20px; max-width: 560px">
+<div style="font: 800 28px/34px var(--font-sans); letter-spacing: -0.01em; color: var(--forest-900)">Nagellacke</div>
+<p style="margin: 0; font: 500 20px/30px var(--font-sans); color: var(--leaf-600)">Gebaut mit Bleistift, Kuli und ein bisschen Code.</p>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px">
+<li><a class="fd-btn fd-btn-sm" href="privacy-policy.html">Datenschutzerklärung</a></li>
+<li><a class="fd-btn fd-btn-sm" href="https://github.com/Mozra-the-great/nagellacke" target="_blank" rel="noopener">Projekt auf GitHub</a></li>
+<li><a class="fd-btn fd-btn-sm" href="#top">Zum Seitenanfang</a></li>
+</ul>
+<p style="margin: 0; font: 500 13px/18px var(--font-sans); letter-spacing: 0.01em; color: var(--leaf-600)">Eine private, werbefreie App. Keine Cookies, kein Tracking auf dieser Seite. Die frühere Android-App ist eingestellt und wird nicht mehr weiterentwickelt.</p>
+</div>
+</footer>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"creme","options":["creme","wald"]},"$preview":{"width":1360,"height":4300}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', tab: 'sammlung' };
+  }
+  renderVals() {
+    const all = [
+      { name: 'Kirschkern-Kuss', brand: 'OPI', finish: 'Classic', color: '#b3122e', status: 'ok', note: 'Perfekt für Herbstabende, deckt zuverlässig in zwei Schichten.', level: 0.85 },
+      { name: 'Altrosa-Wolke', brand: 'Essie', finish: 'Shimmer', color: '#d98a9a', status: 'ok', note: 'Mein Alltagslack, liegt eigentlich immer griffbereit vorn.', level: 0.7 },
+      { name: 'Tintenblau-Traum', brand: 'Catrice', finish: 'Chrome', color: '#24418f', status: 'ok', note: 'Hält erstaunlich lange, ohne an den Spitzen abzusplittern.', level: 0.9 },
+      { name: 'Sonnengelb-Sommer', brand: 'Kiko Milano', finish: 'Glitter', color: '#f2c14e', status: 'ok', note: 'Nur für richtig sonnige Tage, sonst wirkt es zu grell.', level: 1 },
+      { name: 'Salbei-Ruhe', brand: 'Zoya', finish: 'Matt', color: '#8aa87a', status: 'ok', note: 'Beruhigende Farbe für Wochen, in denen alles zu viel ist.', level: 0.6 },
+      { name: 'Pflaumenmus', brand: 'Sally Hansen', finish: 'Holo', color: '#7a3b8f', status: 'wish', note: 'Steht schon seit dem Frühling auf der Wunschliste.', level: 1 },
+      { name: 'Espresso-Note', brand: 'Kure Bazaar', finish: 'Classic', color: '#3a2a24', status: 'wish', note: 'Für den Winter vorgemerkt, sobald es kälter wird.', level: 1 },
+      { name: 'Eisblau-Frost', brand: 'Barry M', finish: 'Shimmer', color: '#8fc7e8', status: 'empty', note: 'Leergetragen – war den ganzen letzten Sommer mein Favorit.', level: 0.12 },
+      { name: 'Karamell-Latte', brand: 'Nails Inc.', finish: 'Classic', color: '#b9793f', status: 'empty', note: 'Die letzten Tropfen sind leider schon eingetrocknet.', level: 0.12 }
+    ];
+    const statusLabel = { ok: 'Vorhanden', wish: 'Wunschliste', empty: 'Aufgebraucht' };
+    const tagClass = { ok: 'fd-tag', wish: 'fd-tag fd-tag-lilac', empty: 'fd-tag fd-tag-ochre' };
+    const f = this.state.filter;
+    const bottles = all.filter((b) => f === 'all' || b.status === f).map((b) => ({
+      name: b.name,
+      meta: b.brand + ' · ' + b.finish,
+      note: b.note,
+      color: b.color,
+      alt: 'Lackfläschchen ' + b.name,
+      ly: String(36 + 50 * (1 - b.level)),
+      lh: String(50 * b.level),
+      statusLabel: statusLabel[b.status],
+      tagClass: tagClass[b.status]
+    }));
+    const filters = [['all', 'Alle'], ['ok', 'Vorhanden'], ['wish', 'Wunschliste'], ['empty', 'Aufgebraucht']].map(([id, label]) => ({
+      label, pressed: f === id, pick: () => this.setState({ filter: id })
+    }));
+
+    const mk = (n) => [0, 1, 2, 3, 4].map((i) => ({ fill: i < n ? '#496748' : 'transparent' }));
+    const diary = [
+      { date: '3. März', polish: 'Kirschkern-Kuss', note: 'Regnerischer Dienstag, Kaffee statt Steuererklärung. Hat elf Tage ohne einen einzigen Abplatzer gehalten.', n: 5 },
+      { date: '18. April', polish: 'Perlmutt & Altrosa', note: 'Erster Frühlingsspaziergang im Park. Nach einer Woche schon leicht angeknabbert an den Spitzen.', n: 3 },
+      { date: '9. Juni', polish: 'Tintenblau + Glitzerakzent', note: 'Geburtstagsfeier bei K., am Tag danach das Standesamt. Der Glitzer hat glatt bis zum Sommerurlaub gehalten.', n: 5 },
+      { date: '27. Juli', polish: 'Salbei mit Blütensticker', note: 'Heißer Nachmittag im Garten, Sticker etwas zu früh aufgetragen. Zwei sind schon nach drei Tagen abgefallen.', n: 2 }
+    ].map((d) => ({ ...d, rating: 'Haltbarkeit ' + d.n + ' von 5', dots: mk(d.n) }));
+
+    const tabs = [['sammlung', 'Sammlung'], ['tagebuch', 'Tagebuch'], ['statistik', 'Statistik'], ['sticker', 'Sticker']].map(([id, label]) => ({
+      label, selected: this.state.tab === id, pick: () => this.setState({ tab: id })
+    }));
+    const texts = {
+      sammlung: 'Durchsuch deine ganze Sammlung nach Farbe, Marke oder Finish und sieh auf einen Blick, was noch fehlt.',
+      tagebuch: 'Halt fest, welchen Lack du wann getragen hast – mit Foto, Datum und ein paar Worten dazu.',
+      statistik: 'Sieh, welche Marken und Farbfamilien dein Regal wirklich dominieren.',
+      sticker: 'Verwalte auch deine Nailart-Sticker und Folien, griffbereit für die nächste Maniküre.'
+    };
+    const titles = { sammlung: 'Sammlung', tagebuch: 'Tagebuch', statistik: 'Statistik', sticker: 'Sticker' };
+    const t = this.state.tab;
+
+    const bars = (rows, max) => rows.map(([label, value, color]) => ({ label, value: String(value), color, w: Math.round((value / max) * 100) + '%' }));
+    return {
+      theme: this.props.theme ?? 'creme',
+      filters, bottles, diary, tabs,
+      tabText: texts[t], screenTitle: titles[t],
+      showSammlung: t === 'sammlung', showTagebuch: t === 'tagebuch', showStatistik: t === 'statistik', showSticker: t === 'sticker',
+      phoneRows: all.slice(0, 5).map((b) => ({ name: b.name, meta: b.brand + ' · ' + b.finish, color: b.color })),
+      phoneDiary: diary.slice(0, 3).map((d) => ({ date: d.date, polish: d.polish, note: d.note.split('. ')[0] + '.' })),
+      phoneBars: bars([['OPI', 12, '#496748'], ['Essie', 9, '#74864E'], ['Catrice', 7, '#D77B6F'], ['Kiko Milano', 5, '#9B7FB0']], 12),
+      brandBars: bars([['OPI', 12, '#496748'], ['Essie', 9, '#496748'], ['Catrice', 7, '#496748'], ['Kiko Milano', 5, '#496748'], ['Zoya', 3, '#496748']], 12),
+      colorBars: bars([['Rot', 18, '#b3122e'], ['Rosé', 14, '#d98a9a'], ['Blau', 9, '#24418f'], ['Grün', 6, '#1f5f43'], ['Nude', 5, '#e9dfd2']], 18)
+    };
+  }
+}
+</script>
+</body>
+</html>

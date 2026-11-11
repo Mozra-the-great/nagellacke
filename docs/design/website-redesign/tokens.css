@@ -1,0 +1,38 @@
+/* Flower-Designs — generated from tokens.json */
+@font-face { font-family: "Figtree"; font-weight: 400; src: url("fonts/Figtree-400.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Figtree"; font-weight: 500; src: url("fonts/Figtree-500.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Figtree"; font-weight: 600; src: url("fonts/Figtree-600.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Figtree"; font-weight: 800; src: url("fonts/Figtree-800.woff2") format("woff2"); font-display: swap; }
+
+:root, [data-theme="creme"] {
+  --surface: #F6F0E0; --surface-raised: #FCF9F0; --surface-sunken: #EDEAD6;
+  --hill: #C2C8AB; --line: #D7D6BA; --line-strong: #6B7F4B;
+  --ink: #2C4F38; --ink-muted: #496748;
+  --primary: #2C4F38; --on-primary: #F6F0E0;
+  --accent-soft: #F3DDD3; --accent-text: #9E4538; --focus: #2C4F38;
+  --focus-ring: 0 0 0 2px #F6F0E0, 0 0 0 4px #2C4F38;
+}
+[data-theme="wald"] {
+  --surface: #254538; --surface-raised: #2D5446; --surface-sunken: #1F3B30;
+  --hill: #3D604D; --line: #3D604D; --line-strong: #AEB898;
+  --ink: #F6F0E0; --ink-muted: #C2C8AB;
+  --primary: #F2E8CF; --on-primary: #254538;
+  --accent-soft: #4A3A37; --accent-text: #EFC2B5; --focus: #F2E8CF;
+  --focus-ring: 0 0 0 2px #254538, 0 0 0 4px #F2E8CF;
+}
+:root, [data-theme] {
+  --accent: #D77B6F; --on-accent: #1B1F1C; --danger: var(--accent-text);
+  --cream: #F6F0E0;
+  --forest-900: #254538; --forest-800: #2D5446; --forest-700: #315749; --forest-600: #3D604D;
+  --leaf-700: #426141; --leaf-600: #496748; --leaf-500: #5C7247;
+  --olive-500: #6B7F4B; --olive-400: #74864E; --olive-300: #819050; --olive-200: #87965B;
+  --sage-400: #AEB898; --sage-300: #C2C8AB; --sage-200: #CED0B4; --sage-100: #D7D6BA;
+  --coral-700: #C77164; --coral-600: #D77B6F; --coral-500: #DD887A; --coral-400: #E49E8D; --coral-300: #E9AB9A;
+  --petal-400: #E3E0CD; --petal-300: #EDEAD6; --petal-200: #F2E8CF;
+  --lilac-600: #8C75A4; --lilac-500: #9B7FB0; --lilac-400: #A587B7;
+  --ochre-500: #E1AD57;
+  --bark-700: #6C5D49; --bark-500: #8A6753; --bark-400: #9D6D59;
+  --font-sans: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+  --radius-sm: 8px; --radius-md: 14px; --radius-lg: 24px; --radius-full: 9999px;
+}

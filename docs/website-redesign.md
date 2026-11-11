@@ -6,6 +6,8 @@ Planungsstand zu Issue #443. Die Seite `docs/index.html` bleibt in diesem Schrit
 
 Zwei Design-Artboards der Startseite (1360 px, fluid bis Handybreite) im Design-System „Flower-Designs": **Startseite** (Theme `creme`, hell) und **Startseite dunkel** (Theme `wald`). Farben, Figtree, Pillen-Buttons, flache Pflanzenmotive, keine Schatten. Die helle Fassung wurde lokal in 1360 px und 390 px angesehen, die dunkle nur in 1360 px (Regal bis App-Block), mit Platzhalter-Motiven und Ersatzschrift. Beide sind Design-Artboards, kein fertiges HTML.
 
+Der Quellcode beider Artboards liegt unter `docs/design/website-redesign/` (siehe dortige `README.md`).
+
 ## Unterschiede der dunklen Fassung
 
 - Grund und Karten in Waldgrün, Text in Creme.
