@@ -388,3 +388,26 @@ describe('photo ownership (#352)', () => {
     expect(again.photoOwner('a.png')).toBeUndefined();
   });
 });
+
+describe('corrupt data file logging (CodeQL js/tainted-format-string)', () => {
+  it('logs the path as an argument, never as the format string', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    // A username with printf-style directives ends up in the file path.
+    const username = '100%s%d%o';
+    db.setData(username, { polishes: [], customCats: [], manicures: [], stickers: [] });
+    const file = path.join(dir, 'users', encodeURIComponent(username), 'data.json');
+    fs.writeFileSync(file, '{ not json');
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect(db.getData(username).polishes).toEqual([]);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [format, logged] = spy.mock.calls[0] as [string, string];
+      expect(format).toBe('%s corrupt — returning empty:');
+      expect(logged).toBe(file);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
