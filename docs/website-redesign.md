@@ -4,7 +4,15 @@ Planungsstand zu Issue #443. Die Seite `docs/index.html` bleibt in diesem Schrit
 
 ## Entwurf
 
-Ein Design-Artboard der Startseite (1360 px, fluid bis Handybreite) im Design-System „Flower-Designs": Farben, Figtree, Pillen-Buttons, flache Pflanzenmotive, keine Schatten. Der Entwurf lag lokal in 1360 px und 390 px vor, mit Platzhalter-Motiven und Ersatzschrift. Er ist ein Design-Artboard, kein fertiges HTML.
+Zwei Design-Artboards der Startseite (1360 px, fluid bis Handybreite) im Design-System „Flower-Designs": **Startseite** (Theme `creme`, hell) und **Startseite dunkel** (Theme `wald`). Farben, Figtree, Pillen-Buttons, flache Pflanzenmotive, keine Schatten. Die helle Fassung wurde lokal in 1360 px und 390 px angesehen, die dunkle nur in 1360 px (Regal bis App-Block), mit Platzhalter-Motiven und Ersatzschrift. Er ist ein Design-Artboard, kein fertiges HTML.
+
+## Unterschiede der dunklen Fassung
+
+- Grund und Karten in Waldgrün, Text in Creme.
+- Hero und Fuß bleiben hell, die Fläschchen liegen auf hellen Feldern (Vorgabe des Systems: Motive sind für `cream` gebaut).
+- Der App-Block ist eine Stufe dunkler als die Seite (`surface-sunken`), sonst verschwindet er im Grund.
+- Balken bei „Top Marken" in `sage-400` statt `leaf-600`, wegen des Kontrasts auf dunklem Kartengrund.
+- Beide Artboards sind getrennte Dateien; Änderungen an einer müssen in der anderen nachgezogen werden.
 
 ## Was der Entwurf bereits enthält
 
@@ -32,7 +40,7 @@ Ein Design-Artboard der Startseite (1360 px, fluid bis Handybreite) im Design-Sy
 | Scroll-Einblendungen | ja | nein |
 | Hero-Stillleben (Tisch, Fläschchen, Pinsel) | ja | ersetzt durch Banner-Komposition |
 | Datenschutzseite | ja | nicht gestaltet |
-| Dunkles Theme nach Systemeinstellung | `theme-color` vorhanden | nur per Regler im Entwurf |
+| Dunkles Theme nach Systemeinstellung | `theme-color` vorhanden | als eigenes Artboard entworfen, Kopplung an `prefers-color-scheme` fehlt |
 
 ## Was noch fehlt
 
@@ -43,7 +51,7 @@ Ein Design-Artboard der Startseite (1360 px, fluid bis Handybreite) im Design-Sy
 5. Datenschutzseite im selben Stil.
 6. Regal-Detail, Umdreh-Karten und Einblendungen: übernehmen oder bewusst streichen.
 7. Meta-Daten: `theme-color`, Favicon, `og:`-Tags an die neuen Farben anpassen.
-8. `wald` an `prefers-color-scheme` koppeln.
+8. `wald` an `prefers-color-scheme` koppeln (Entwurf liegt vor, Umsetzung fehlt).
 9. Kontrast, Fokusring und Tastaturbedienung (Tabs) im fertigen HTML prüfen.
 10. Entwurf mit echten Motiven und Figtree erneut ansehen.
 
