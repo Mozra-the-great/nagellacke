@@ -131,7 +131,7 @@ export function buildUpdateSteps(appRoot: string): UpdateStep[] {
  * `GET /api/update/check` used to derive owner/repo from `git remote get-url
  * origin` and, when that failed, return `updateAvailable: false` — which the
  * admin panel renders as "Version 3.3.0 — aktuell". In the container image
- * (v3/Dockerfile) that spawn *always* fails: `git` is not in node:20-alpine
+ * (v3/Dockerfile) that spawn *always* fails: `git` is not in node:24-alpine
  * and APP_ROOT is not a checkout. nailvault.de therefore reported itself
  * current for three releases running.
  *

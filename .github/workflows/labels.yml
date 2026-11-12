@@ -68,7 +68,7 @@ jobs:
       # Always main, whatever the event: only the reviewed labels.py from main
       # runs. For workflow_dispatch github.ref would otherwise be the branch
       # picked in the UI, for pull_request_target the PR's base branch.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/heads/main
           persist-credentials: false

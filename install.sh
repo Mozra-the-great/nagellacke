@@ -35,22 +35,40 @@ apt-get update -qq
 info "Installiere Abhängigkeiten (git, curl, gnupg, sudo)…"
 apt-get install -y -qq git curl ca-certificates gnupg sudo
 
-# ── 2. Node.js 20 ──
-# NodeSource's documented signed-apt-repo method instead of curl-pipe-bash:
-# verifies the repo's GPG signature and doesn't hide setup failures behind a
-# swallowed stderr.
-NODE_MAJOR=$(node --version 2>/dev/null | grep -oP '(?<=v)\d+' || echo 0)
-if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt 20 ]]; then
-  info "Installiere Node.js 20…"
+# ── 2. Node.js 24 ──
+# The server and its build need Node >= 24 (the current LTS line; Node 20 reached
+# end of life in April 2026 and the build tools no longer run on it). An install
+# with an older Node is upgraded here: NodeSource's documented signed-apt-repo
+# method instead of curl-pipe-bash verifies the repo's GPG signature and doesn't
+# hide setup failures behind a swallowed stderr. Rewriting nodesource.list also
+# moves an existing node_20.x/node_22.x source to 24.x, so `apt-get install`
+# really upgrades instead of keeping the old major.
+NODE_REQUIRED=24
+node_major() { node --version 2>/dev/null | grep -oP '(?<=v)\d+' || echo 0; }
+NODE_MAJOR=$(node_major)
+if ! command -v node &>/dev/null || [[ "$NODE_MAJOR" -lt "$NODE_REQUIRED" ]]; then
+  if command -v node &>/dev/null; then
+    warn "Gefundene Node.js-Version $(node --version) ist zu alt - Node.js ${NODE_REQUIRED} oder neuer wird benötigt (Node 20 ist seit April 2026 ohne Support)."
+  fi
+  info "Installiere Node.js ${NODE_REQUIRED}…"
   mkdir -p /etc/apt/keyrings
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    | gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_REQUIRED}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   apt-get update -qq
   apt-get install -y -qq nodejs
+  hash -r
+  NODE_MAJOR=$(node_major)
+  if [[ "$NODE_MAJOR" -lt "$NODE_REQUIRED" ]]; then
+    error "Node.js ${NODE_REQUIRED}+ erforderlich, aktiv ist aber $(node --version 2>/dev/null || echo 'keine Version') ($(command -v node || echo '-')). Vermutlich liegt eine andere Installation (nvm, /usr/local/bin, Snap) vor dem apt-Paket im PATH. Entfernen oder aktualisieren, dann install.sh erneut ausführen."
+  fi
 else
   success "Node.js bereits installiert ($(node --version))"
+fi
+# The systemd unit starts /usr/bin/node, not whatever is first in root's PATH.
+if [ -x /usr/bin/node ] && [ "$(/usr/bin/node --version | grep -oP '(?<=v)\d+')" -lt "$NODE_REQUIRED" ]; then
+  error "/usr/bin/node ist $(/usr/bin/node --version), der Dienst startet aber genau dieses Binary. Node.js ${NODE_REQUIRED}+ muss dort liegen (apt-Paket 'nodejs' aus NodeSource ${NODE_REQUIRED}.x)."
 fi
 
 # ── 3. Clone or update repo ──

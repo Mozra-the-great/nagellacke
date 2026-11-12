@@ -197,3 +197,52 @@ describe('exhausted tool budget degrades instead of failing the job', () => {
       .rejects.toThrow(/Gemini hat keine Antwort geliefert/);
   });
 });
+
+describe('Gemini credentials (#401)', () => {
+  const SECRET = 'AIza-secret-canary-key';
+
+  it('sends the key in the x-goog-api-key header and never in the URL', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: { headers?: Record<string, string> }) => {
+      calls.push({ url, headers: init?.headers ?? {} });
+      return { ok: true, status: 200, text: async () => '', json: async () => gemAnswer('{}') };
+    });
+    await callGemini({ apiKey: SECRET, model: 'gemini-flash-latest' }, 'sys', 'user', false, SEARCH);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers['x-goog-api-key']).toBe(SECRET);
+    expect(calls[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent');
+    expect(calls[0].url).not.toContain('key=');
+    expect(calls[0].url).not.toContain(SECRET);
+  });
+
+  it('keeps the header on every round of a tool loop', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    let i = 0;
+    vi.stubGlobal('fetch', async (url: string, init?: { headers?: Record<string, string> }) => {
+      if (!url.includes('generativelanguage')) {
+        return { ok: true, status: 200, text: async () => DDG_HTML, json: async () => ({}) };
+      }
+      calls.push({ url, headers: init?.headers ?? {} });
+      const reply = i++ === 0 ? gemToolCall('essie 162') : gemAnswer('{}');
+      return { ok: true, status: 200, text: async () => '', json: async () => reply };
+    });
+    await callGemini({ apiKey: SECRET, model: 'gemini-flash-latest' }, 'sys', 'user', true, SEARCH);
+    expect(calls).toHaveLength(2);
+    for (const c of calls) {
+      expect(c.headers['x-goog-api-key']).toBe(SECRET);
+      expect(c.url).not.toContain('key=');
+    }
+  });
+
+  it('does not let a provider error that echoes the key reach the job error', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: false, status: 400,
+      text: async () => `API key not valid: ${SECRET}`,
+      json: async () => ({}),
+    }));
+    const err = await callGemini({ apiKey: SECRET, model: 'm' }, 'sys', 'user', false, SEARCH).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('Gemini-Fehler 400');
+    expect((err as Error).message).not.toContain(SECRET);
+  });
+});

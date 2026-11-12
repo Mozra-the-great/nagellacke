@@ -168,3 +168,42 @@ describe('POST /api/ai/settings input validation (#301)', () => {
     expect(storedConfig(dir).gemini?.apiKey).toBe('');
   });
 });
+
+describe('POST /api/ai/settings searxngUrl policy (#401)', () => {
+  it.each([
+    ['plain http', 'http://searx.example.org'],
+    ['loopback', 'https://127.0.0.1:8080'],
+    ['localhost', 'https://localhost'],
+    ['metadata address', 'https://169.254.169.254/latest'],
+    ['RFC 1918', 'https://192.168.1.10'],
+    ['Tailnet / CGNAT', 'https://100.101.102.103'],
+    ['IPv6 loopback', 'https://[::1]'],
+    ['IPv4-mapped IPv6', 'https://[::ffff:7f00:1]'],
+    ['credentials in the URL', 'https://user:pw@searx.example.org'],
+    ['not a URL', 'searx dot example'],
+  ])('rejects %s with 400 and persists nothing', async (_name, searxngUrl) => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const token = await registerAdmin(app);
+
+    const res = await post(app, token, { ...VALID, webSearch: { backend: 'searxng', searxngUrl } });
+
+    expect(res.statusCode).toBe(400);
+    expect(String((res.json() as { error: string }).error)).toContain('webSearch.searxngUrl');
+    expect(storedConfig(dir).webSearch?.searxngUrl).toBeUndefined();
+  });
+
+  it('accepts a public https address (literal IP, so the test needs no DNS) and an empty one', async () => {
+    const { app, dir } = await createTestApp();
+    tmpDirs.push(dir);
+    const token = await registerAdmin(app);
+
+    const ok = await post(app, token, { ...VALID, webSearch: { backend: 'searxng', searxngUrl: ' https://93.184.216.34:8443/ ' } });
+    expect(ok.statusCode).toBe(200);
+    expect(storedConfig(dir).webSearch?.searxngUrl).toBe('https://93.184.216.34:8443/');
+
+    const cleared = await post(app, token, { ...VALID, webSearch: { backend: 'off', searxngUrl: '' } });
+    expect(cleared.statusCode).toBe(200);
+    expect(storedConfig(dir).webSearch?.searxngUrl).toBe('');
+  });
+});

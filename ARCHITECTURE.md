@@ -40,7 +40,7 @@ nagellacke/
 ├── .github/                  ← Workflows (CI, Pages, Release, Review, Labels, Android-Release manuell), labels.json
 ├── install.sh                ← Installer/Updater (Debian/Ubuntu, systemd)
 ├── CHANGELOG.md              ← Vollständige Versionshistorie
-└── v3/                       ← Monorepo (npm workspaces, Node ≥20)
+└── v3/                       ← Monorepo (npm workspaces, Node ≥24)
     ├── package.json          ← Monorepo-Root, Scripts für alle Workspaces
     ├── packages/
     │   ├── core/             ← @nagellacke/core — Typen, Logic, Merge-Algo, Konstanten
@@ -75,7 +75,7 @@ nagellacke/
     ├── Dockerfile            ← Container-Image für eigenständige Hosts (öffentliche Instanz)
     ├── scripts/              ← migrate-v2-to-v3.js (Legacy-Migration)
     └── apps/
-        └── web/                ← Web-App (React 18 + TypeScript + Vite)
+        └── web/                ← Web-App (React 19 + TypeScript + Vite)
             └── src/
                 ├── App.tsx              ← Tab-Navigation (collection|stickers|diary|cart|stats|settings, +admin für Admins), Hash-Routen
                 ├── useAppData.ts        ← Hook für Daten + CRUD + sync()
@@ -173,6 +173,10 @@ Implementiert in `v3/server/src/update.ts` (#335, #338). Nur auf systemd-Install
 ### Eigener web_search-Tool-Server statt Anbieter-Websuche
 
 Statt der kostenpflichtigen Websuche der KI-Anbieter (die z. B. auch bei kostenlosen Modellen extra berechnet wird oder im Free-Tier fehlt) stellt der Server selbst die Suchanfrage und bietet sie dem Modell als Werkzeug `web_search` an — für beide unterstützten Wire-Formate (OpenAI-kompatibel und Gemini `functionDeclarations`). Backend wählbar: DuckDuckGo (ohne Einrichtung, aber rate-limited bei Rechenzentrums-IPs — erkennt und loggt die HTTP-202-CAPTCHA-Antwort separat, `websearch.ts`), eigene SearXNG-Instanz oder Brave.
+
+### Ausgehende Anfragen und SSRF-Schutz
+
+Der Server ruft nur feste https-Hosts auf (OpenRouter, Gemini, Brave, DuckDuckGo, GitHub), mit einer Ausnahme: die vom Admin gesetzte SearXNG-Adresse. Diese läuft über `outbound.ts` (#401): nur `https://`, keine Zugangsdaten in der URL, und die Zieladresse wird im `lookup`-Hook des Sockets geprüft — die geprüfte Adresse ist also die, mit der verbunden wird (kein Zeitfenster für DNS-Rebinding). Abgelehnt werden Loopback, RFC 1918, Link-Local (inkl. Cloud-Metadaten), CGNAT/Tailnet, Unique-Local, Multicast und reservierte Bereiche, IPv4 wie IPv6 (auch IPv4-mapped, NAT64, 6to4). Weiterleitungen folgt der Server selbst (max. 3), jede Station wird neu geprüft; dazu Timeout und Größenlimit. `POST /api/ai/settings` lehnt solche Adressen schon beim Speichern ab, maßgeblich ist aber die Prüfung beim Abruf. Der Gemini-Schlüssel geht im Header `x-goog-api-key`, nie in der URL. Wer künftig weitere nutzerkonfigurierbare Ziele einführt (z. B. #400), nutzt dieselbe Funktion.
 
 ### Hintergrundjobs
 
@@ -358,7 +362,7 @@ Vite baut in `apps/web/dist/` — die Update-Pipeline kopiert es nach `server/pu
 
 ### Container (öffentliche Instanz)
 
-`v3/Dockerfile` (mehrstufig, `node:20-alpine`) ist der Weg für eigenständige Cloud-Hosts; die öffentliche Instanz `nailvault.de` läuft so. Das Image enthält kein git, das Update in der App ist dort abgeschaltet. Welche App-Version läuft, wird im Infrastruktur-Repo `homelab-infra` festgelegt (Pin auf Tag oder Commit); die Daten liegen in einem Volume.
+`v3/Dockerfile` (mehrstufig, `node:24-alpine`) ist der Weg für eigenständige Cloud-Hosts; die öffentliche Instanz `nailvault.de` läuft so. Das Image enthält kein git, das Update in der App ist dort abgeschaltet. Welche App-Version läuft, wird im Infrastruktur-Repo `homelab-infra` festgelegt (Pin auf Tag oder Commit); die Daten liegen in einem Volume.
 
 ### Release-Ablauf
 

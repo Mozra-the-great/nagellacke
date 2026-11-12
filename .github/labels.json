@@ -58,6 +58,7 @@
     "android/gradle/libs.versions.toml": ["dependencies"],
     "v3/package-lock.json": ["dependencies"],
     "v3/package.json": ["type/chore"],
+    "v3/.npmrc": ["type/chore"],
 
     "install.sh": ["area/deploy"],
     "v3/server/install.sh": ["area/deploy"],

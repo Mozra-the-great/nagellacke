@@ -29,14 +29,41 @@ const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stick
 const USER_DATA_DIR = path.join(DATA_DIR, 'users');
 
 /**
+ * The canonical form of a username (#445): Unicode NFKC, then lowercase. Every
+ * comparison, lookup, stored name and data-dir name goes through this, so
+ * `ALICE`, `Alice` and a full-width `ａlice` are all the same account.
+ *
+ * NFKC folds compatibility look-alikes (full-width, ligatures, ...) onto their
+ * plain form; the second normalize() keeps the result stable under the
+ * lowercasing (idempotent: canonicalUsername(canonicalUsername(x)) is itself).
+ * There is deliberately no character allowlist: accounts created before this
+ * were never restricted to one, and canonicalisation must keep them reachable.
+ */
+export function canonicalUsername(username: string): string {
+  return username.normalize('NFKC').toLowerCase().normalize('NFKC');
+}
+
+/** Whether two usernames denote the same account (canonical comparison). */
+export function sameUsername(a: string, b: string): boolean {
+  return canonicalUsername(a) === canonicalUsername(b);
+}
+
+/**
  * Maps a username to a filesystem-safe directory name. Usernames are
  * user-supplied and reach us from the JWT, so they must never be interpolated
  * into a path unescaped — a name like `../../etc` would otherwise walk out of
  * DATA_DIR. Anything outside [A-Za-z0-9_-] is percent-escaped, which is
- * reversible and collision-free (unlike stripping).
+ * reversible and collision-free (unlike stripping). The name is canonicalised
+ * first (#445), so `Alice` and `alice` — different strings, same directory on a
+ * case-insensitive file system — can never end up as two accounts sharing one
+ * data.json.
  */
+function escapedDirName(name: string): string {
+  return encodeURIComponent(name).replace(/[.*]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
+}
+
 function userDirName(username: string): string {
-  return encodeURIComponent(username).replace(/[.*]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
+  return escapedDirName(canonicalUsername(username));
 }
 
 function userDataFile(username: string): string {
@@ -57,7 +84,11 @@ function readDataFile(file: string): AppData {
       stickers:   raw.stickers    ?? [],
     };
   } catch (e) {
-    console.error(`${file} corrupt — returning empty:`, e);
+    // The path embeds the (user-chosen) username, so it must never be the
+    // format string itself: console.error treats %s/%d/%o in its first
+    // argument as directives (CodeQL js/tainted-format-string). Pass it as an
+    // argument to a constant format instead.
+    console.error('%s corrupt — returning empty:', file, e);
     return EMPTY_DATA;
   }
 }
@@ -142,7 +173,7 @@ function writePhotoOwners(owners: Map<string, string>): void {
 
 export function recordPhotoOwner(filename: string, username: string): void {
   const owners = new Map(photoOwners());
-  owners.set(filename, username);
+  owners.set(filename, canonicalUsername(username));
   writePhotoOwners(owners);
 }
 
@@ -167,7 +198,7 @@ export function photoOwner(filename: string): string | undefined {
 export function canAccessPhoto(username: string, filename: string): boolean {
   if (isAdmin(username)) return true;
   const owner = photoOwner(filename);
-  if (owner !== undefined) return owner === username;
+  if (owner !== undefined) return sameUsername(owner, username);
   return userOwnsPhoto(username, filename);
 }
 
@@ -239,6 +270,136 @@ export function migrateGlobalDataToFirstUser(): void {
   console.log(
     `[migration] Global collection assigned to first-registered user "${owner.username}" (#87). ` +
     `Previous file kept as data.json.pre-user-isolation. Other accounts now start with an empty collection.`,
+  );
+}
+
+// ── Canonical usernames (#445) ───────────────────────────────────────────────
+
+/**
+ * Thrown by migrateUsernamesToCanonical() when existing data cannot be moved
+ * to canonical usernames without merging or overwriting accounts. Startup
+ * aborts on it: serving requests would make the collision worse (a lookup by
+ * canonical name could pick either account, and both would share one data dir).
+ */
+export class UsernameCollisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UsernameCollisionError';
+  }
+}
+
+/**
+ * One-time (idempotent) startup migration to canonical usernames (#445). Runs
+ * before every other migration and before any request is served.
+ *
+ * Before #445 usernames were case-sensitive, so `alice` and `ALICE` could both
+ * exist, and each got its own users/<name>/ directory — the same directory on a
+ * case-insensitive file system. The migration therefore first looks for
+ * collisions and refuses to start (UsernameCollisionError, listing every
+ * affected name) rather than guessing which account wins or merging them:
+ *   - two accounts whose names canonicalise to the same string;
+ *   - a legacy data dir whose canonical target already holds a data.json.
+ * Nothing is changed before all checks passed. The operator resolves it by hand
+ * (rename or delete one account in users.json, move the data dir) and restarts.
+ *
+ * Without collisions every non-canonical account is renamed to its canonical
+ * form: users.json, users/<dir>/, the keys of schedule.json, the owner values of
+ * photo_owners.json and the username of ai_jobs.json. The users.json rewrite is
+ * the last step, so a crash half way is simply resumed by the next start (a dir
+ * that is already renamed is skipped). Old JWTs keep working: lookups are
+ * case-insensitive and the auth hooks canonicalise the name they carry. The
+ * audit log is history and keeps the names as they were written.
+ */
+export function migrateUsernamesToCanonical(): void {
+  const users = readUsers();
+  if (users.length === 0) return;
+
+  const groups = new Map<string, string[]>();
+  for (const u of users) {
+    const key = canonicalUsername(u.username);
+    groups.set(key, [...(groups.get(key) ?? []), u.username]);
+  }
+  const clashes = [...groups].filter(([, names]) => names.length > 1);
+  if (clashes.length > 0) {
+    const list = clashes
+      .map(([key, names]) => `  "${key}": ${names.map((n) => JSON.stringify(n)).join(', ')}`)
+      .join('\n');
+    throw new UsernameCollisionError(
+      `[migration] Refusing to start: these usernames collide case-insensitively (#445) and would share one ` +
+      `account and data directory:\n${list}\n` +
+      `Resolve it by hand: rename or remove all but one of each group in ${USERS_FILE} (and move or delete ` +
+      `the matching directories under ${USER_DATA_DIR}), then restart. Nothing was changed.`,
+    );
+  }
+
+  const renames = users.filter((u) => u.username !== canonicalUsername(u.username));
+  if (renames.length === 0) return;
+
+  // Plan the directory moves and check them all before touching anything.
+  const entries = fs.existsSync(USER_DATA_DIR) ? new Set(fs.readdirSync(USER_DATA_DIR)) : new Set<string>();
+  type DirMove = { from: string; to: string; mode: 'rename' | 'file' };
+  const moves: DirMove[] = [];
+  const dirConflicts: string[] = [];
+  for (const u of renames) {
+    const from = escapedDirName(u.username);   // the legacy, case-preserving name
+    const to = userDirName(canonicalUsername(u.username));
+    if (from === to || !entries.has(from)) continue;   // nothing on disk, or already moved
+    if (!entries.has(to)) {
+      moves.push({ from, to, mode: 'rename' });
+    } else if (fs.existsSync(path.join(USER_DATA_DIR, to, 'data.json'))
+        && fs.existsSync(path.join(USER_DATA_DIR, from, 'data.json'))) {
+      dirConflicts.push(`  users/${from}/data.json and users/${to}/data.json`);
+    } else {
+      // The target holds only leftovers (e.g. data.json.deleted-* of a removed account).
+      moves.push({ from, to, mode: 'file' });
+    }
+  }
+  if (dirConflicts.length > 0) {
+    throw new UsernameCollisionError(
+      `[migration] Refusing to start: legacy data directories would be merged into an existing canonical one (#445):\n` +
+      `${dirConflicts.join('\n')}\nMove or delete one of each pair under ${USER_DATA_DIR}, then restart. Nothing was changed.`,
+    );
+  }
+
+  for (const m of moves) {
+    const fromPath = path.join(USER_DATA_DIR, m.from);
+    const toPath = path.join(USER_DATA_DIR, m.to);
+    if (m.mode === 'rename') {
+      // Two steps: on a case-insensitive file system Alice -> alice is a no-op
+      // (or an error) as a direct rename.
+      const tmp = `${fromPath}.canonical-${process.pid}`;
+      fs.renameSync(fromPath, tmp);
+      fs.renameSync(tmp, toPath);
+    } else {
+      const src = path.join(fromPath, 'data.json');
+      if (fs.existsSync(src)) fs.renameSync(src, path.join(toPath, 'data.json'));
+    }
+  }
+
+  // Keyed side tables follow the rename; each is a no-op once canonical.
+  const owners = photoOwners();
+  if ([...owners.values()].some((o) => o !== canonicalUsername(o))) {
+    writePhotoOwners(new Map([...owners].map(([f, o]) => [f, canonicalUsername(o)] as [string, string])));
+  }
+  const schedules = readScheduleStore();
+  if ([...schedules].some(([k, c]) => k !== canonicalUsername(k) || (c.username !== undefined && c.username !== canonicalUsername(c.username)))) {
+    const next = new Map<string, ScheduleConfig>();
+    for (const [k, c] of schedules) {
+      const key = canonicalUsername(k);
+      if (next.has(key)) continue;
+      next.set(key, { ...c, ...(c.username !== undefined ? { username: key } : {}) });
+    }
+    writeScheduleStore(next);
+  }
+  const jobs = readAiJobs();
+  if (jobs.some((j) => j.username !== canonicalUsername(j.username))) {
+    writeAiJobs(jobs.map((j) => ({ ...j, username: canonicalUsername(j.username) })));
+  }
+
+  writeUsers(users.map((u) => ({ ...u, username: canonicalUsername(u.username) })));
+  console.log(
+    `[migration] ${renames.length} username(s) converted to canonical lowercase form (#445): ` +
+    renames.map((u) => `"${u.username}" -> "${canonicalUsername(u.username)}"`).join(', '),
   );
 }
 
@@ -322,7 +483,7 @@ function writeUsers(users: User[]): void {
 }
 
 export function getUser(username: string): User | undefined {
-  return readUsers().find((u) => u.username === username);
+  return readUsers().find((u) => sameUsername(u.username, username));
 }
 
 export function getUserCount(): number {
@@ -342,7 +503,13 @@ export function getFirstUsername(): string | undefined {
 
 export function createUser(username: string, passwordHash: string, role?: UserRole): void {
   const users = readUsers();
-  users.push({ username, password_hash: passwordHash, created_at: Date.now(), ...(role ? { role } : {}) });
+  // The uniqueness constraint of the (file-based) user table (#445): callers
+  // pre-check with getUser() to answer 409, this is the backstop that makes a
+  // case-variant duplicate impossible whatever path leads here.
+  if (users.some((u) => sameUsername(u.username, username))) {
+    throw new Error('username already exists');
+  }
+  users.push({ username: canonicalUsername(username), password_hash: passwordHash, created_at: Date.now(), ...(role ? { role } : {}) });
   writeUsers(users);
 }
 
@@ -351,7 +518,7 @@ export function createUser(username: string, passwordHash: string, role?: UserRo
 // requireJwt). Returns the new version so callers don't need a second read.
 export function bumpTokenVersion(username: string): number {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return 0;
   const next = (users[idx].token_version ?? 0) + 1;
   users[idx] = { ...users[idx], token_version: next };
@@ -366,7 +533,7 @@ export function bumpTokenVersion(username: string): number {
  */
 export function updateUserEmail(username: string, email: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx >= 0) {
     const unchanged = users[idx].email === email;
     users[idx] = { ...users[idx], email };
@@ -382,7 +549,7 @@ export function updateUserEmail(username: string, email: string): void {
 /** Shallow-merges `changes` into one user; a key set to undefined is removed. */
 export function patchUser(username: string, changes: Partial<Omit<User, 'username'>>): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
   const next: User = { ...users[idx] };
   for (const [k, v] of Object.entries(changes) as [keyof User, unknown][]) {
@@ -404,7 +571,7 @@ export function findUsers(predicate: (u: User) => boolean): User[] {
  */
 export function resetPassword(username: string, passwordHash: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
   const next: User = {
     ...users[idx],
@@ -429,7 +596,7 @@ export function resetPassword(username: string, passwordHash: string): void {
  */
 export function setTotpPending(username: string, secret: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx >= 0) {
     users[idx] = { ...users[idx], totp_secret: secret, totp_enabled: false };
     writeUsers(users);
@@ -455,7 +622,7 @@ export function setTotpPending(username: string, secret: string): void {
  */
 export function enableTotp(username: string, recoveryCodeHashes: string[]): number {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return 0;
   const nextVersion = (users[idx].token_version ?? 0) + 1;
   const { totp_fail_count, totp_locked_until, ...rest } = users[idx];
@@ -478,7 +645,7 @@ export function enableTotp(username: string, recoveryCodeHashes: string[]): numb
  */
 export function disableTotp(username: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx >= 0) {
     const { totp_secret, totp_enabled, totp_last_counter, recovery_codes, totp_fail_count, totp_locked_until, ...rest } = users[idx];
     void totp_secret; void totp_enabled; void totp_last_counter; void recovery_codes;
@@ -495,7 +662,7 @@ export function disableTotp(username: string): void {
  */
 export function setRecoveryCodes(username: string, hashes: string[]): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx >= 0) {
     users[idx] = { ...users[idx], recovery_codes: hashes };
     writeUsers(users);
@@ -505,7 +672,7 @@ export function setRecoveryCodes(username: string, hashes: string[]): void {
 /** Persists the replay-guard counter after an accepted TOTP code. */
 export function updateTotpCounter(username: string, counter: number): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx >= 0) {
     users[idx] = { ...users[idx], totp_last_counter: counter };
     writeUsers(users);
@@ -519,7 +686,7 @@ export function updateTotpCounter(username: string, counter: number): void {
  */
 export function consumeRecoveryCode(username: string, code: string): boolean {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return false;
   const hashes = users[idx].recovery_codes ?? [];
   const candidate = hashRecoveryCode(code);
@@ -557,7 +724,7 @@ const TOTP_ACCOUNT_LOCKOUT_MS = 15 * 60 * 1000;
  */
 export function recordTotpFailure(username: string): number {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return 0;
   const now = Date.now();
   const user = users[idx];
@@ -579,7 +746,7 @@ export function recordTotpFailure(username: string): number {
 /** Resets the failure counter after a successful verification. */
 export function clearTotpFailures(username: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
   if (!users[idx].totp_fail_count && !users[idx].totp_locked_until) return;
   const { totp_fail_count, totp_locked_until, ...rest } = users[idx];
@@ -612,7 +779,7 @@ const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
  */
 export function recordLoginFailure(username: string): number {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return 0;
   const now = Date.now();
   const user = users[idx];
@@ -634,7 +801,7 @@ export function recordLoginFailure(username: string): number {
 /** Resets the failure counter after a successful login. */
 export function clearLoginFailures(username: string): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
   if (!users[idx].login_fail_count && !users[idx].login_locked_until) return;
   const { login_fail_count, login_locked_until, ...rest } = users[idx];
@@ -678,7 +845,7 @@ export function listUsers(): AdminUserView[] {
 
 export function setUserRole(username: string, role: UserRole): void {
   const users = readUsers();
-  const idx = users.findIndex((u) => u.username === username);
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
   users[idx] = { ...users[idx], role };
   writeUsers(users);
@@ -693,7 +860,7 @@ export function setUserRole(username: string, role: UserRole): void {
  * scheduler's config shape.
  */
 export function deleteUser(username: string): void {
-  const users = readUsers().filter((u) => u.username !== username);
+  const users = readUsers().filter((u) => !sameUsername(u.username, username));
   writeUsers(users);
   const dataFile = userDataFile(username);
   if (fs.existsSync(dataFile)) {
@@ -702,8 +869,8 @@ export function deleteUser(username: string): void {
   // Otherwise a later account registered under the same name would inherit
   // this one's photos (#352).
   const owners = photoOwners();
-  if ([...owners.values()].includes(username)) {
-    writePhotoOwners(new Map([...owners].filter(([, u]) => u !== username)));
+  if ([...owners.values()].some((o) => sameUsername(o, username))) {
+    writePhotoOwners(new Map([...owners].filter(([, u]) => !sameUsername(u, username))));
   }
 }
 
@@ -720,8 +887,8 @@ export function deleteUser(username: string): void {
  */
 export function eraseAccount(username: string): { photosDeleted: number; photosKept: number } {
   // Photos first, while the owner table still names this account.
-  const others = readUsers().map((u) => u.username).filter((u) => u !== username);
-  const owned = [...photoOwners()].filter(([, owner]) => owner === username).map(([f]) => f);
+  const others = readUsers().map((u) => u.username).filter((u) => !sameUsername(u, username));
+  const owned = [...photoOwners()].filter(([, owner]) => sameUsername(owner, username)).map(([f]) => f);
   const photosRoot = path.resolve(PHOTOS_DIR);
   let photosDeleted = 0;
   let photosKept = 0;
@@ -806,7 +973,7 @@ export function migrateFirstUserToAdmin(): void {
   if (users.length === 0) return;
   if (users.some((u) => u.role === 'admin')) return;
   const owner = users.reduce((a, b) => (a.created_at <= b.created_at ? a : b));
-  const idx = users.findIndex((u) => u.username === owner.username);
+  const idx = users.findIndex((u) => sameUsername(u.username, owner.username));
   users[idx] = { ...users[idx], role: 'admin' };
   writeUsers(users);
   console.log(`[migration] "${owner.username}" (first-registered user) promoted to admin (#173).`);
@@ -1015,12 +1182,13 @@ function writeScheduleStore(store: Map<string, ScheduleConfig>): void {
 }
 
 export function getScheduleConfig(username: string): ScheduleConfig | null {
-  return readScheduleStore().get(username) ?? null;
+  return readScheduleStore().get(canonicalUsername(username)) ?? null;
 }
 
 export function setScheduleConfig(username: string, config: ScheduleConfig): void {
   const store = readScheduleStore();
-  store.set(username, { ...config, username });
+  const key = canonicalUsername(username);
+  store.set(key, { ...config, username: key });
   writeScheduleStore(store);
 }
 
@@ -1031,16 +1199,17 @@ export function setScheduleConfig(username: string, config: ScheduleConfig): voi
  */
 export function markScheduleSent(username: string, at: number): void {
   const store = readScheduleStore();
-  const current = store.get(username);
+  const key = canonicalUsername(username);
+  const current = store.get(key);
   if (!current) return;
-  store.set(username, { ...current, lastSentAt: at });
+  store.set(key, { ...current, lastSentAt: at });
   writeScheduleStore(store);
 }
 
 /** Drops a user's schedule; DELETE /api/admin/users/:username calls this. */
 export function deleteScheduleConfig(username: string): void {
   const store = readScheduleStore();
-  if (!store.delete(username)) return;
+  if (!store.delete(canonicalUsername(username))) return;
   writeScheduleStore(store);
 }
 
@@ -1077,12 +1246,12 @@ export function migrateScheduleToPerUser(): void {
   // A schedule whose owner no longer exists is dropped rather than migrated:
   // the report would render an empty collection to a stale address.
   if (getUser(owner)) {
-    store.set(owner, {
+    store.set(canonicalUsername(owner), {
       enabled: !!old.enabled,
       frequency: old.frequency === 'monthly' ? 'monthly' : 'weekly',
       toEmail: typeof old.toEmail === 'string' ? old.toEmail : '',
       lastSentAt: typeof old.lastSentAt === 'number' ? old.lastSentAt : undefined,
-      username: owner,
+      username: canonicalUsername(owner),
     });
   }
   writeScheduleStore(store);
@@ -1203,7 +1372,7 @@ export function addAiJob(job: AiJob): void {
 /** Drops every job of one account; they carry its inputs and results (#324 S21). */
 export function deleteAiJobsOf(username: string): void {
   const jobs = readAiJobs();
-  const kept = jobs.filter((j) => j.username !== username);
+  const kept = jobs.filter((j) => !sameUsername(j.username, username));
   if (kept.length !== jobs.length) writeAiJobs(kept);
 }
 
