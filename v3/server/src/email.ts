@@ -33,7 +33,12 @@ export function isEmailConfigured(): boolean {
   return getSmtpConfig() !== null;
 }
 
-export async function sendHtmlEmail(to: string, subject: string, html: string): Promise<void> {
+/**
+ * `headers` are extra message headers; the report mails use them for `List-Unsubscribe` and
+ * `List-Unsubscribe-Post` (RFC 8058, #457). Names and values are built by the caller from
+ * server-side data only, never from request input.
+ */
+export async function sendHtmlEmail(to: string, subject: string, html: string, headers?: Record<string, string>): Promise<void> {
   const cfg = getSmtpConfig();
   if (!cfg) throw new Error('E-Mail nicht konfiguriert. Bitte SMTP unter Admin → Server-Einstellungen oder als Umgebungsvariablen (SMTP_HOST, SMTP_USER, SMTP_PASS) setzen.');
 
@@ -49,6 +54,7 @@ export async function sendHtmlEmail(to: string, subject: string, html: string): 
     to,
     subject,
     html,
+    ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
   });
 }
 

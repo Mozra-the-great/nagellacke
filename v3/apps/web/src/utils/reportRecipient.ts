@@ -14,6 +14,10 @@ export interface RecipientState {
   via?: 'account' | 'link';
   /** Set while pending, once a confirmation mail for the current address has gone out. */
   confirmationSentAt?: number;
+  /** The recipient used the unsubscribe link in a report mail (#457); the schedule is paused. */
+  unsubscribedAt?: number;
+  /** That address opted out and may not be asked again: no resend, no switching back on. */
+  blocked?: boolean;
 }
 
 /** What POST /api/reports/schedule says happened to the confirmation mail. */
@@ -46,6 +50,13 @@ export function recipientNotice(
   const edited = editedEmail.trim();
   if (edited && ownVerifiedEmail && same(edited, ownVerifiedEmail) && (!savedEmail.trim() || !same(savedEmail, edited))) {
     return { tone: 'ok', text: 'Das ist die verifizierte Adresse deines Kontos; sie braucht keine Bestätigung.', canResend: false };
+  }
+  if (state?.blocked && savedEmail.trim() && (!editedEmail.trim() || same(savedEmail, editedEmail))) {
+    return {
+      tone: 'warn',
+      text: `${savedEmail.trim()} hat die Berichte abbestellt und bekommt keine weiteren Mails von diesem Konto, auch keine Bestätigungsmail. Trage eine andere Adresse ein.`,
+      canResend: false,
+    };
   }
   if (!state || state.status === 'none' || !savedEmail.trim()) {
     return editedEmail.trim()
@@ -84,6 +95,21 @@ export function recipientNotice(
   };
 }
 
+/**
+ * The notice for the account owner after a recipient used the unsubscribe link in a report mail
+ * (#457): the schedule is paused, and what that means for this address. Null while nothing happened.
+ */
+export function unsubscribeNotice(state: RecipientState | null, savedEmail: string): { tone: 'warn'; text: string } | null {
+  if (!state?.unsubscribedAt || !savedEmail.trim()) return null;
+  const when = new Date(state.unsubscribedAt).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+  return {
+    tone: 'warn',
+    text: state.blocked
+      ? `Der automatische Zeitplan ist pausiert: ${savedEmail.trim()} hat die Berichte am ${when} über den Abmeldelink abbestellt. Die Bestätigung ist entfernt, und die Adresse wird nicht noch einmal angeschrieben. Wähle eine andere Adresse, wenn du weiter Berichte senden willst.`
+      : `Der automatische Zeitplan ist pausiert: Die Berichte an ${savedEmail.trim()} wurden am ${when} über den Abmeldelink in einer Berichtsmail beendet. Schalte den Zeitplan wieder ein, wenn du sie doch haben willst.`,
+  };
+}
+
 /** What to tell the user right after saving, from the server's `confirmation` answer. */
 export function confirmationMessage(outcome: ConfirmationOutcome | undefined, email: string): { tone: 'ok' | 'warn'; text: string } | null {
   switch (outcome) {
@@ -115,6 +141,18 @@ export async function confirmReportRecipient(token: string, base: string): Promi
     const data = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(data.error ?? `Fehler ${res.status}`);
   }
+}
+
+/** The recipient presses the button on the unsubscribe page (no session needed). Resolves to the address. */
+export async function unsubscribeFromReports(token: string, base: string): Promise<string> {
+  const res = await fetch(`${base}/api/reports/unsubscribe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json().catch(() => ({})) as { error?: string; email?: string };
+  if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+  return data.email ?? '';
 }
 
 /** "Bestätigungsmail erneut senden". */

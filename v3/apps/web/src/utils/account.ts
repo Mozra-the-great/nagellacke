@@ -5,13 +5,15 @@ import { serverBase, serverSession } from './serverBase';
  * hash routes of this app; the token travels in the fragment, which browsers never
  * send to any server, so it stays out of access logs and Referer headers.
  */
-export type AccountRoute = { kind: 'reset' | 'verify' | 'recipient'; token: string };
+export type AccountRoute = { kind: 'reset' | 'verify' | 'recipient' | 'unsubscribe'; token: string };
 
 const ROUTES: Record<string, AccountRoute['kind']> = {
   '#/passwort-neu': 'reset',
   '#/email-bestaetigen': 'verify',
   // The recipient of a scheduled report confirms their address (#449).
   '#/bericht-bestaetigen': 'recipient',
+  // The recipient of a report mail stops the reports with the link in its footer (#457).
+  '#/bericht-abbestellen': 'unsubscribe',
 };
 
 export function accountRouteForHash(hash: string): AccountRoute | null {

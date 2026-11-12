@@ -69,6 +69,8 @@ export function generateReportHtml(
   ref: Date,
   baseUrl: string,
   signPhoto?: (filename: string) => string,
+  /** Signed one-click unsubscribe link for the footer (#457); set for every report that is mailed. */
+  unsubscribeUrl?: string,
 ): string {
   const { start, end, label } = getPeriodBounds(period, ref);
   const photoSrc: PhotoSrc = (filename) => {
@@ -266,6 +268,7 @@ export function generateReportHtml(
   <div style="text-align:center;padding:32px;background:#2d1b2e;color:rgba(255,255,255,.5);font-size:12px">
     Erstellt am ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' })} · Nagellacke
     ${baseUrl ? `<br><a href="${escHtml(baseUrl)}" style="color:#f48fb1;text-decoration:none" class="app-link">App öffnen</a>` : ''}
+    ${unsubscribeUrl ? `<br><span style="display:inline-block;margin-top:10px">Diese Berichte nicht mehr erhalten? <a href="${escHtml(unsubscribeUrl)}" style="color:#f48fb1" class="app-link">Abbestellen</a></span>` : ''}
   </div>
 </body>
 </html>`;

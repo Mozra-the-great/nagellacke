@@ -78,6 +78,7 @@ export function reportRecipientMail(
       `${baseUrl}/#/bericht-bestaetigen?token=${token}`,
       'Ja, Berichte an diese Adresse senden',
       'Ohne deine Bestätigung wird nichts an diese Adresse gesendet; wenn du die Mail nicht erwartet hast, ignoriere sie einfach. '
+      + 'Jeder Bericht enthält unten einen Link zum Abbestellen. '
       + 'Gespeichert wird nur deine E-Mail-Adresse, und nur zum Versand dieser Berichte. '
       + `Verantwortlich ist der Betreiber von ${appName}; Angaben zum Datenschutz stehen unter ${baseUrl}/#/datenschutz.`,
     ),

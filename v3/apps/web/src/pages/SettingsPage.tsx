@@ -20,7 +20,7 @@ import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
-import { recipientNotice, confirmationMessage, resendRecipientConfirmation, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
+import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
@@ -867,6 +867,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     sendTargets, savedAccountEmail ?? '', emailVerified, scheduleRecipient, scheduleSavedEmail,
   );
 
+  const unsubscribeInfo = unsubscribeNotice(scheduleRecipient, scheduleSavedEmail);
+
   const recipientInfo = recipientNotice(
     scheduleRecipient, scheduleSavedEmail, scheduleEmail, confirmationAvailable,
     emailVerified === true ? savedAccountEmail ?? '' : '',
@@ -1329,7 +1331,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
             <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', marginBottom: 12 }}>Automatischer Zeitplan</h3>
             <p className={styles.fieldHelpText} style={{ marginBottom: 12 }}>
               Wöchentlich: jeden Montag 08:00 Uhr (Vorwoche). Monatlich: 1. des Monats 08:00 Uhr (Vormonat).
+              Jede Berichtsmail enthält einen Link, mit dem der Empfänger sie abbestellen kann.
             </p>
+
+            {/* The recipient stopped the reports with the unsubscribe link in a mail (#457). Shown whether or not the schedule is switched on. */}
+            <div role="status" aria-live="polite" aria-atomic="true" data-testid="unsubscribe-notice">
+              {unsubscribeInfo && (
+                <div className={styles.warningBanner} style={{ marginBottom: 12 }}>{unsubscribeInfo.text}</div>
+              )}
+            </div>
 
             <label className={styles.field}>
               <span>Automatisch senden</span>
