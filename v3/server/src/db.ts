@@ -1152,6 +1152,15 @@ export interface ScheduleConfig {
   /** Timestamps feeding the 24 h rate limits (reportRecipient.ts); old entries are pruned on write. */
   recipientChangesAt?: number[];
   confirmMailsAt?: number[];
+  /*
+   * Unsubscribe (#457, reportUnsubscribe.ts). A recipient who used the link in a report mail
+   * is paused and remembered here (lowercased, newest last, bounded), so the owner cannot ask
+   * the same address again or confirm it with a stale link. Never holds the account's own
+   * verified address.
+   */
+  unsubscribedEmails?: string[];
+  /** The latest unsubscribe that hit the current recipient; Settings shows it as a notice to the owner. */
+  lastUnsubscribe?: { email: string; at: number };
 }
 
 /**

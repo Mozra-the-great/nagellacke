@@ -57,6 +57,9 @@ import {
   AddressThrottle, adHocTargets, applyConfirmation, checkChangeLimit, checkMailLimit, decideAdHocTarget, isRecipientConfirmed, issueConfirmation,
   LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
 } from './reportRecipient';
+import {
+  applyUnsubscribe, BLOCKED_MESSAGE, isAddressBlocked, unsubscribeLinks, verifyUnsubscribeToken, type UnsubscribeLinks,
+} from './reportUnsubscribe';
 import { buildLoggerOptions } from './logRedact';
 import { stripImageMetadata, InvalidImageError } from './imageMeta';
 import { stripStoredPhotos } from './photoMigration';
@@ -193,6 +196,14 @@ const JWT_SECRET = loadOrCreateSecret();
  */
 function appBaseUrl(): string {
   return (getServerSettings().appUrl || process.env.APP_URL || '').replace(/\/$/, '');
+}
+
+/**
+ * Signed unsubscribe link and RFC 8058 headers for a report mail to the address (#457), or null
+ * without an App-URL. Built from the configured App-URL only, never from request data.
+ */
+function reportUnsubscribeLinks(username: string, address: string): UnsubscribeLinks | null {
+  return unsubscribeLinks(appBaseUrl(), JWT_SECRET, canonicalUsername(username), address);
 }
 
 // users.json already holds scrypt password hashes and, as of this PR, TOTP
@@ -1889,23 +1900,30 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const user = getUser(username);
     const decision = decideAdHocTarget(schedule, user, requested);
     if (!decision.allowed) {
+      // An address that opted out says so (#457), instead of "not confirmed yet".
+      const optedOut = isAddressBlocked(schedule, user, requested);
       return reply.code(403).send({
-        error: decision.message,
+        error: optedOut ? BLOCKED_MESSAGE : decision.message,
         code: 'recipient-not-allowed',
-        reason: decision.reason,
+        reason: optedOut ? 'recipient-unsubscribed' : decision.reason,
         allowed: adHocTargets(schedule, user).map((t) => t.email),
       });
     }
     const toEmail = decision.target.email;
+    // Like every report mail it carries the unsubscribe link (#457). A third party is not mailed without it.
+    const unsubscribe = reportUnsubscribeLinks(username, toEmail);
+    if (!unsubscribe && decision.target.kind === 'recipient') {
+      return reply.code(503).send({ error: 'Die App-URL des Servers fehlt, daher kann der Bericht keinen Abmeldelink enthalten. Bitte unter Admin → Server-Einstellungen setzen.' });
+    }
     const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username));
+    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username), unsubscribe?.pageUrl);
     try {
-      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
     } catch (e: unknown) {
       request.log.error({ err: e }, '[reports] Failed to send email');
       return reply.code(502).send({ error: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Konfiguration prüfen.' });
@@ -1939,6 +1957,11 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
         // Set only while pending and once a mail for the current address has gone out;
         // the UI says "sent to ..." only then.
         ...(status === 'pending' && cfg.confirmSentAt ? { confirmationSentAt: cfg.confirmSentAt } : {}),
+        // The recipient used the unsubscribe link (#457): the owner is told here. `blocked`: that address
+        // may not be asked again, so the UI offers no resend.
+        ...(cfg.lastUnsubscribe && normalizeEmail(cfg.lastUnsubscribe.email) === normalizeEmail(cfg.toEmail) && !cfg.enabled
+          ? { unsubscribedAt: cfg.lastUnsubscribe.at } : {}),
+        ...(isAddressBlocked(cfg, user, cfg.toEmail) ? { blocked: true } : {}),
       },
     };
   }
@@ -2000,6 +2023,10 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const current = getScheduleConfig(username);
     const address = toEmail || current?.toEmail || '';
     const changed = normalizeEmail(address) !== normalizeEmail(current?.toEmail ?? '');
+    // An address that used the unsubscribe link in a report mail (#457) is not switched back on.
+    if (body.enabled && isAddressBlocked(current, getUser(username), address)) {
+      return reply.code(409).send({ error: BLOCKED_MESSAGE, code: 'recipient-unsubscribed' });
+    }
 
     let config: ScheduleConfig = {
       ...current,
@@ -2011,6 +2038,9 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       // per-user since #87, so the hourly job needs to know which one.
       username,
     };
+    // The "recipient unsubscribed" notice is about the last pause; saving the schedule on again (own
+    // address) or pointing it elsewhere ends it.
+    if (config.enabled || changed) config.lastUnsubscribe = undefined;
     if (changed) {
       const blocked = checkChangeLimit(current, now);
       if (blocked) return reply.code(429).send({ error: LIMIT_MESSAGES[blocked] });
@@ -2055,6 +2085,9 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(400).send({ error: 'Keine Empfängeradresse hinterlegt' });
     }
     if (recipientStatus(cfg, getUser(username)).status === 'confirmed') return { ok: true, alreadyConfirmed: true };
+    if (isAddressBlocked(cfg, getUser(username), cfg.toEmail)) {
+      return reply.code(409).send({ error: BLOCKED_MESSAGE, code: 'recipient-unsubscribed' });
+    }
     if (!accountMailAvailable()) {
       return reply.code(503).send({ error: 'Dieser Server kann keine E-Mails versenden' });
     }
@@ -2076,10 +2109,56 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const invalid = () => reply.code(400).send({ error: 'Der Link ist ungültig oder abgelaufen.' });
     const payload = verifyRecipientToken(token, JWT_SECRET);
     if (!payload) return invalid();
-    const confirmed = applyConfirmation(getScheduleConfig(payload.u), payload, Date.now());
+    const schedule = getScheduleConfig(payload.u);
+    // A confirmation mail that was already out when the recipient unsubscribed cannot undo that (#457).
+    if (isAddressBlocked(schedule, getUser(payload.u), payload.e)) return invalid();
+    const confirmed = applyConfirmation(schedule, payload, Date.now());
     if (!confirmed) return invalid();
     setScheduleConfig(payload.u, confirmed);
     return { ok: true };
+  });
+
+  // ── Unsubscribe from report mails (#457, RFC 8058) ────────────────────────────────
+  //
+  // Public, like the confirmation: the link is opened by the recipient, who has no account. The
+  // signed token alone names schedule and address (reportUnsubscribe.ts). One handler for the
+  // web page (JSON body) and for mail clients, which POST `List-Unsubscribe=One-Click` as a
+  // form to the URL from the List-Unsubscribe header, with the token in the query string (it
+  // is masked in the request log by logRedact). It is its own plugin so the form parser exists
+  // for this route only, not for the JSON API. A valid token always answers 200, however often
+  // it is used: the first call stops the reports, later calls change nothing.
+  await app.register(async (scope) => {
+    scope.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 4096 }, (_request, body, done) => {
+      done(null, Object.fromEntries(new URLSearchParams(typeof body === 'string' ? body : body.toString('utf-8'))));
+    });
+
+    const tokenFrom = (request: FastifyRequest): unknown => {
+      const fromBody = (request.body ?? {}) as { token?: unknown };
+      const fromQuery = (request.query ?? {}) as { token?: unknown };
+      return fromBody.token ?? fromQuery.token;
+    };
+
+    scope.post('/api/reports/unsubscribe', {
+      // Mail providers post for many users from shared addresses, hence a generous limit.
+      config: { rateLimit: { max: 60, timeWindow: '15 minutes' } },
+    }, async (request, reply) => {
+      const payload = verifyUnsubscribeToken(tokenFrom(request), JWT_SECRET);
+      if (!payload) return reply.code(400).send({ error: 'Der Link ist ungültig.' });
+      const result = applyUnsubscribe(getScheduleConfig(payload.u), getUser(payload.u), payload, Date.now());
+      if (result?.changed) setScheduleConfig(payload.u, result.cfg);
+      return { ok: true, email: payload.e };
+    });
+
+    // A client without one-click support opens the header URL in a browser: send it to the page.
+    scope.get('/api/reports/unsubscribe', {
+      config: { rateLimit: { max: 60, timeWindow: '15 minutes' } },
+    }, async (request, reply) => {
+      const token = tokenFrom(request);
+      if (!verifyUnsubscribeToken(token, JWT_SECRET) || typeof token !== 'string' || !appBaseUrl()) {
+        return reply.code(400).send({ error: 'Der Link ist ungültig.' });
+      }
+      return reply.redirect(`${appBaseUrl()}/#/bericht-abbestellen?token=${token}`, 302);
+    });
   });
 
   /**
@@ -2983,66 +3062,87 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
   return app;
 }
 
+/** Accounts already warned about an unconfirmed recipient, so the log says it once. */
+const unconfirmedWarned = new Set<string>();
+const noLinkWarned = new Set<string>();
+
+/**
+ * The hourly report job. Schedules are per-user since #353 - each is independent, so one
+ * user's config being broken (bad email, send failure) must not block the rest. `at` is
+ * injectable so the tests can run it at "Monday 08:00 UTC".
+ *
+ * Every mail carries the unsubscribe link and headers (#457). A third-party recipient is
+ * never mailed without them: if the server has lost its App-URL the report waits (the
+ * owner's own address can still be mailed, they manage it in Settings).
+ */
+export async function runReportSchedules(at: Date = new Date()): Promise<void> {
+  if (!isEmailConfigured()) return;
+
+  for (const [reportUser, cfg] of getAllScheduleConfigs()) {
+    if (!cfg.enabled || !cfg.toEmail) continue;
+
+    const hour = at.getUTCHours();
+    const dayOfWeek = at.getUTCDay(); // 0=Sun, 1=Mon
+    const dayOfMonth = at.getUTCDate();
+
+    const shouldSend = cfg.frequency === 'weekly'
+      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+
+    if (!shouldSend) continue;
+
+    // Double opt-in (#449): a recipient nobody has confirmed gets nothing.
+    const reportAccount = getUser(reportUser);
+    if (!isRecipientConfirmed(cfg, reportAccount)) {
+      if (!unconfirmedWarned.has(reportUser)) {
+        unconfirmedWarned.add(reportUser);
+        console.warn(`[reports] Schedule of "${reportUser}" skipped: its recipient is not confirmed (#449).`);
+      }
+      continue;
+    }
+
+    // Avoid sending twice in the same hour window
+    if (cfg.lastSentAt) {
+      const hoursSinceLast = (at.getTime() - cfg.lastSentAt) / (1000 * 60 * 60);
+      if (hoursSinceLast < 2) continue;
+    }
+
+    const unsubscribe = reportUnsubscribeLinks(reportUser, cfg.toEmail);
+    if (!unsubscribe && recipientStatus(cfg, reportAccount).via !== 'account') {
+      if (!noLinkWarned.has(reportUser)) {
+        noLinkWarned.add(reportUser);
+        console.warn(`[reports] Schedule of "${reportUser}" skipped: no App-URL, so the mail could not carry an unsubscribe link (#457).`);
+      }
+      continue;
+    }
+
+    const refDate = new Date(at);
+    if (cfg.frequency === 'weekly') {
+      refDate.setUTCDate(at.getUTCDate() - 7);
+    } else {
+      refDate.setUTCMonth(at.getUTCMonth() - 1);
+    }
+
+    try {
+      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+      const baseUrl = appBaseUrl() || `http://localhost:${PORT}`;
+      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser), unsubscribe?.pageUrl);
+      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
+      markScheduleSent(reportUser, at.getTime());
+      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
+    } catch (e: unknown) {
+      console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 async function main() {
   const app = await buildApp();
 
   // ── Report scheduler ──────────────────────────────────────────────────────────
-  // Checks every hour whether any user's scheduled report should be sent.
-  // Schedules are per-user since #353 — each is independent, so one user's
-  // config being broken (bad email, send failure) must not block the rest.
-  const unconfirmedWarned = new Set<string>();
-  setInterval(async () => {
-    if (!isEmailConfigured()) return;
-
-    for (const [reportUser, cfg] of getAllScheduleConfigs()) {
-      if (!cfg.enabled || !cfg.toEmail) continue;
-
-      const now = new Date();
-      const hour = now.getUTCHours();
-      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
-      const dayOfMonth = now.getUTCDate();
-
-      const shouldSend = cfg.frequency === 'weekly'
-        ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
-        : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
-
-      if (!shouldSend) continue;
-
-      // Double opt-in (#449): a recipient nobody has confirmed gets nothing.
-      if (!isRecipientConfirmed(cfg, getUser(reportUser))) {
-        if (!unconfirmedWarned.has(reportUser)) {
-          unconfirmedWarned.add(reportUser);
-          console.warn(`[reports] Schedule of "${reportUser}" skipped: its recipient is not confirmed (#449).`);
-        }
-        continue;
-      }
-
-      // Avoid sending twice in the same hour window
-      if (cfg.lastSentAt) {
-        const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
-        if (hoursSinceLast < 2) continue;
-      }
-
-      const refDate = new Date(now);
-      if (cfg.frequency === 'weekly') {
-        refDate.setUTCDate(now.getUTCDate() - 7);
-      } else {
-        refDate.setUTCMonth(now.getUTCMonth() - 1);
-      }
-
-      try {
-        const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
-        const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-        const baseUrl = appBaseUrl() || `http://localhost:${PORT}`;
-        const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
-        await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-        markScheduleSent(reportUser, Date.now());
-        console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
-      } catch (e: unknown) {
-        console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
-      }
-    }
-  }, 60 * 60 * 1000); // every hour
+  // Checks every hour whether any user's scheduled report should be sent (runReportSchedules).
+  setInterval(() => { void runReportSchedules(); }, 60 * 60 * 1000); // every hour
 
   // ── AI job queue safety net ────────────────────────────────────────────────
   // Jobs are normally picked up immediately (see setImmediate calls above); this
