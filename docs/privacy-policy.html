@@ -1,19 +1,38 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Datenschutzerklärung – Nagellacke</title>
-  <link rel="stylesheet" href="assets/sketch.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-en="Privacy policy – Nagellacke">Datenschutzerklärung – Nagellacke</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F6F0E0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#254538" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/Figtree-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.classList.add('js');</script>
+<script src="assets/site.js" defer></script>
 </head>
 <body>
+<a class="skip-link" href="#main" data-en="Skip to content">Zum Inhalt springen</a>
 
-<header class="legal-head">
-  <a href="index.html" class="wordmark">Nagellacke</a>
-  <a href="index.html" class="back-link">← Zurück zur Startseite</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="wordmark" href="index.html">Nagellacke</a>
+    <nav class="site-nav" aria-label="Hauptnavigation" data-en-aria-label="Main navigation">
+      <a class="nl-link" href="index.html" data-en="Back to home page">Zurück zur Startseite</a>
+      <div class="lang-toggle" role="group" aria-label="Sprache wählen / Choose language">
+        <button class="fd-btn fd-btn-sm lang-btn" type="button" data-lang="de" lang="de" aria-pressed="true" aria-label="Deutsch">DE</button>
+        <button class="fd-btn fd-btn-sm lang-btn" type="button" data-lang="en" lang="en" aria-pressed="false" aria-label="English">EN</button>
+      </div>
+    </nav>
+  </div>
 </header>
 
-<main class="legal paper-card">
+<main id="main" class="wrap legal-main" tabindex="-1">
+<article class="legal">
+
+<div data-lang-block="de" lang="de">
 
 <h1>Datenschutzerklärung – Nagellacke</h1>
 <p><strong>Zuletzt aktualisiert:</strong> Juli 2026</p>
@@ -76,16 +95,86 @@
 
 <h2>7. Kontakt</h2>
 <p>
-  Bei Fragen zum Datenschutz wenden Sie sich an:<br />
-  <strong>Mozra-the-great</strong><br />
+  Bei Fragen zum Datenschutz wenden Sie sich an:<br>
+  <strong>Mozra-the-great</strong><br>
   E-Mail: <a href="mailto:nagellacke.dev@gmail.com">nagellacke.dev@gmail.com</a>
 </p>
 
-</main>
+</div>
 
-<footer class="legal-foot">
-  <a href="index.html" class="back-link">← Zurück zur Startseite</a>
-</footer>
+<div data-lang-block="en" lang="en">
+
+<h1>Privacy policy – Nagellacke</h1>
+<p><strong>Last updated:</strong> July 2026</p>
+
+<h2>1. Overview</h2>
+<p>
+  The <em>Nagellacke</em> app is a personal nail polish manager for Android.
+  It was developed by Mozra-the-great as a private, self-hosted application.
+  This privacy policy explains which data the app processes and how it is used.
+</p>
+
+<h2>2. Data collected</h2>
+
+<h3>2.1 Data stored locally on the device</h3>
+<ul>
+  <li><strong>Polish collection:</strong> Entries (name, brand, color, notes, images) are stored exclusively in the app’s local database.</li>
+  <li><strong>Photos:</strong> Pictures of manicures that are taken with the camera or imported from the gallery are stored locally and are only accessible within the app.</li>
+  <li><strong>Sync credentials:</strong> If the optional sync feature is enabled, credentials (e.g. OAuth token, server URL) are stored encrypted on the device (<code>androidx.security.crypto</code> / EncryptedSharedPreferences).</li>
+</ul>
+
+<h3>2.2 Camera access</h3>
+<p>
+  The app requests the <code>CAMERA</code> permission in order to take photos of nail polishes and manicures
+  directly in the app. The camera is only activated at the user’s explicit request.
+  No camera images are stored or transmitted without consent.
+</p>
+
+<h2>3. Optional sync</h2>
+<p>
+  The app offers a voluntary sync feature with services of your own choosing:
+</p>
+<ul>
+  <li>Nextcloud</li>
+  <li>Dropbox</li>
+  <li>Google Drive</li>
+  <li>OneDrive</li>
+  <li>Your own server (self-hosted Nagellacke backend)</li>
+</ul>
+<p>
+  When sync is enabled, polish entries and photos are transmitted to the chosen service.
+  The transmission takes place exclusively at the user’s initiative.
+  The operator of the app has no access to this data.
+  The privacy terms of the respective service provider apply.
+</p>
+
+<h2>4. No disclosure to third parties</h2>
+<p>
+  The app does not transmit any data to third parties. No analytics, tracking or advertising services are used.
+</p>
+
+<h2>5. No location data</h2>
+<p>The app does not access the device’s location.</p>
+
+<h2>6. Deleting data</h2>
+<p>
+  All locally stored data can be removed at any time by uninstalling the app or via the
+  Android settings (App → Clear data). Data stored with sync services has to be deleted
+  directly with the respective service.
+</p>
+
+<h2>7. Contact</h2>
+<p>
+  If you have questions about data protection, please contact:<br>
+  <strong>Mozra-the-great</strong><br>
+  Email: <a href="mailto:nagellacke.dev@gmail.com">nagellacke.dev@gmail.com</a>
+</p>
+
+</div>
+
+</article>
+<p class="legal-back"><a class="fd-btn" href="index.html" data-en="Back to home page">Zurück zur Startseite</a></p>
+</main>
 
 </body>
 </html>
