@@ -23,6 +23,10 @@ import type { ScheduleConfig, User } from './db';
  * mail goes out, so only the newest link can be used and a link for an address the
  * user has since replaced is dead.
  *
+ * The ad-hoc send ("Jetzt per E-Mail senden", `POST /api/reports/send`, #456) follows the
+ * same rule: it mails only the account's own verified address or the currently confirmed
+ * recipient (`adHocTargets`), never an address the user merely typed.
+ *
  * Limits (all enforced server-side, per account unless noted):
  *  - recipient changes: at most MAX_RECIPIENT_CHANGES_PER_DAY in 24 h;
  *  - confirmation mails: at most MAX_CONFIRM_MAILS_PER_DAY in 24 h and one per
@@ -204,4 +208,60 @@ export function applyConfirmation(cfg: ScheduleConfig | null, payload: Recipient
   if (normalizeEmail(cfg.toEmail) !== payload.e) return null;
   if ((cfg.confirmSeq ?? 0) !== payload.c) return null;
   return { ...cfg, confirmedEmail: payload.e, confirmedAt: now };
+}
+
+// ── Ad-hoc send (#456) ────────────────────────────────────────────────────────
+
+export interface AdHocTarget {
+  /** The address as stored; this is the one the mail goes to. */
+  email: string;
+  /** The account's own verified address, or the recipient confirmed by link. */
+  kind: 'account' | 'recipient';
+}
+
+/**
+ * Where an immediate report may go: the account's own verified address and, when it is a
+ * different one, the schedule's recipient if (and only if) it is confirmed right now. A
+ * pending or replaced recipient is not in the list, and neither is an unverified own address.
+ */
+export function adHocTargets(cfg: ScheduleConfig | null, user: Pick<User, 'email' | 'email_verified'> | undefined | null): AdHocTarget[] {
+  const targets: AdHocTarget[] = [];
+  if (user?.email_verified && user.email) targets.push({ email: user.email, kind: 'account' });
+  if (cfg?.toEmail && recipientStatus(cfg, user).status === 'confirmed'
+    && !targets.some((t) => normalizeEmail(t.email) === normalizeEmail(cfg.toEmail))) {
+    targets.push({ email: cfg.toEmail, kind: 'recipient' });
+  }
+  return targets;
+}
+
+export type AdHocDenial = 'recipient-pending' | 'own-unverified' | 'not-allowed';
+
+export type AdHocDecision =
+  | { allowed: true; target: AdHocTarget }
+  | { allowed: false; reason: AdHocDenial; message: string };
+
+/** Whether `requested` may get an ad-hoc report, and if not, the most helpful reason why. */
+export function decideAdHocTarget(
+  cfg: ScheduleConfig | null, user: Pick<User, 'email' | 'email_verified'> | undefined | null, requested: string,
+): AdHocDecision {
+  const wanted = normalizeEmail(requested);
+  const hit = adHocTargets(cfg, user).find((t) => normalizeEmail(t.email) === wanted);
+  if (hit) return { allowed: true, target: hit };
+  if (cfg?.toEmail && normalizeEmail(cfg.toEmail) === wanted) {
+    return {
+      allowed: false, reason: 'recipient-pending',
+      message: 'Diese Adresse ist als Berichtsempfänger noch nicht bestätigt. Der Empfänger muss zuerst den Link in der Bestätigungsmail öffnen (Einstellungen → Berichte → Automatischer Zeitplan).',
+    };
+  }
+  if (user?.email && !user.email_verified && normalizeEmail(user.email) === wanted) {
+    return {
+      allowed: false, reason: 'own-unverified',
+      message: 'Die Adresse deines Kontos ist noch nicht verifiziert. Bestätige sie über den Link in der Verifizierungsmail (Einstellungen → Konto).',
+    };
+  }
+  return {
+    allowed: false, reason: 'not-allowed',
+    message: 'Berichte können nur an die verifizierte Adresse deines Kontos oder an den bestätigten Empfänger deines Zeitplans gesendet werden. '
+      + 'Soll der Bericht an eine andere Adresse gehen, trage sie im automatischen Zeitplan ein: Der Besitzer bekommt dann eine Bestätigungsmail.',
+  };
 }

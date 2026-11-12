@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { confirmationMessage, recipientNotice } from './reportRecipient';
+import { confirmationMessage, recipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from './reportRecipient';
+import type { SendTarget } from './reportRecipient';
 import { accountRouteForHash } from './account';
 
 /** #449: what the settings page tells the user about the report recipient's confirmation. */
@@ -88,5 +89,47 @@ describe('the confirmation link route', () => {
   it('still opens the page for a link without a token, and ignores near misses', () => {
     expect(accountRouteForHash('#/bericht-bestaetigen')).toEqual({ kind: 'recipient', token: '' });
     expect(accountRouteForHash('#/bericht-bestaetigen-x?token=a')).toBeNull();
+  });
+});
+
+/** #456: which addresses "Jetzt per E-Mail senden" offers, and what it says when there are none. */
+describe('send targets', () => {
+  const own: SendTarget = { email: 'anna@example.org', kind: 'account' };
+  const friend: SendTarget = { email: 'friend@example.org', kind: 'recipient' };
+
+  it('labels each target by why it is allowed', () => {
+    expect(sendTargetLabel(own)).toContain('Konto-Adresse');
+    expect(sendTargetLabel(friend)).toContain('bestätigter Empfänger');
+    expect(sendTargetLabel(friend)).toContain('friend@example.org');
+  });
+
+  it('keeps a still-allowed choice, otherwise falls back to the first target or nothing', () => {
+    expect(pickSendTarget([own, friend], 'FRIEND@example.org')).toBe('friend@example.org');
+    expect(pickSendTarget([own, friend], 'gone@example.org')).toBe('anna@example.org');
+    expect(pickSendTarget([], 'anna@example.org')).toBe('');
+  });
+
+  it('says nothing until the list is loaded', () => {
+    expect(sendTargetsNotice(null, '', null, null, '')).toBeNull();
+  });
+
+  it('explains an empty list: unverified own address, pending recipient', () => {
+    const n = sendTargetsNotice([], 'anna@example.org', false, { status: 'pending' }, 'friend@example.org')!;
+    expect(n.tone).toBe('warn');
+    expect(n.text).toContain('nur an eine Adresse');
+    expect(n.text).toContain('anna@example.org ist noch nicht verifiziert');
+    expect(n.text).toContain('friend@example.org ist noch nicht bestätigt');
+  });
+
+  it('explains an empty list without any address on the account', () => {
+    const n = sendTargetsNotice([], '', null, { status: 'none' }, '')!;
+    expect(n.text).toContain('keine E-Mail-Adresse hinterlegt');
+  });
+
+  it('with targets it only informs, and still points to the schedule for other addresses', () => {
+    const n = sendTargetsNotice([own], 'anna@example.org', true, { status: 'none' }, '')!;
+    expect(n.tone).toBe('info');
+    expect(n.text).toContain('Zeitplan');
+    expect(n.text).not.toContain('nicht verifiziert');
   });
 });

@@ -126,3 +126,61 @@ export async function resendRecipientConfirmation(): Promise<void> {
     throw new Error(data.error ?? `Fehler ${res.status}`);
   }
 }
+
+// ── Ad-hoc send (#456) ────────────────────────────────────────────────────────
+
+/** An address "Jetzt per E-Mail senden" may mail, as the server lists it (`sendTargets`). */
+export interface SendTarget {
+  email: string;
+  /** The account's own verified address, or the recipient confirmed by link. */
+  kind: 'account' | 'recipient';
+}
+
+export function sendTargetLabel(target: SendTarget): string {
+  return `${target.email} (${target.kind === 'account' ? 'deine Konto-Adresse' : 'bestätigter Empfänger'})`;
+}
+
+/** The target to preselect: the current choice if it is still allowed, else the first one, else ''. */
+export function pickSendTarget(targets: SendTarget[], current: string): string {
+  return targets.find((t) => same(t.email, current))?.email ?? targets[0]?.email ?? '';
+}
+
+/**
+ * Why the list of send targets is what it is. The server mails reports only to addresses that
+ * agreed (#456), so with nothing to choose from the user is told how to get an address onto
+ * the list, instead of being offered a text field the server would refuse.
+ *
+ * @param targets the server's list (null: not loaded yet, or an older server: say nothing)
+ * @param accountEmail the account's own address ('' when none)
+ * @param emailVerified whether the own address is verified (null: unknown)
+ * @param recipient the schedule recipient's state, if any
+ * @param scheduleEmail the schedule's saved recipient ('' when none)
+ */
+export function sendTargetsNotice(
+  targets: SendTarget[] | null, accountEmail: string, emailVerified: boolean | null,
+  recipient: RecipientState | null, scheduleEmail: string,
+): { tone: 'info' | 'warn'; text: string } | null {
+  if (targets === null) return null;
+  const pending = !!scheduleEmail.trim() && recipient?.status === 'pending';
+  const hints: string[] = [];
+  if (accountEmail.trim() && emailVerified === false && !targets.some((t) => t.kind === 'account')) {
+    hints.push(`Deine Konto-Adresse ${accountEmail.trim()} ist noch nicht verifiziert (Einstellungen → Konto).`);
+  } else if (!accountEmail.trim()) {
+    hints.push('Für dein Konto ist keine E-Mail-Adresse hinterlegt (Einstellungen → Konto).');
+  }
+  if (pending) {
+    hints.push(`Der Zeitplan-Empfänger ${scheduleEmail.trim()} ist noch nicht bestätigt.`);
+  }
+  if (targets.length === 0) {
+    return {
+      tone: 'warn',
+      text: 'Ein Bericht kann nur an eine Adresse gesendet werden, die zugestimmt hat: deine verifizierte Konto-Adresse oder ein bestätigter Zeitplan-Empfänger. '
+        + `${hints.join(' ')} Verifiziere zuerst deine Adresse oder lass unten im Zeitplan einen Empfänger bestätigen.`.trim(),
+    };
+  }
+  return {
+    tone: 'info',
+    text: 'Berichte gehen nur an Adressen, die zugestimmt haben (deine verifizierte Konto-Adresse, ein bestätigter Zeitplan-Empfänger). '
+      + `Andere Adressen trägst du im Zeitplan ein; ihr Besitzer bestätigt sie per Mail. ${hints.join(' ')}`.trim(),
+  };
+}

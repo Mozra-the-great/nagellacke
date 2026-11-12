@@ -213,7 +213,7 @@ full pass.
 - [ ] `WEB-SET-31` Report email/schedule sub-section only renders when server-sync is the active provider; otherwise a "nur mit dem Eigenen-Server-Sync verfügbar" hint shows instead.
 - [ ] `WEB-SET-32` E-mail field pre-fills from the logged-in account's e-mail (`/api/auth/me`) when available.
 - [ ] `WEB-SET-33` A warning banner shows when SMTP isn't configured server-side, and disables "Jetzt per E-Mail senden".
-- [ ] `WEB-SET-34` "✉ Jetzt per E-Mail senden" sends the report for the selected period/date to the given address; shows "Sende…" then "✓ Bericht gesendet!" or an inline error.
+- [ ] `WEB-SET-34` "✉ Jetzt per E-Mail senden" sends the report for the selected period/date to the address picked under "Senden an"; shows "Sende…" then "✓ Bericht gesendet!". The picker lists only the account's verified address and a confirmed schedule recipient (#456); with neither, a warning explains how to get one and the button stays disabled.
 - [ ] `WEB-SET-35` "Automatisch senden" An/Aus toggle reveals Häufigkeit (Wöchentlich/Monatlich) + Senden-an fields when on.
 - [ ] `WEB-SET-36` "Zeitplan speichern" persists the schedule to the server; disabled while SMTP isn't configured; shows "Speichere…" then "✓ Gespeichert" or an error.
 - [ ] `WEB-SET-37` Existing schedule config loads on page open (enabled/frequency/toEmail restored from `/api/reports/schedule`).
