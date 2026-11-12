@@ -26,6 +26,7 @@ import {
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
   photoUploadsAllowed, aiAllowed, publicInstanceEnabled, registrationPowEnabled, getBranding, setBranding, BRANDING_DIR,
   getLegalPages, setLegalPages, LEGAL_PAGE_KEYS, patchUser, findUsers, resetPassword, eraseAccount,
+  canonicalUsername, sameUsername, migrateUsernamesToCanonical,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
 import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
@@ -286,13 +287,17 @@ const MAX_USERNAME_LENGTH = 64;
  * rejects things that are either exploitable (oversized -> #275) or
  * obviously not a real username (empty/whitespace-only, or raw control
  * characters that have no business in an identifier and can cause display /
- * log-injection oddities). No character-set allowlist beyond that — existing
+ * log-injection oddities). Usernames are compared and stored in canonical form
+ * (NFKC + lowercase, see canonicalUsername in db.ts, #445), so case variants and
+ * look-alike forms of a name are the same account. No character-set allowlist beyond that — existing
  * usernames may already contain characters a stricter allowlist would
  * reject, and this function must never be used to re-validate them.
  */
 function usernameError(username: string): string | undefined {
   if (username.trim().length === 0) return 'username darf nicht leer sein';
-  if (username.length > MAX_USERNAME_LENGTH) {
+  // Measured on the canonical form (#445): that is what is stored and what ends up
+  // in the JWT, and NFKC can expand a single character into several.
+  if (canonicalUsername(username).length > MAX_USERNAME_LENGTH) {
     return `username darf höchstens ${MAX_USERNAME_LENGTH} Zeichen lang sein`;
   }
   // eslint-disable-next-line no-control-regex
@@ -416,7 +421,10 @@ function httpsGet(url: string): Promise<string> {
  * handles behind every test that calls this function.
  */
 export async function buildApp(): Promise<FastifyInstance> {
-  // Must run before any request is served (#87, #173, #352, #353).
+  // Must run before any request is served (#87, #173, #352, #353, #445). The username
+  // migration goes first: the others look users and their data dirs up by name. It throws
+  // (and the server does not start) when existing accounts collide case-insensitively.
+  migrateUsernamesToCanonical();
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
   migrateScheduleToPerUser();
@@ -536,7 +544,12 @@ export async function buildApp(): Promise<FastifyInstance> {
   function tokenVersionValid(request: FastifyRequest): boolean {
     const { username, tokenVersion } = request.user as { username: string; tokenVersion?: number };
     const user = getUser(username);
-    return !!user && (tokenVersion ?? 0) === (user.token_version ?? 0);
+    if (!user || (tokenVersion ?? 0) !== (user.token_version ?? 0)) return false;
+    // A token minted before #445 may carry the name in its old spelling ("Alice").
+    // Handlers read request.user.username and compare it with stored names (job and
+    // photo owners, "is this me"), so hand them the account's canonical name.
+    (request.user as { username: string }).username = user.username;
+    return true;
   }
 
   // Pre-existing security hole this feature forced us to notice and fix:
@@ -1052,6 +1065,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!getUser(username) && usernameErr) {
       return reply.code(400).send({ error: usernameErr });
     }
+    const name = canonicalUsername(username);
     // If the account already exists, promoting it to admin and handing back
     // a session must not happen without proving knowledge of *that account's*
     // real password - the length check above only validates a fresh
@@ -1060,17 +1074,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     // needs countAdmins() === 0 with an existing user, which
     // migrateFirstUserToAdmin() already prevents at every startup, but this
     // must not rely on that invariant alone.)
-    const existing = getUser(username);
+    const existing = getUser(name);
     if (existing) {
       if (!verifyPassword(password, existing.password_hash)) {
         return reply.code(401).send({ error: 'Passwort ungültig' });
       }
-      setUserRole(username, 'admin');
+      setUserRole(name, 'admin');
     } else {
-      createUser(username, hashPassword(password), 'admin');
+      createUser(name, hashPassword(password), 'admin');
     }
-    logAdminAction(username, 'bootstrap.admin_created', username);
-    const user = getUser(username)!;
+    logAdminAction(name, 'bootstrap.admin_created', name);
+    const user = getUser(name)!;
     // Promoting the role is the root key holder's prerogative (they own the
     // filesystem anyway), but handing back a *session* must not skip the second
     // factor: an account with TOTP enabled gets the same mfaRequired challenge
@@ -1109,8 +1123,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(400).send({ error: 'role muss "admin" oder "user" sein' });
     }
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
-    createUser(username, hashPassword(password), role ?? 'user');
-    logAdminAction(actor, 'user.created', username, { role: role ?? 'user' });
+    const name = canonicalUsername(username);
+    createUser(name, hashPassword(password), role ?? 'user');
+    logAdminAction(actor, 'user.created', name, { role: role ?? 'user' });
     return { ok: true };
   });
 
@@ -1151,7 +1166,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username } = request.params as { username: string };
     const target = getUser(username);
     if (!target) return reply.code(404).send({ error: 'Benutzer nicht gefunden' });
-    if (username === actor) {
+    if (sameUsername(username, actor)) {
       return reply.code(409).send({ error: 'Das eigene Konto kann nicht gelöscht werden' });
     }
     if (isAdmin(username) && countAdmins() <= 1) {
@@ -1719,7 +1734,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const now = Date.now();
     // Only verified addresses: a reset mail to an address nobody proved they own would
     // hand the account to whoever typed it in (#324 S19).
-    const targets = findUsers((u) => (u.username === id || u.email === lower)
+    const targets = findUsers((u) => (sameUsername(u.username, id) || u.email === lower)
       && !!u.email && !!u.email_verified
       && !(u.reset_sent_at && now - u.reset_sent_at < RESET_RESEND_MS));
     const mails = targets.map((u) => {
@@ -2154,19 +2169,21 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (email !== undefined && email !== null && email !== '' && (!address || !isValidEmail(address))) {
       return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
     }
+    // Case-insensitive (#445): "ALICE" is taken when "alice" exists.
     if (getUser(username)) return reply.code(409).send({ error: 'Benutzer existiert bereits' });
+    const name = canonicalUsername(username);
     // The very first registered user becomes admin immediately (#173) — rather
     // than relying solely on migrateFirstUserToAdmin() at the next restart,
     // which would leave a window where this session isn't yet admin.
-    createUser(username, hashPassword(password), isFirstUser ? 'admin' : undefined);
+    createUser(name, hashPassword(password), isFirstUser ? 'admin' : undefined);
     if (address) {
-      updateUserEmail(username, address);
+      updateUserEmail(name, address);
       // After the response: SMTP can take seconds, and a failed mail must not fail
       // the registration. "Erneut senden" in the settings covers a lost one.
-      setImmediate(() => { void sendVerificationMail(username); });
+      setImmediate(() => { void sendVerificationMail(name); });
     }
-    const user = getUser(username);
-    return issueTokens(username, user?.token_version ?? 0, reply);
+    const user = getUser(name);
+    return issueTokens(name, user?.token_version ?? 0, reply);
   });
 
   // POST /api/auth/login
@@ -2750,7 +2767,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Job ids are UUIDs, but a job carries its owner's prompt and researched
     // results, so ownership is checked rather than relying on unguessability.
     // 404 rather than 403 — don't confirm that someone else's job id exists.
-    if (!job || job.username !== username) return reply.code(404).send({ error: 'Job nicht gefunden' });
+    if (!job || !sameUsername(job.username, username)) return reply.code(404).send({ error: 'Job nicht gefunden' });
     return { job };
   });
 
