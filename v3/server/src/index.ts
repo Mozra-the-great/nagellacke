@@ -54,6 +54,8 @@ import {
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
 import { buildLoggerOptions } from './logRedact';
+import { stripImageMetadata, InvalidImageError } from './imageMeta';
+import { stripStoredPhotos } from './photoMigration';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -318,6 +320,15 @@ const MAGIC: [Buffer, string][] = [
 function validImage(buf: Buffer): boolean {
   return MAGIC.some(([m]) => buf.slice(0, m.length).equals(m));
 }
+/** The image without metadata (#451), or null when it is not a well-formed JPEG/PNG/WebP. */
+function scrubImage(buf: Buffer): Buffer | null {
+  try {
+    return stripImageMetadata(buf);
+  } catch (e) {
+    if (e instanceof InvalidImageError) return null;
+    throw e;
+  }
+}
 /** The MIME type the file's own magic bytes claim, or null for anything else. */
 function sniffImageType(buf: Buffer): string | null {
   return MAGIC.find(([m]) => buf.slice(0, m.length).equals(m))?.[1] ?? null;
@@ -431,6 +442,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
   migrateFirstUserToAdmin();
   migrateScheduleToPerUser();
   migratePhotoOwners();
+  stripStoredPhotos(PHOTOS_DIR, path.join(DATA_DIR, 'photo_metadata.json'));
 
   // trustProxy is off unless TRUST_PROXY names the reverse proxies to believe (#397).
   // The default deployment (install.sh) binds directly to 0.0.0.0, so req.ip (the
@@ -825,8 +837,13 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
-    const buf = Buffer.from(b64, 'base64');
-    if (!validImage(buf)) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
+    const original = Buffer.from(b64, 'base64');
+    if (!validImage(original)) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
+    // EXIF/XMP (GPS, device, timestamps) must not be stored or served back (#451).
+    // A file that is not a well-formed JPEG/PNG/WebP container cannot be scrubbed
+    // reliably, so it is refused rather than stored as is.
+    const buf = scrubImage(original);
+    if (!buf) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
     const ext      = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
     const filename = `${uuidv4()}.${ext}`;
     const tmp      = path.join(PHOTOS_DIR, `${filename}.tmp`);
@@ -2013,9 +2030,12 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const { username: actor } = request.user as { username: string };
     const { data } = (request.body ?? {}) as { data?: string };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    const buf = Buffer.from(data, 'base64');
-    const mimeType = sniffImageType(buf);
+    const original = Buffer.from(data, 'base64');
+    const mimeType = sniffImageType(original);
     if (!mimeType) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
+    // The logo is served publicly, so it gets the same metadata scrub as photos (#451).
+    const buf = scrubImage(original);
+    if (!buf) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
     const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
     fs.mkdirSync(BRANDING_DIR, { recursive: true });
     const filename = `logo.${ext}`;

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Writable } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
+import { plainPng } from './testImages';
 import { REDACTED, redactText, redactUrl, serializeError, serializeRequest } from './logRedact';
 
 /**
@@ -114,7 +115,7 @@ describe('request log of a real server (#450)', () => {
     expect(reg.statusCode).toBe(200);
     const bearer = (reg.json() as { token: string }).token;
 
-    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(64, 7)]);
+    const png = plainPng();
     const up = await app.inject({
       method: 'POST', url: '/api/photos', headers: { authorization: `Bearer ${bearer}` },
       payload: { data: png.toString('base64'), mimeType: 'image/png' },

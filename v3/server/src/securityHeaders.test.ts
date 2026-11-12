@@ -2,6 +2,7 @@ import { beforeAll, describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { plainPng } from './testImages';
 import type { FastifyInstance } from 'fastify';
 
 /**
@@ -47,7 +48,7 @@ describe('security headers (#355)', () => {
       payload: { username: 'header-test', password: 'correct-horse-battery' },
     });
     const { token } = reg.json() as { token: string };
-    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(64, 7)]);
+    const png = plainPng();
     const up = await app.inject({
       method: 'POST', url: '/api/photos',
       headers: { authorization: `Bearer ${token}` },
