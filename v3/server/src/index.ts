@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import * as https from 'node:https';
+import type { Writable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
@@ -52,6 +53,7 @@ import {
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
+import { buildLoggerOptions } from './logRedact';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -420,7 +422,7 @@ function httpsGet(url: string): Promise<string> {
  * because moving them into buildApp() would leave dangling timers/open
  * handles behind every test that calls this function.
  */
-export async function buildApp(): Promise<FastifyInstance> {
+export async function buildApp(options: { logStream?: Writable } = {}): Promise<FastifyInstance> {
   // Must run before any request is served (#87, #173, #352, #353, #445). The username
   // migration goes first: the others look users and their data dirs up by name. It throws
   // (and the server does not start) when existing accounts collide case-insensitively.
@@ -438,7 +440,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   // bucket. TRUST_PROXY takes IPs/CIDRs only - never `true`, or an X-Forwarded-For
   // header would let anyone spoof their way around the limits (see trustProxy.ts).
   const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
-  const app = Fastify({ trustProxy, logger: { level: process.env.VITEST ? 'silent' : 'info' } });
+  // The request URL is logged on every request and photo access tokens (`?t=`)
+  // travel in it, so the logger masks credential-like query parameters (#450,
+  // see logRedact.ts). A test passes logStream to capture and inspect the lines.
+  const logLevel = options.logStream ? 'info' : process.env.VITEST ? 'silent' : 'info';
+  const app = Fastify({ trustProxy, logger: buildLoggerOptions(logLevel, options.logStream) });
 
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
