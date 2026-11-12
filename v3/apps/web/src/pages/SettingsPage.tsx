@@ -20,6 +20,8 @@ import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
+import { recipientNotice, confirmationMessage, resendRecipientConfirmation } from '../utils/reportRecipient';
+import type { RecipientState, ConfirmationOutcome } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -440,6 +442,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [scheduleEmail, setScheduleEmail] = useState('');
   const [scheduleSaveStatus, setScheduleSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [scheduleSaveError, setScheduleSaveError] = useState('');
+  // Double opt-in for the schedule's recipient (#449): the server's view of the saved address.
+  const [scheduleRecipient, setScheduleRecipient] = useState<RecipientState | null>(null);
+  const [scheduleSavedEmail, setScheduleSavedEmail] = useState('');
+  const [confirmationAvailable, setConfirmationAvailable] = useState<boolean | null>(null);
+  const [scheduleNotice, setScheduleNotice] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendError, setResendError] = useState('');
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
   // ── Konto-E-Mail (#324 S19): the address a password reset goes to ──
@@ -536,7 +545,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     const { signal } = controller;
 
     type MeResponse = { username?: string; email?: string | null; emailVerified?: boolean; smtpConfigured?: boolean; totpEnabled?: boolean; recoveryCodesRemaining?: number };
-    type ScheduleResponse = { config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null; smtpConfigured?: boolean };
+    type ScheduleResponse = {
+      config?: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null;
+      smtpConfigured?: boolean;
+      // Absent on a server older than #449: no confirmation state to show then.
+      recipient?: RecipientState;
+      confirmationAvailable?: boolean;
+    };
 
     // Load email + smtp status + 2FA status
     fetch(`${base}/api/auth/me`, { headers, signal })
@@ -564,7 +579,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           setScheduleEnabled(d.config.enabled);
           setScheduleFrequency(d.config.frequency);
           setScheduleEmail(d.config.toEmail ?? '');
+          setScheduleSavedEmail(d.config.toEmail ?? '');
         }
+        setScheduleRecipient(d.recipient ?? null);
+        if (d.confirmationAvailable !== undefined) setConfirmationAvailable(d.confirmationAvailable);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
       })
       .catch(() => { /* ignore aborted / network errors */ });
@@ -798,6 +816,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const saveSchedule = async () => {
     setScheduleSaveStatus('saving');
     setScheduleSaveError('');
+    setScheduleNotice(null);
     try {
       const base = serverBase;
       const res = await fetch(`${base}/api/reports/schedule`, {
@@ -805,8 +824,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
         body: JSON.stringify({ enabled: scheduleEnabled, frequency: scheduleFrequency, toEmail: scheduleEmail }),
       });
-      const data = await res.json() as { ok?: boolean; error?: string };
+      const data = await res.json() as {
+        ok?: boolean; error?: string; confirmation?: ConfirmationOutcome; recipient?: RecipientState;
+        config?: { toEmail: string } | null;
+      };
       if (!res.ok) { setScheduleSaveError(data.error ?? `Fehler ${res.status}`); setScheduleSaveStatus('error'); return; }
+      if (data.recipient) setScheduleRecipient(data.recipient);
+      setScheduleSavedEmail(data.config?.toEmail ?? scheduleEmail);
+      setScheduleNotice(confirmationMessage(data.confirmation, scheduleEmail));
+      setResendStatus('idle');
       setScheduleSaveStatus('saved');
       setTimeout(() => setScheduleSaveStatus('idle'), 2000);
     } catch (e) {
@@ -814,6 +840,24 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setScheduleSaveStatus('error');
     }
   };
+
+  const resendConfirmation = async () => {
+    setResendStatus('sending');
+    setResendError('');
+    try {
+      await resendRecipientConfirmation();
+      setScheduleRecipient((prev) => (prev ? { ...prev, confirmationSentAt: Date.now() } : prev));
+      setResendStatus('sent');
+    } catch (e) {
+      setResendError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setResendStatus('error');
+    }
+  };
+
+  const recipientInfo = recipientNotice(
+    scheduleRecipient, scheduleSavedEmail, scheduleEmail, confirmationAvailable,
+    emailVerified === true ? savedAccountEmail ?? '' : '',
+  );
 
   const stats = {
     polishes: appData.data.polishes.filter((p) => !p.deletedAt).length,
@@ -1294,8 +1338,42 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     placeholder="deine@email.de"
                   />
                 </label>
+                {/* Pending / confirmed state of the recipient (#449). A live region, so a screen reader
+                    hears the result of saving or resending without moving focus. */}
+                <div role="status" aria-live="polite" aria-atomic="true" data-testid="recipient-status">
+                  {recipientInfo && (
+                    <div
+                      className={recipientInfo.tone === 'ok' ? styles.successBanner : recipientInfo.tone === 'warn' ? styles.warningBanner : styles.infoText}
+                      style={{ marginBottom: 8 }}
+                    >
+                      {recipientInfo.text}
+                    </div>
+                  )}
+                  {resendStatus === 'sent' && <div className={styles.successBanner} style={{ marginBottom: 8 }}>✓ Bestätigungsmail gesendet.</div>}
+                  {resendStatus === 'error' && <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{resendError}</div>}
+                </div>
+                {recipientInfo?.canResend && (
+                  <div className={styles.btnRow} style={{ marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      className={styles.syncBtn}
+                      onClick={() => void resendConfirmation()}
+                      disabled={resendStatus === 'sending'}
+                    >
+                      {resendStatus === 'sending' ? 'Sende…' : 'Bestätigungsmail erneut senden'}
+                    </button>
+                  </div>
+                )}
               </>
             )}
+
+            <div role="status" aria-live="polite" aria-atomic="true">
+              {scheduleNotice && (
+                <div className={scheduleNotice.tone === 'ok' ? styles.successBanner : styles.warningBanner} style={{ marginBottom: 8 }}>
+                  {scheduleNotice.text}
+                </div>
+              )}
+            </div>
 
             {scheduleSaveStatus === 'error' && (
               <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{scheduleSaveError}</div>

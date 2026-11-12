@@ -1135,6 +1135,23 @@ export interface ScheduleConfig {
    * key; the field stays because the API has always returned it.
    */
   username?: string;
+  /*
+   * Double opt-in for the recipient (#449). Reports go out only to an address the
+   * account has proven or its owner has confirmed (see reportRecipient.ts), so these
+   * are what the confirmation needs to remember. Absent on schedules written before
+   * #449: they read as "not confirmed" until migrateScheduleRecipients() or the
+   * confirmation link says otherwise.
+   */
+  /** The address (lowercased) whose owner clicked the confirmation link. */
+  confirmedEmail?: string;
+  confirmedAt?: number;
+  /** Bumped on every recipient change and every confirmation mail; the token carries it. */
+  confirmSeq?: number;
+  /** When the last confirmation mail was issued. */
+  confirmSentAt?: number;
+  /** Timestamps feeding the 24 h rate limits (reportRecipient.ts); old entries are pruned on write. */
+  recipientChangesAt?: number[];
+  confirmMailsAt?: number[];
 }
 
 /**
@@ -1216,6 +1233,45 @@ export function deleteScheduleConfig(username: string): void {
 /** Every user's schedule, keyed by username; the hourly report job iterates this. */
 export function getAllScheduleConfigs(): Map<string, ScheduleConfig> {
   return readScheduleStore();
+}
+
+/**
+ * Startup migration for #449 (double opt-in). Existing schedules were never
+ * confirmed by anyone, so the safe default is that they stop sending until they are:
+ * the only schedules kept running are those whose recipient is the account's own
+ * verified address (the owner has already proven that mailbox), and for those the
+ * confirmation is recorded (`confirmedEmail`) so it stays put should the account
+ * address change later. Every other recipient stays pending and the owner has to
+ * confirm it in Settings; the server does NOT mail them on its own at startup, since
+ * that would itself be an unsolicited mail to whoever the old setting named.
+ *
+ * Idempotent: a schedule already confirmed for its current recipient is left alone,
+ * and running it again changes nothing. Returns the counts for the log and the tests.
+ */
+export function migrateScheduleRecipients(): { confirmed: number; pending: number } {
+  const store = readScheduleStore();
+  let confirmed = 0;
+  let pending = 0;
+  let changed = false;
+  for (const [key, cfg] of store) {
+    const to = (cfg.toEmail ?? '').trim().toLowerCase();
+    if (!to) continue;
+    if (cfg.confirmedEmail === to) continue;
+    const user = getUser(key);
+    if (user?.email_verified && user.email && user.email.trim().toLowerCase() === to) {
+      store.set(key, { ...cfg, confirmedEmail: to, confirmedAt: Date.now() });
+      confirmed += 1;
+      changed = true;
+    } else if (cfg.enabled) {
+      pending += 1;
+    }
+  }
+  if (changed) writeScheduleStore(store);
+  if (confirmed || pending) {
+    console.log(`[migration] Report recipients (#449): ${confirmed} confirmed as the account's own verified address, `
+      + `${pending} enabled schedule(s) paused until the recipient is confirmed in Settings.`);
+  }
+  return { confirmed, pending };
 }
 
 /**

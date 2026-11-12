@@ -1,15 +1,17 @@
 import { serverBase, serverSession } from './serverBase';
 
 /**
- * Password reset and e-mail verification (#324 S18, S19). The server mails links to
+ * Password reset, e-mail verification (#324 S18, S19) and report-recipient confirmation (#449). The server mails links to
  * hash routes of this app; the token travels in the fragment, which browsers never
  * send to any server, so it stays out of access logs and Referer headers.
  */
-export type AccountRoute = { kind: 'reset' | 'verify'; token: string };
+export type AccountRoute = { kind: 'reset' | 'verify' | 'recipient'; token: string };
 
 const ROUTES: Record<string, AccountRoute['kind']> = {
   '#/passwort-neu': 'reset',
   '#/email-bestaetigen': 'verify',
+  // The recipient of a scheduled report confirms their address (#449).
+  '#/bericht-bestaetigen': 'recipient',
 };
 
 export function accountRouteForHash(hash: string): AccountRoute | null {
