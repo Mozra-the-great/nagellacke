@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { LINK_STYLE } from '../components/LegalText';
 import { resetPassword, verifyEmail } from '../utils/account';
 import type { AccountRoute } from '../utils/account';
+import { confirmReportRecipient } from '../utils/reportRecipient';
+import { serverBase } from '../utils/serverBase';
 import styles from './SettingsPage.module.css';
 
 /**
  * Where the links in reset and verification mails land (#324 S18, S19):
- * #/passwort-neu asks for the new password, #/email-bestaetigen confirms on its own.
+ * #/passwort-neu asks for the new password, #/email-bestaetigen confirms on its own, and
+ * #/bericht-bestaetigen is where the recipient of a scheduled report agrees to receive it (#449).
  */
 export default function AccountLinkPage({ route, onDone }: { route: AccountRoute; onDone: () => void }) {
   return (
@@ -15,7 +18,9 @@ export default function AccountLinkPage({ route, onDone }: { route: AccountRoute
         <p><a href="#" style={LINK_STYLE} onClick={(e) => { e.preventDefault(); onDone(); }}>← Zur App</a></p>
         {route.kind === 'reset'
           ? <ResetForm token={route.token} onDone={onDone} />
-          : <VerifyResult token={route.token} />}
+          : route.kind === 'recipient'
+            ? <RecipientResult token={route.token} />
+            : <VerifyResult token={route.token} />}
       </section>
     </div>
   );
@@ -110,6 +115,41 @@ function VerifyResult({ token }: { token: string }) {
         {status === 'done' && (
           <div className={styles.successBanner}>
             ✓ Adresse bestätigt. Über sie lässt sich jetzt ein vergessenes Passwort zurücksetzen.
+          </div>
+        )}
+        {status === 'error' && <div className={styles.errorBanner}>{error}</div>}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Opening the link is the confirmation, like the address check above: the request goes out exactly once
+ * (StrictMode would otherwise run the effect twice). The recipient has no account, so there is no
+ * "back to the app" framing beyond the link at the top.
+ */
+function RecipientResult({ token }: { token: string }) {
+  const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
+  const [error, setError] = useState('');
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    confirmReportRecipient(token, serverBase())
+      .then(() => setStatus('done'))
+      .catch((e: unknown) => { setError(e instanceof Error ? e.message : 'Verbindungsfehler'); setStatus('error'); });
+  }, [token]);
+
+  return (
+    <>
+      <h2 className={styles.sectionTitle}>Berichte an diese Adresse</h2>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {status === 'loading' && <p className={styles.infoText}>Prüfe den Link…</p>}
+        {status === 'done' && (
+          <div className={styles.successBanner}>
+            ✓ Bestätigt. Diese Adresse bekommt jetzt die Berichte, die das Konto eingerichtet hat. Wer sie nicht mehr
+            erhalten möchte, wendet sich an den Betreiber dieser Instanz (siehe Impressum).
           </div>
         )}
         {status === 'error' && <div className={styles.errorBanner}>{error}</div>}

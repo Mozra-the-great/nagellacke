@@ -58,6 +58,32 @@ export function resetMail(appName: string, baseUrl: string, username: string, to
   };
 }
 
+/**
+ * Confirmation request for the recipient of a scheduled report (#449). It goes to a
+ * person who may never have heard of this server, so it says who asked, what would
+ * be sent and what is stored, and that doing nothing means nothing is ever sent.
+ * Those are the points Art. 14 GDPR asks to tell someone whose address was handed
+ * to us by a third party.
+ */
+export function reportRecipientMail(
+  appName: string, baseUrl: string, requester: string, frequency: 'weekly' | 'monthly', token: string,
+): { subject: string; html: string } {
+  const every = frequency === 'monthly' ? 'monatlich' : 'wöchentlich';
+  return {
+    subject: `${appName}: Bericht an diese Adresse erlauben?`,
+    html: mailHtml(
+      'Bericht an diese Adresse erlauben?',
+      `Das Konto „${requester}“ auf ${appName} möchte ${every} eine E-Mail mit einem Bericht über die eigene Nagellack-Sammlung (Lacke, Sticker, Maniküren, Fotos) an diese Adresse senden. `
+      + 'Der Link gilt 48 Stunden.',
+      `${baseUrl}/#/bericht-bestaetigen?token=${token}`,
+      'Ja, Berichte an diese Adresse senden',
+      'Ohne deine Bestätigung wird nichts an diese Adresse gesendet; wenn du die Mail nicht erwartet hast, ignoriere sie einfach. '
+      + 'Gespeichert wird nur deine E-Mail-Adresse, und nur zum Versand dieser Berichte. '
+      + `Verantwortlich ist der Betreiber von ${appName}; Angaben zum Datenschutz stehen unter ${baseUrl}/#/datenschutz.`,
+    ),
+  };
+}
+
 export function verifyMail(appName: string, baseUrl: string, username: string, token: string): { subject: string; html: string } {
   return {
     subject: `${appName}: E-Mail-Adresse bestätigen`,

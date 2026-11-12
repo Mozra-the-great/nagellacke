@@ -17,7 +17,7 @@ import {
   getData, setData, getUser, getUserCount, createUser, updateUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
   getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
-  migrateScheduleToPerUser,
+  migrateScheduleToPerUser, migrateScheduleRecipients,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
@@ -49,10 +49,14 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
+import {
+  AddressThrottle, applyConfirmation, checkChangeLimit, checkMailLimit, isRecipientConfirmed, issueConfirmation,
+  LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
+} from './reportRecipient';
 import { buildLoggerOptions } from './logRedact';
 import { stripImageMetadata, InvalidImageError } from './imageMeta';
 import { stripStoredPhotos } from './photoMigration';
@@ -441,6 +445,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
   migrateScheduleToPerUser();
+  migrateScheduleRecipients();
   migratePhotoOwners();
   stripStoredPhotos(PHOTOS_DIR, path.join(DATA_DIR, 'photo_metadata.json'));
 
@@ -1893,6 +1898,58 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     return { ok: true };
   });
 
+  // ── Report schedule and its recipient (#353, #449) ───────────────────────────────
+  //
+  // The schedule is per account (#353). Since #449 its recipient needs a double
+  // opt-in (reportRecipient.ts): an address receives reports only once it is the
+  // account's own verified address or its owner has clicked the link in the
+  // confirmation mail. The hourly job skips every other schedule.
+
+  /** Per target address, across all accounts: one victim cannot be flooded through many accounts. */
+  const confirmationAddressThrottle = new AddressThrottle();
+
+  /** What the routes reveal about a schedule: no counters or sequence numbers. */
+  function scheduleView(username: string, cfg: ScheduleConfig | null) {
+    if (!cfg) return { config: null, recipient: { status: 'none' as const } };
+    const { status, via } = recipientStatus(cfg, getUser(username));
+    return {
+      config: { enabled: cfg.enabled, frequency: cfg.frequency, toEmail: cfg.toEmail, lastSentAt: cfg.lastSentAt, username: cfg.username },
+      recipient: {
+        status,
+        ...(via ? { via } : {}),
+        // Set only while pending and once a mail for the current address has gone out;
+        // the UI says "sent to ..." only then.
+        ...(status === 'pending' && cfg.confirmSentAt ? { confirmationSentAt: cfg.confirmSentAt } : {}),
+      },
+    };
+  }
+
+  /** Why no confirmation mail may be sent for this schedule right now, or null. */
+  function confirmationLimit(cfg: ScheduleConfig, now: number): LimitReason | null {
+    return checkMailLimit(cfg, now)
+      ?? (confirmationAddressThrottle.allowed(cfg.toEmail, now) ? null : 'address');
+  }
+
+  /**
+   * Issues a fresh confirmation (older links die), stores it and mails it. The caller has
+   * checked the limits and accountMailAvailable(). 'failed' means the schedule is saved and
+   * pending but the mail did not go out (SMTP trouble); the user can ask for it again.
+   */
+  async function sendRecipientConfirmation(username: string, cfg: ScheduleConfig, now: number): Promise<'sent' | 'failed'> {
+    const owner = canonicalUsername(username);
+    const { cfg: issued, token } = issueConfirmation(cfg, owner, JWT_SECRET, now);
+    setScheduleConfig(username, issued);
+    confirmationAddressThrottle.record(issued.toEmail, now);
+    const mail = reportRecipientMail(appName(), appBaseUrl(), owner, issued.frequency, token);
+    try {
+      await sendHtmlEmail(issued.toEmail, mail.subject, mail.html);
+      return 'sent';
+    } catch (e) {
+      logAccountMailError('report recipient confirmation', e);
+      return 'failed';
+    }
+  }
+
   // GET /api/reports/schedule — scoped to the caller's own schedule (#353:
   // schedule.json used to be one record shared by every account).
   app.get('/api/reports/schedule', {
@@ -1900,32 +1957,110 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
     const { username } = request.user as { username: string };
-    return { config: getScheduleConfig(username), smtpConfigured: isEmailConfigured() };
+    return {
+      ...scheduleView(username, getScheduleConfig(username)),
+      smtpConfigured: isEmailConfigured(),
+      // Whether this server can send the confirmation mail at all (SMTP and an App-URL).
+      confirmationAvailable: accountMailAvailable(),
+    };
   });
 
-  // POST /api/reports/schedule — likewise scoped to the caller (#353).
+  // POST /api/reports/schedule — likewise scoped to the caller (#353). A new or changed
+  // recipient is pending until confirmed (#449) and triggers the confirmation mail.
   app.post('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const body = request.body as Partial<ScheduleConfig>;
+    const body = (request.body ?? {}) as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
+    const now = Date.now();
     const current = getScheduleConfig(username);
-    const config: ScheduleConfig = {
+    const address = toEmail || current?.toEmail || '';
+    const changed = normalizeEmail(address) !== normalizeEmail(current?.toEmail ?? '');
+
+    let config: ScheduleConfig = {
+      ...current,
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
-      toEmail:     toEmail || current?.toEmail || '',
+      toEmail:     address,
       lastSentAt:  current?.lastSentAt,
       // The caller owns the collection this reports on — collections are
       // per-user since #87, so the hourly job needs to know which one.
       username,
     };
-    setScheduleConfig(username, config);
-    return { ok: true, config };
+    if (changed) {
+      const blocked = checkChangeLimit(current, now);
+      if (blocked) return reply.code(429).send({ error: LIMIT_MESSAGES[blocked] });
+      // A new address starts unconfirmed; the bumped sequence number kills any link mailed for the old one.
+      config = {
+        ...config,
+        confirmedEmail: undefined, confirmedAt: undefined, confirmSentAt: undefined,
+        confirmSeq: (current?.confirmSeq ?? 0) + 1,
+        recipientChangesAt: [...recent(current?.recipientChangesAt, now), now],
+      };
+    }
+
+    const { status } = recipientStatus(config, getUser(username));
+    const wantsMail = config.enabled && isValidEmail(config.toEmail) && status === 'pending'
+      && (changed || config.confirmSentAt === undefined);
+    if (!wantsMail) {
+      setScheduleConfig(username, config);
+      const confirmation = config.enabled && status === 'pending' ? 'pending' : 'not-needed';
+      return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation };
+    }
+    if (!accountMailAvailable()) {
+      // Saved, but nothing can be mailed: it stays pending and no report goes out.
+      setScheduleConfig(username, config);
+      return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation: 'unavailable' };
+    }
+    const limit = confirmationLimit(config, now);
+    if (limit) return reply.code(429).send({ error: LIMIT_MESSAGES[limit] });
+
+    const confirmation = await sendRecipientConfirmation(username, config, now);
+    return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation };
+  });
+
+  // POST /api/reports/schedule/confirmation — "Bestätigungsmail erneut senden" for the
+  // pending recipient. Same limits as above, so it cannot be used to flood an address.
+  app.post('/api/reports/schedule/confirmation', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const cfg = getScheduleConfig(username);
+    if (!cfg?.toEmail || !isValidEmail(cfg.toEmail)) {
+      return reply.code(400).send({ error: 'Keine Empfängeradresse hinterlegt' });
+    }
+    if (recipientStatus(cfg, getUser(username)).status === 'confirmed') return { ok: true, alreadyConfirmed: true };
+    if (!accountMailAvailable()) {
+      return reply.code(503).send({ error: 'Dieser Server kann keine E-Mails versenden' });
+    }
+    const now = Date.now();
+    const limit = confirmationLimit(cfg, now);
+    if (limit) return reply.code(429).send({ error: LIMIT_MESSAGES[limit] });
+    if (await sendRecipientConfirmation(username, cfg, now) === 'failed') {
+      return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
+    }
+    return { ok: true };
+  });
+
+  // POST /api/reports/schedule/confirm — public: the link is opened by the recipient, who has
+  // no session (and no account). The signed token alone identifies schedule and address.
+  app.post('/api/reports/schedule/confirm', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { token } = (request.body ?? {}) as { token?: unknown };
+    const invalid = () => reply.code(400).send({ error: 'Der Link ist ungültig oder abgelaufen.' });
+    const payload = verifyRecipientToken(token, JWT_SECRET);
+    if (!payload) return invalid();
+    const confirmed = applyConfirmation(getScheduleConfig(payload.u), payload, Date.now());
+    if (!confirmed) return invalid();
+    setScheduleConfig(payload.u, confirmed);
+    return { ok: true };
   });
 
   /**
@@ -2836,6 +2971,7 @@ async function main() {
   // Checks every hour whether any user's scheduled report should be sent.
   // Schedules are per-user since #353 — each is independent, so one user's
   // config being broken (bad email, send failure) must not block the rest.
+  const unconfirmedWarned = new Set<string>();
   setInterval(async () => {
     if (!isEmailConfigured()) return;
 
@@ -2852,6 +2988,15 @@ async function main() {
         : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
 
       if (!shouldSend) continue;
+
+      // Double opt-in (#449): a recipient nobody has confirmed gets nothing.
+      if (!isRecipientConfirmed(cfg, getUser(reportUser))) {
+        if (!unconfirmedWarned.has(reportUser)) {
+          unconfirmedWarned.add(reportUser);
+          console.warn(`[reports] Schedule of "${reportUser}" skipped: its recipient is not confirmed (#449).`);
+        }
+        continue;
+      }
 
       // Avoid sending twice in the same hour window
       if (cfg.lastSentAt) {
