@@ -20,8 +20,8 @@ import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
-import { recipientNotice, confirmationMessage, resendRecipientConfirmation } from '../utils/reportRecipient';
-import type { RecipientState, ConfirmationOutcome } from '../utils/reportRecipient';
+import { recipientNotice, confirmationMessage, resendRecipientConfirmation, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
+import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
 type AppData = ReturnType<typeof useAppData>;
@@ -435,6 +435,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [reportPeriod, setReportPeriod] = useState<'week' | 'month'>('week');
   const [reportDate, setReportDate] = useState(todayStr);
   const [reportEmail, setReportEmail] = useState('');
+  // Where "Jetzt per E-Mail senden" may go (#456): the server's list; null until it has answered.
+  const [sendTargets, setSendTargets] = useState<SendTarget[] | null>(null);
   const [reportEmailStatus, setReportEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [reportEmailError, setReportEmailError] = useState('');
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -551,6 +553,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       // Absent on a server older than #449: no confirmation state to show then.
       recipient?: RecipientState;
       confirmationAvailable?: boolean;
+      sendTargets?: SendTarget[];
     };
 
     // Load email + smtp status + 2FA status
@@ -558,7 +561,6 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       .then(r => r.ok ? r.json() as Promise<MeResponse> : Promise.resolve<MeResponse>({}))
       .then(d => {
         if (signal.aborted) return;
-        if (d.email) setReportEmail(d.email);
         setAccountEmail(d.email ?? '');
         setMeUsername(d.username ?? null);
         setSavedAccountEmail(d.email ?? null);
@@ -582,6 +584,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
           setScheduleSavedEmail(d.config.toEmail ?? '');
         }
         setScheduleRecipient(d.recipient ?? null);
+        setSendTargets(d.sendTargets ?? null);
         if (d.confirmationAvailable !== undefined) setConfirmationAvailable(d.confirmationAvailable);
         if (d.smtpConfigured !== undefined) setSmtpConfigured(!!d.smtpConfigured);
       })
@@ -825,11 +828,12 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
         body: JSON.stringify({ enabled: scheduleEnabled, frequency: scheduleFrequency, toEmail: scheduleEmail }),
       });
       const data = await res.json() as {
-        ok?: boolean; error?: string; confirmation?: ConfirmationOutcome; recipient?: RecipientState;
+        ok?: boolean; error?: string; confirmation?: ConfirmationOutcome; recipient?: RecipientState; sendTargets?: SendTarget[];
         config?: { toEmail: string } | null;
       };
       if (!res.ok) { setScheduleSaveError(data.error ?? `Fehler ${res.status}`); setScheduleSaveStatus('error'); return; }
       if (data.recipient) setScheduleRecipient(data.recipient);
+      if (data.sendTargets) setSendTargets(data.sendTargets);
       setScheduleSavedEmail(data.config?.toEmail ?? scheduleEmail);
       setScheduleNotice(confirmationMessage(data.confirmation, scheduleEmail));
       setResendStatus('idle');
@@ -853,6 +857,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setResendStatus('error');
     }
   };
+
+  // Keep the chosen target one the server still allows (the list changes when the recipient does).
+  useEffect(() => {
+    if (sendTargets) setReportEmail((current) => pickSendTarget(sendTargets, current));
+  }, [sendTargets]);
+
+  const sendTargetsInfo = sendTargetsNotice(
+    sendTargets, savedAccountEmail ?? '', emailVerified, scheduleRecipient, scheduleSavedEmail,
+  );
 
   const recipientInfo = recipientNotice(
     scheduleRecipient, scheduleSavedEmail, scheduleEmail, confirmationAvailable,
@@ -1273,15 +1286,27 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               </div>
             )}
 
-            <label className={styles.field}>
-              <span>E-Mail-Adresse</span>
-              <input
-                type="email"
-                value={reportEmail}
-                onChange={(e) => setReportEmail(e.target.value)}
-                placeholder="deine@email.de"
-              />
-            </label>
+            {/* Only addresses that agreed may be mailed (#456), so this is a choice, not a free text field. */}
+            {sendTargets && sendTargets.length > 0 && (
+              <label className={styles.field}>
+                <span>Senden an</span>
+                <select value={reportEmail} onChange={(e) => setReportEmail(e.target.value)}>
+                  {sendTargets.map((t) => (
+                    <option key={t.email} value={t.email}>{sendTargetLabel(t)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div role="status" aria-live="polite" aria-atomic="true" data-testid="send-targets-notice">
+              {sendTargetsInfo && (
+                <div
+                  className={sendTargetsInfo.tone === 'warn' ? styles.warningBanner : styles.infoText}
+                  style={{ marginBottom: 8 }}
+                >
+                  {sendTargetsInfo.text}
+                </div>
+              )}
+            </div>
 
             {reportEmailStatus === 'error' && (
               <div className={styles.errorBanner} style={{ marginBottom: 8 }}>{reportEmailError}</div>
@@ -1294,7 +1319,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               <button
                 className={styles.syncBtn}
                 onClick={() => void sendReportEmail()}
-                disabled={!reportEmail || !smtpConfigured || reportEmailStatus === 'sending'}
+                disabled={!reportEmail || !sendTargets?.some((t) => t.email === reportEmail) || !smtpConfigured || reportEmailStatus === 'sending'}
               >
                 {reportEmailStatus === 'sending' ? 'Sende…' : '✉ Jetzt per E-Mail senden'}
               </button>

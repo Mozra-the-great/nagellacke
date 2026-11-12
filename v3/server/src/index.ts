@@ -54,7 +54,7 @@ import {
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
 import {
-  AddressThrottle, applyConfirmation, checkChangeLimit, checkMailLimit, isRecipientConfirmed, issueConfirmation,
+  AddressThrottle, adHocTargets, applyConfirmation, checkChangeLimit, checkMailLimit, decideAdHocTarget, isRecipientConfirmed, issueConfirmation,
   LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
 } from './reportRecipient';
 import { buildLoggerOptions } from './logRedact';
@@ -1868,7 +1868,10 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     return reply.type('text/html').send(html);
   });
 
-  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP)
+  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP).
+  // Since #456 only to an address that has agreed to receive reports: the account's own
+  // verified address or the schedule's currently confirmed recipient (reportRecipient.ts,
+  // #449). Anything else is a 403 that says why and sends nothing.
   app.post('/api/reports/send', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
@@ -1877,11 +1880,23 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
     const { username } = request.user as { username: string };
-    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
-    const toEmail = (rawToEmail ?? '').trim();
-    if (!toEmail || !isValidEmail(toEmail)) {
+    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = (request.body ?? {}) as { period?: string; date?: string; toEmail?: string };
+    const requested = (typeof rawToEmail === 'string' ? rawToEmail : '').trim();
+    if (!requested || !isValidEmail(requested)) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
+    const schedule = getScheduleConfig(username);
+    const user = getUser(username);
+    const decision = decideAdHocTarget(schedule, user, requested);
+    if (!decision.allowed) {
+      return reply.code(403).send({
+        error: decision.message,
+        code: 'recipient-not-allowed',
+        reason: decision.reason,
+        allowed: adHocTargets(schedule, user).map((t) => t.email),
+      });
+    }
+    const toEmail = decision.target.email;
     const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
     if (isNaN(date.getTime())) return reply.code(400).send({ error: 'Ungültiges Datum' });
@@ -1910,9 +1925,13 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
 
   /** What the routes reveal about a schedule: no counters or sequence numbers. */
   function scheduleView(username: string, cfg: ScheduleConfig | null) {
-    if (!cfg) return { config: null, recipient: { status: 'none' as const } };
-    const { status, via } = recipientStatus(cfg, getUser(username));
+    const user = getUser(username);
+    // Where "Jetzt per E-Mail senden" may go (#456); the web UI offers exactly these.
+    const sendTargets = adHocTargets(cfg, user);
+    if (!cfg) return { config: null, recipient: { status: 'none' as const }, sendTargets };
+    const { status, via } = recipientStatus(cfg, user);
     return {
+      sendTargets,
       config: { enabled: cfg.enabled, frequency: cfg.frequency, toEmail: cfg.toEmail, lastSentAt: cfg.lastSentAt, username: cfg.username },
       recipient: {
         status,
