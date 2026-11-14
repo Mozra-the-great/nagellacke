@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { AppData, Polish, Manicure, Sticker, Category } from '@nagellacke/core';
-import { generateId, now, mergeData, normalizeFinish } from '@nagellacke/core';
+import { generateId, now, mergeData, normalizeFinish, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncConfig } from '@nagellacke/sync';
 import { createAdapter } from '@nagellacke/sync';
 
@@ -38,10 +38,23 @@ function migrateFinish(data: AppData): AppData {
 // `finish` — a backup exported before the finish migration can still contain
 // bare-string `finish` values.
 export function mergeImport(prev: AppData, imported: AppData): AppData {
-  return mergeData(prev, migrateFinish(imported));
+  return purgeExpiredTombstones(mergeData(prev, migrateFinish(imported)));
 }
 
 const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stickers: [] };
+
+/**
+ * Drops deletion markers older than the retention (#464) from what was just read, and
+ * writes the smaller copy back so they are gone from localStorage too, not just from
+ * memory. A failed write only means the next load does it again.
+ */
+function purgeLoaded(raw: string, parsed: AppData): AppData {
+  const purged = purgeExpiredTombstones(parsed);
+  if (purged !== parsed && raw === localStorage.getItem(STORAGE_KEY)) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(purged)); } catch { /* storage full or blocked */ }
+  }
+  return purged;
+}
 
 /**
  * `corrupted` is only ever true when `raw` existed but couldn't be turned
@@ -54,7 +67,7 @@ export function loadLocal(): { data: AppData; corrupted: boolean } {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return { data: EMPTY_DATA, corrupted: false };
   try {
-    const parsed = JSON.parse(raw) as AppData;
+    const parsed = purgeLoaded(raw, JSON.parse(raw) as AppData);
     if (hasLegacyFinish(parsed)) {
       // Keep the very first pre-migration snapshot untouched, forever, until
       // an explicit rollback consumes it — never overwritten by a later
@@ -360,7 +373,7 @@ export function useAppData() {
       if (result.success) {
         // Merge against whatever's latest (not the snapshot sync started
         // with) so edits made while this sync was in flight aren't discarded.
-        commit((prev) => mergeData(prev, result.merged));
+        commit((prev) => purgeExpiredTombstones(mergeData(prev, result.merged)));
         setLastSyncAt(result.lastSyncAt);
       } else {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');
@@ -580,7 +593,7 @@ export function useAppData() {
       const adapter = createAdapter(config, persistRefreshedTokens);
       const result = await adapter.sync(restored);
       if (result.success) {
-        commit((prev) => mergeData(prev, result.merged));
+        commit((prev) => purgeExpiredTombstones(mergeData(prev, result.merged)));
         setLastSyncAt(result.lastSyncAt);
       } else {
         setSyncError(result.error ?? 'Sync fehlgeschlagen');

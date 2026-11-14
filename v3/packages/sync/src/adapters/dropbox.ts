@@ -1,5 +1,5 @@
 import type { AppData } from '@nagellacke/core';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncAdapter, SyncConfig, SyncResult, PhotoUploadResult } from '../adapter';
 
 const API = 'https://api.dropboxapi.com/2';
@@ -23,7 +23,7 @@ export class DropboxAdapter implements SyncAdapter {
   async sync(local: AppData): Promise<SyncResult> {
     try {
       const remote = await this.downloadJson();
-      const merged = remote ? mergeData(local, remote) : local;
+      const merged = purgeExpiredTombstones(remote ? mergeData(local, remote) : local);
       await this.uploadJson(merged);
       return { success: true, lastSyncAt: Date.now(), merged };
     } catch (err) {

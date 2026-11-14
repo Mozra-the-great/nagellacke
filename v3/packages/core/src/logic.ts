@@ -107,3 +107,60 @@ function mergeList<T extends { id: string; updatedAt: number }>(
   }
   return Array.from(map.values());
 }
+
+// ── Deletion markers (tombstones) ────────────────────────────────────────────
+
+/**
+ * How long an entry that was deleted (`deletedAt` set) is kept so that other devices can
+ * still learn about the deletion (#464, decision F101.5). The number is also stated in the
+ * privacy policy (sections 3 and 8) - change both together.
+ */
+export const TOMBSTONE_RETENTION_DAYS = 90;
+export const TOMBSTONE_RETENTION_MS = TOMBSTONE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether `item` is a deletion marker old enough to be removed for good: it carries a
+ * `deletedAt` that is at least TOMBSTONE_RETENTION_DAYS before `now`. Day 89 is kept,
+ * day 90 on is dropped. A missing, non-numeric or future `deletedAt` (clock skew) never
+ * expires, so a malformed record is never removed by this rule.
+ */
+export function isExpiredTombstone(
+  item: { deletedAt?: unknown } | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  const at = item?.deletedAt;
+  return typeof at === 'number' && Number.isFinite(at) && at > 0 && now - at >= TOMBSTONE_RETENTION_MS;
+}
+
+function dropExpired<T>(list: T[] | null | undefined, now: number): T[] | null | undefined {
+  if (!Array.isArray(list)) return list;
+  const kept = list.filter((item) => !isExpiredTombstone(item as { deletedAt?: unknown }, now));
+  // Same array back when nothing expired, so callers can tell "unchanged" by reference.
+  return kept.length === list.length ? list : kept;
+}
+
+/**
+ * Removes every expired deletion marker (see isExpiredTombstone) from all four
+ * collections. A separate step on purpose, not part of mergeData(): the merge decides
+ * which side wins and must keep a tombstone so a sync can carry the deletion to the
+ * other device; the purge is applied after it, wherever a collection is stored or
+ * loaded (server write, server start, web local copy).
+ *
+ * Returns the very same object when nothing expired. Fields it does not know about are
+ * left alone. Idempotent.
+ *
+ * Known limit: a device that was offline for longer than the retention and still holds
+ * the entry as *alive* uploads it again on its next sync - the deletion comes back,
+ * because the tombstone that would have beaten it is gone everywhere.
+ */
+export function purgeExpiredTombstones<T extends Partial<AppData>>(data: T, now: number = Date.now()): T {
+  const polishes = dropExpired(data.polishes, now);
+  const customCats = dropExpired(data.customCats, now);
+  const manicures = dropExpired(data.manicures, now);
+  const stickers = dropExpired(data.stickers, now);
+  if (
+    polishes === data.polishes && customCats === data.customCats &&
+    manicures === data.manicures && stickers === data.stickers
+  ) return data;
+  return { ...data, polishes, customCats, manicures, stickers };
+}

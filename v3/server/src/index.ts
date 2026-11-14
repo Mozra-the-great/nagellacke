@@ -11,7 +11,7 @@ import * as https from 'node:https';
 import type { Writable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
   getData, setData, getUser, getUserCount, createUser, updateUserEmail,
@@ -22,7 +22,7 @@ import {
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
   recordLoginFailure, clearLoginFailures, loginLockedUntil,
-  isAdmin, setUserRole, listUsers, deleteUser, countAdmins, canAccessPhoto, recordPhotoOwner,
+  isAdmin, setUserRole, listUsers, countAdmins, canAccessPhoto, recordPhotoOwner,
   forgetPhotoOwner, migratePhotoOwners,
   getServerSettings, setServerSettings, logAdminAction, getAuditLog,
   photoUploadsAllowed, aiAllowed, publicInstanceEnabled, registrationPowEnabled, getBranding, setBranding, BRANDING_DIR,
@@ -63,6 +63,7 @@ import {
 import { buildLoggerOptions } from './logRedact';
 import { stripImageMetadata, InvalidImageError } from './imageMeta';
 import { stripStoredPhotos } from './photoMigration';
+import { adminDeleteAccount, runRetentionJobs } from './retention';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -1211,7 +1212,9 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (isAdmin(username) && countAdmins() <= 1) {
       return reply.code(409).send({ error: 'Der letzte Admin kann nicht gelöscht werden' });
     }
-    deleteUser(username);
+    // Login gone and collection renamed at once; the renamed file and the account's
+    // photo files are recorded and purged 30 days later (#463, retention.ts).
+    adminDeleteAccount(username);
     // Orphan cleanup: schedules are keyed by username since #353, so the
     // deleted user's own schedule (if any) simply goes with it — nothing else
     // can be pointing at it.
@@ -2847,7 +2850,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const { data: clientData } = request.body as { data?: unknown };
     if (!clientData) return reply.code(400).send({ error: 'data erforderlich' });
     if (!isValidAppData(clientData)) return reply.code(400).send({ error: 'data ungültig' });
-    const merged = mergeData(getData(username), clientData);
+    // Deletion markers past the retention are dropped on every write (#464).
+    const merged = purgeExpiredTombstones(mergeData(getData(username), clientData));
     setData(username, merged);
     return { data: merged };
   });
@@ -2867,7 +2871,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     // Merge rather than overwrite: AI jobs write to this user's collection in
     // the background, and a client push built from a stale snapshot would
     // otherwise silently drop those writes.
-    const merged = mergeData(getData(username), data);
+    const merged = purgeExpiredTombstones(mergeData(getData(username), data));
     setData(username, merged);
     return { ok: true };
   });
@@ -3143,6 +3147,13 @@ async function main() {
   // ── Report scheduler ──────────────────────────────────────────────────────────
   // Checks every hour whether any user's scheduled report should be sent (runReportSchedules).
   setInterval(() => { void runReportSchedules(); }, 60 * 60 * 1000); // every hour
+
+  // ── Retention (#463, #464) ─────────────────────────────────────────────────
+  // Purges what an admin deletion left behind after 30 days and deletion markers older
+  // than 90 days. Once now, so a server that was down for a while catches up at start,
+  // then hourly. Idempotent, and a failing part is logged without stopping the rest.
+  runRetentionJobs();
+  setInterval(() => { runRetentionJobs(); }, 60 * 60 * 1000);
 
   // ── AI job queue safety net ────────────────────────────────────────────────
   // Jobs are normally picked up immediately (see setImmediate calls above); this
