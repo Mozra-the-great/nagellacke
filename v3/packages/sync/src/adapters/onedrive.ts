@@ -1,5 +1,5 @@
 import type { AppData } from '@nagellacke/core';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncAdapter, SyncConfig, SyncResult, PhotoUploadResult } from '../adapter';
 
 const GRAPH_API = 'https://graph.microsoft.com/v1.0/me/drive';
@@ -25,7 +25,7 @@ export class OneDriveAdapter implements SyncAdapter {
         headers: this.headers(),
       });
       const remote: AppData | null = getRes.ok ? await getRes.json() : null;
-      const merged = remote ? mergeData(local, remote) : local;
+      const merged = purgeExpiredTombstones(remote ? mergeData(local, remote) : local);
 
       await fetch(`${GRAPH_API}/root:/${DATA_PATH}:/content`, {
         method: 'PUT',

@@ -1,5 +1,5 @@
 import type { AppData } from '@nagellacke/core';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncAdapter, SyncConfig, SyncResult, PhotoUploadResult } from '../adapter';
 
 export class ServerAdapter implements SyncAdapter {
@@ -80,7 +80,7 @@ export class ServerAdapter implements SyncAdapter {
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const { data: remote } = await res.json() as { data: AppData };
-      const merged = mergeData(local, remote);
+      const merged = purgeExpiredTombstones(mergeData(local, remote));
 
       // Push merged result back
       const pushRes = await this.authedFetch(`${this.baseUrl}/api/sync/push`, {
