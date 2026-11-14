@@ -72,12 +72,12 @@
   und speichert sie dort. Verarbeitet werden:
 </p>
 <ul>
-  <li><strong>Kontodaten:</strong> Benutzername, Passwort (nur als Hash mit Salt, nicht im Klartext), Zeitpunkt der Registrierung, Rolle (Administrator oder Nutzer) sowie Zähler für fehlgeschlagene Anmeldungen und eine zeitweilige Sperre nach zu vielen Fehlversuchen.</li>
-  <li><strong>E-Mail-Adresse (freiwillig):</strong> Sie wird für das Zurücksetzen des Passworts und für Berichts-E-Mails benötigt. Ob sie bestätigt ist, wird vermerkt; zur Bestätigung und zum Zurücksetzen wird ein einmaliger Link gesendet, von dem nur ein Hash gespeichert wird.</li>
+  <li><strong>Kontodaten:</strong> Benutzername (ohne Unterscheidung von Groß- und Kleinschreibung; er wird in Kleinbuchstaben gespeichert), Passwort (nur als Hash mit Salt, nicht im Klartext), Zeitpunkt der Registrierung, Rolle (Administrator oder Nutzer) sowie Zähler für fehlgeschlagene Anmeldungen und eine zeitweilige Sperre nach zu vielen Fehlversuchen.</li>
+  <li><strong>E-Mail-Adresse (freiwillig):</strong> Sie wird für das Zurücksetzen des Passworts und für Berichts-E-Mails an das eigene Konto benötigt. Ob sie bestätigt ist, wird vermerkt; zur Bestätigung und zum Zurücksetzen wird ein einmaliger Link gesendet, von dem nur ein Hash gespeichert wird.</li>
   <li><strong>Zwei-Faktor-Anmeldung und Passkeys (freiwillig):</strong> Geheimnis für die Authentifizierungs-App, Hashes der Wiederherstellungscodes sowie bei Passkeys der öffentliche Schlüssel, ein Name, ein Zähler und die Zeitpunkte von Anlage und letzter Verwendung.</li>
-  <li><strong>Sammlung:</strong> Lacke, Kategorien, Maniküren, Sticker und Notizen mit Zeitstempeln. Gelöschte Einträge werden als gelöscht markiert, damit der Abgleich zwischen Geräten funktioniert; sie bleiben mit ihren bisherigen Angaben in der Sammlung gespeichert, eine automatische endgültige Entfernung gibt es derzeit nicht. Das gilt auch für die lokale Kopie im Browser.</li>
-  <li><strong>Fotos:</strong> Die hochgeladenen Bilddateien werden unverändert gespeichert; enthalten sie Metadaten (z. B. den Aufnahmeort), bleiben diese erhalten. Der Server merkt sich, welches Konto ein Foto hochgeladen hat. Abrufbar sind Fotos nur nach Anmeldung oder über einen signierten, zeitlich begrenzten Link.</li>
-  <li><strong>Berichtsplan (freiwillig):</strong> Empfängeradresse (sie kann von der E-Mail-Adresse des Kontos abweichen), Häufigkeit (wöchentlich oder monatlich) und Zeitpunkt des letzten Versands für automatische Berichts-E-Mails.</li>
+  <li><strong>Sammlung:</strong> Lacke, Kategorien, Maniküren, Sticker und Notizen mit Zeitstempeln. Gelöschte Einträge werden mit einem Löschvermerk versehen, damit der Abgleich zwischen Geräten funktioniert; sie bleiben bis zu 90 Tage mit ihren bisherigen Angaben gespeichert und werden danach endgültig entfernt. Das gilt auch für die lokale Kopie im Browser.</li>
+  <li><strong>Fotos:</strong> Beim Hochladen entfernt der Server die Metadaten aus der Bilddatei (JPEG, PNG, WebP), etwa den Aufnahmeort, Gerätehersteller und -modell, die Aufnahmezeit, XMP- und IPTC-Angaben, Kommentare und eingebettete Vorschaubilder; die Bildpunkte werden dabei nicht verändert. Erhalten bleiben nur Angaben, die für die richtige Darstellung nötig sind (Drehung, Farbprofil). Das gilt auch für bereits gespeicherte Fotos, die beim ersten Start einer Server-Version mit dieser Funktion einmalig bereinigt werden. Das Original auf Ihrem Gerät bleibt unverändert. Der Server merkt sich, welches Konto ein Foto hochgeladen hat. Abrufbar sind Fotos nur nach Anmeldung oder über einen signierten, zeitlich begrenzten Link.</li>
+  <li><strong>Berichtsplan (freiwillig):</strong> Empfängeradresse (sie kann von der E-Mail-Adresse des Kontos abweichen und wird ab der Eingabe gespeichert, auch bevor sie bestätigt ist), Häufigkeit (wöchentlich oder monatlich), Zeitpunkt des letzten Versands und Angaben zur Bestätigung der Adresse (bestätigte Adresse und Zeitpunkt, eine Laufnummer für die Bestätigungslinks sowie die Zeitpunkte der letzten Adressänderungen und Bestätigungsmails für die Mengenbegrenzung). Wer sich über den Abmeldelink einer Berichtsmail abmeldet, wird mit seiner Adresse in einer Abmeldeliste dieses Plans vermerkt (höchstens 50 Adressen, zusätzlich der Zeitpunkt der letzten Abmeldung). Ein Bericht fasst Lacke, Sticker, Maniküren und Fotos des Kontos für den Berichtszeitraum zusammen. Berichts-E-Mails, auch beim Sofortversand („Jetzt per E-Mail senden“), gehen nur an die verifizierte E-Mail-Adresse des eigenen Kontos oder an eine Adresse, deren Inhaber den Empfang per Link bestätigt hat (siehe unten).</li>
   <li><strong>KI-Aufträge (nur bei Nutzung):</strong> Eingaben, Ergebnisse, Fehlermeldungen und die Suchbegriffe einer eventuellen Websuche der letzten Aufträge (siehe Abschnitt 6). Der Server behält höchstens die letzten 200 Aufträge, gezählt über alle Konten zusammen; ältere werden verworfen. Beim Löschen des eigenen Kontos (Abschnitt 8) werden die Aufträge des Kontos entfernt.</li>
   <li><strong>Protokoll administrativer Aktionen:</strong> Wenn Administratoren Konten anlegen, löschen oder Rechte ändern, Einstellungen (einschließlich Erscheinungsbild, Rechtstexte, KI-Einstellungen und API-Schlüssel) speichern, eine Test-E-Mail versenden (dabei wird auch die Empfängeradresse vermerkt) oder ein Konto sich selbst löscht, werden Zeitpunkt, Aktion und Benutzernamen in einem auf die letzten 500 Einträge begrenzten Protokoll vermerkt.</li>
 </ul>
@@ -85,15 +85,40 @@
   <strong>Erforderliche und freiwillige Angaben:</strong> Für ein Konto sind Benutzername und Passwort erforderlich; ohne sie ist
   keine Anmeldung an einem Server möglich. Die Web-App lässt sich auch ohne Konto lokal nutzen (Abschnitt 2).
   E-Mail-Adresse, Zwei-Faktor-Anmeldung, Passkeys und Berichtsplan sind freiwillig. Ohne E-Mail-Adresse
-  lässt sich das Passwort nicht per Link zurücksetzen und es werden keine Berichts-E-Mails versendet. Ohne bestätigte
+  lässt sich das Passwort nicht per Link zurücksetzen. Berichts-E-Mails werden nur an die verifizierte eigene Adresse
+  oder an eine vom Inhaber bestätigte Adresse gesendet; ohne eine solche Adresse gibt es keine Berichte. Ohne bestätigte
   E-Mail-Adresse funktioniert das Konto, ein Zurücksetzen des Passworts ist aber nicht möglich. Die Kontodaten werden
   bis zur Löschung des Kontos gespeichert.
 </p>
 <p>
-  Zweck ist die Bereitstellung der Web-App mit Konto, Abgleich und Fotos. Rechtsgrundlage ist die Durchführung des
-  Nutzungsverhältnisses (Art. 6 Abs. 1 lit. b DSGVO); für Sicherheitsmaßnahmen wie Sperren und Protokolle das
-  berechtigte Interesse am sicheren Betrieb (Art. 6 Abs. 1 lit. f DSGVO). Berichts-E-Mails und das Zurücksetzen des
-  Passworts erfolgen auf Ihren Wunsch zur Durchführung dieses Nutzungsverhältnisses (Art. 6 Abs. 1 lit. b DSGVO).
+  Zweck ist die Bereitstellung der Web-App mit Konto, Abgleich und Fotos. Rechtsgrundlage für die erforderlichen
+  Angaben (Benutzername, Passwort, Sammlung, Fotos) ist die Durchführung des Nutzungsverhältnisses (Art. 6 Abs. 1
+  lit. b DSGVO); für Sicherheitsmaßnahmen wie Sperren und Protokolle das berechtigte Interesse am sicheren Betrieb
+  (Art. 6 Abs. 1 lit. f DSGVO). Die freiwilligen Angaben (E-Mail-Adresse einschließlich der Mails zur Bestätigung und
+  zum Zurücksetzen des Passworts, Zwei-Faktor-Anmeldung, Passkeys, Berichtsplan und Berichts-E-Mails) verarbeiten wir auf
+  Grundlage Ihrer Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die Sie durch die Eingabe oder das Einschalten der
+  jeweiligen Funktion erteilen.
+</p>
+<p>
+  <strong>Widerruf der Einwilligung:</strong> Sie können jede Einwilligung jederzeit mit Wirkung für die Zukunft
+  widerrufen; die Rechtmäßigkeit der bis dahin erfolgten Verarbeitung bleibt unberührt (Art. 7 Abs. 3 DSGVO). Berichte
+  stoppen Sie unter „Mehr → Berichte“ mit „Automatisch senden“. Die Zwei-Faktor-Anmeldung deaktivieren und Passkeys
+  entfernen Sie unter „Mehr → Sicherheit“; die zugehörigen Daten werden dabei gelöscht. Die zuletzt eingetragene
+  Empfängeradresse bleibt in einem ausgeschalteten Plan gespeichert, bis sie ersetzt oder das Konto gelöscht wird. Die
+  E-Mail-Adresse des Kontos lässt sich ändern, aber nicht leeren; sie wird entfernt, wenn Sie das Konto löschen
+  (Abschnitt 8) oder sich an den Kontakt in Abschnitt 10 wenden. Als Empfänger einer Berichtsmail widerrufen Sie mit
+  einem Klick auf den Abmeldelink am Ende der Mail; danach werden keine Berichte mehr an Ihre Adresse gesendet.
+</p>
+<p>
+  <strong>Berichts-Empfänger ohne eigenes Konto:</strong> Trägt ein Konto Ihre Adresse als Empfänger ein, erhalten Sie
+  zuerst nur eine Bestätigungsmail. Sie nennt das anfragende Konto, beschreibt, was gesendet würde, und ihr Link gilt
+  48 Stunden. Ohne Ihre Bestätigung wird nichts an Ihre Adresse gesendet. Gespeichert wird Ihre E-Mail-Adresse im
+  Berichtsplan dieses Kontos (der Kontoinhaber hat sie uns mitgeteilt), nur zum Versand dieser Berichte;
+  Rechtsgrundlage ist Ihre Einwilligung durch die Bestätigung (Art. 6 Abs. 1 lit. a DSGVO). Jede Berichtsmail enthält
+  einen Abmeldelink und die Kopfzeilen <code>List-Unsubscribe</code> und <code>List-Unsubscribe-Post</code> für das
+  Abmelden mit einem Klick im Mailprogramm. Nach der Abmeldung wird Ihre Adresse in der Abmeldeliste jenes Kontos
+  vermerkt, damit das Konto sie nicht erneut als Empfänger einsetzen kann; das dient der Umsetzung Ihres Widerrufs
+  (Art. 6 Abs. 1 lit. f DSGVO). Ihre Rechte nach Abschnitt 9 können Sie über den Kontakt in Abschnitt 10 ausüben.
 </p>
 
 <h2>4. Cookies und lokaler Speicher</h2>
@@ -105,12 +130,13 @@
 
 <h2>5. Server-Protokolle, Hosting und Sicherheit</h2>
 <ul>
-  <li><strong>Server-Protokolle:</strong> Der Server protokolliert Anfragen im Betriebsprotokoll: Zeitpunkt, Methode, aufgerufene Adresse samt Parametern (bei Foto-Links auch den zeitlich begrenzten Zugriffs-Token), Statuscode, Antwortzeit und die IP-Adresse des Besuchers, wie sie der vorgeschaltete Reverse-Proxy (Traefik) weitergibt. Der Reverse-Proxy selbst schreibt keine Zugriffsprotokolle. Das Betriebsprotokoll liegt als Datei auf dem Server und wird in der Größe begrenzt rotiert (höchstens 5 Dateien zu je 10 MB; die ältesten Einträge werden überschrieben, je nach Auslastung nach einigen Tagen bis Wochen); beim Aktualisieren der Anwendung wird es zusätzlich gelöscht. Es wird nicht an Dritte übermittelt. Zweck ist der sichere und fehlerfreie Betrieb sowie die Abwehr von Missbrauch (Art. 6 Abs. 1 lit. f DSGVO).</li>
-  <li><strong>Betriebssystem-Protokolle:</strong> Das Betriebssystem des Servers protokolliert unabhängig von der App unter anderem Anmeldeversuche am Verwaltungszugang (SSH) mit der Quell-IP-Adresse. Diese Protokolle werden wöchentlich rotiert und nach etwa fünf Wochen gelöscht; das systemd-Journal wird nur in seiner Größe begrenzt, nicht zeitlich, und kann ältere Einträge enthalten. Sie enthalten keine Nutzungsdaten der Web-App, sondern betreffen Verbindungen zur Verwaltung des Servers (auch automatisierte Scans aus dem Internet). Zweck ist die Sicherheit des Servers (Art. 6 Abs. 1 lit. f DSGVO).</li>
+  <li><strong>Server-Protokolle:</strong> Der Server protokolliert Anfragen im Betriebsprotokoll: Zeitpunkt, Methode, aufgerufene Adresse samt Parametern, Statuscode, Antwortzeit und die IP-Adresse des Besuchers, wie sie der vorgeschaltete Reverse-Proxy (Traefik) weitergibt. Der Wert von Parametern, die Zugangsdaten enthalten (zum Beispiel der zeitlich begrenzte Zugriffs-Token bei Foto-Links oder das Token im Abmeldelink), wird vor dem Schreiben durch <code>[REDACTED]</code> ersetzt. Der Reverse-Proxy selbst schreibt keine Zugriffsprotokolle. Das Betriebsprotokoll liegt als Datei auf dem Server und wird in der Größe begrenzt rotiert (höchstens 5 Dateien zu je 10 MB; die ältesten Einträge werden überschrieben, je nach Auslastung nach einigen Tagen bis Wochen); beim Aktualisieren der Anwendung wird es zusätzlich gelöscht. Es wird nicht an Dritte übermittelt. Zweck ist der sichere und fehlerfreie Betrieb sowie die Abwehr von Missbrauch (Art. 6 Abs. 1 lit. f DSGVO).</li>
+  <li><strong>Betriebssystem-Protokolle:</strong> Das Betriebssystem des Servers protokolliert unabhängig von der App unter anderem Anmeldeversuche am Verwaltungszugang (SSH) mit der Quell-IP-Adresse. Diese Protokolle, einschließlich des systemd-Journals, werden nach etwa 14 Tagen gelöscht. Sie enthalten keine Nutzungsdaten der Web-App, sondern betreffen Verbindungen zur Verwaltung des Servers (auch automatisierte Scans aus dem Internet). Zweck ist die Sicherheit des Servers (Art. 6 Abs. 1 lit. f DSGVO).</li>
   <li><strong>Schutz vor Missbrauch:</strong> Anfragen werden pro IP-Adresse im Arbeitsspeicher gezählt, um Überlastung und Passwort-Raten zu begrenzen. Diese Zähler werden nicht dauerhaft gespeichert und verfallen nach kurzer Zeit (Art. 6 Abs. 1 lit. f DSGVO).</li>
   <li><strong>Hosting nailvault.de:</strong> Die Instanz läuft in einem Container auf einer virtuellen Maschine bei Oracle Cloud Infrastructure in der Region Frankfurt (Deutschland). Die Verbindung ist per HTTPS (TLS-Zertifikat von Let’s Encrypt) verschlüsselt. Die DNS-Auflösung der Domain erfolgt über Cloudflare; der Datenverkehr selbst läuft nicht über Cloudflare. Hosting und DNS sind für den Betrieb der Instanz erforderlich (Art. 6 Abs. 1 lit. b und f DSGVO).</li>
   <li><strong>Projektseite:</strong> Sie wird über GitHub Pages ausgeliefert. Dabei verarbeitet GitHub technisch bedingt Verbindungsdaten wie die IP-Adresse; es gilt die <a href="https://docs.github.com/de/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener" target="_blank">Datenschutzerklärung von GitHub</a>. Die Auslieferung der Seite beruht auf unserem berechtigten Interesse an einer erreichbaren Projektseite (Art. 6 Abs. 1 lit. f DSGVO).</li>
-  <li><strong>Anbieter in den USA:</strong> Oracle, Cloudflare, GitHub (Microsoft) und Google (siehe Abschnitt 6) sind Unternehmen mit Sitz in den USA. Auch bei einem Rechenzentrum in Deutschland ist daher eine Verarbeitung durch diese Anbieter nach deren eigenen Bedingungen und ein Zugriff aus den USA nicht ausgeschlossen.</li>
+  <li><strong>Anbieter in den USA und Drittlandübermittlung:</strong> Oracle, Cloudflare, GitHub (Microsoft) und Google (siehe Abschnitt 6) sind Unternehmen mit Sitz in den USA. Auch bei einem Rechenzentrum in Deutschland ist daher eine Verarbeitung durch diese Anbieter nach deren eigenen Bedingungen und ein Zugriff aus den USA nicht ausgeschlossen. Soweit dabei personenbezogene Daten in die USA übermittelt werden, stützt sich die Übermittlung auf Standardvertragsklauseln (Art. 46 Abs. 2 lit. c DSGVO); deren Wortlaut ist im <a href="https://eur-lex.europa.eu/eli/dec_impl/2021/914/oj?locale=de" rel="noopener" target="_blank">Durchführungsbeschluss (EU) 2021/914 der EU-Kommission</a> veröffentlicht.</li>
+  <li><strong>Auftragsverarbeitung:</strong> Mit Oracle (Hosting) und Google (E-Mail-Versand über Gmail) besteht kein gesondert geschlossener Auftragsverarbeitungsvertrag nach Art. 28 DSGVO; es gelten die allgemeinen Bedingungen der Anbieter. Der Betreiber nimmt dieses Risiko bewusst in Kauf.</li>
   <li><strong>Schutz der Daten:</strong> Passwörter werden mit scrypt gehasht, Sitzungen laufen über signierte Token, wiederholte Fehlanmeldungen führen zu einer Sperre.</li>
 </ul>
 
@@ -124,7 +150,7 @@
 <ul>
   <li><strong>KI-Funktionen (Auto-Fill, Smart-Cart):</strong> Auf nailvault.de derzeit abgeschaltet; es werden keine Daten an KI-Anbieter gesendet. Ist die Funktion auf einem Server eingeschaltet, sendet der Server die Anfrage an den vom Betreiber gewählten Anbieter, OpenRouter (openrouter.ai) oder Google Gemini (generativelanguage.googleapis.com). Bei Auto-Fill sind das Name, Marke und Nummer eines Lacks; beim Smart-Cart die Liste der Lacke in Sammlung und Einkaufswagen (Marke, Nummer, Name, Farbe, Finish) und der eingegebene Wunsch. Für die Verarbeitung gelten die Bedingungen des jeweiligen Anbieters. Die KI-Funktionen liefern Vorschläge auf Ihre Anforderung; sie treffen keine Entscheidungen über Sie.</li>
   <li><strong>Websuche der KI:</strong> Die Websuche ist Teil der KI-Funktionen und arbeitet nur zusammen mit einem hinterlegten KI-Schlüssel; auf nailvault.de ist sie daher derzeit nicht in Betrieb. Kann das Modell auf einem Server im Internet recherchieren, stellt der Server Suchanfragen an den eingestellten Dienst, auf nailvault.de DuckDuckGo, auf anderen Servern auch die Brave Search API oder eine vom Betreiber betriebene SearXNG-Instanz. Übermittelt werden die vom Modell formulierten Suchbegriffe; sie können sich aus Ihrer Anfrage und Ihrer Sammlung ableiten, Kontodaten gehören nicht dazu.</li>
-  <li><strong>E-Mail-Versand:</strong> Bestätigungs-, Passwort-Zurücksetzen- und Berichts-E-Mails werden über den vom Betreiber eingestellten SMTP-Server versendet; auf nailvault.de ist das Gmail (Google, USA), es gelten die <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Datenschutzbestimmungen von Google</a>. Der SMTP-Server erhält dafür die Empfängeradresse und den Inhalt der Nachricht; Berichte enthalten signierte, zeitlich begrenzte Links auf Fotos.</li>
+  <li><strong>E-Mail-Versand:</strong> Bestätigungs-, Passwort-Zurücksetzen- und Berichts-E-Mails (einschließlich der Bestätigungsanfrage an einen Berichts-Empfänger) werden über den vom Betreiber eingestellten SMTP-Server versendet; auf nailvault.de ist das Gmail (Google, USA), es gelten die <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Datenschutzbestimmungen von Google</a>; zur Übermittlung in die USA siehe Abschnitt 5. Der SMTP-Server erhält dafür die Empfängeradresse und den Inhalt der Nachricht; Berichte enthalten Angaben aus der Sammlung, signierte, zeitlich begrenzte Links auf Fotos und einen Abmeldelink.</li>
   <li><strong>Nextcloud-Sync:</strong> Wählen Sie Nextcloud als Sync-Ziel, überträgt der Browser Sammlung und Fotos direkt an die von Ihnen angegebene Nextcloud-Adresse. Dort gelten deren Datenschutzbestimmungen. Google Drive, OneDrive und Dropbox stehen in der Auswahl, lassen sich in der Web-App aber noch nicht anmelden; es werden dorthin keine Daten übertragen.</li>
 </ul>
 <p>
@@ -145,9 +171,10 @@
 <ul>
   <li><strong>Lokale Daten</strong> bleiben, bis sie im Browser gelöscht werden.</li>
   <li><strong>Auskunft und Datenübertragbarkeit:</strong> Unter „Mehr → Sync“ lässt sich ein Konto mit „Meine Kontodaten herunterladen“ als JSON-Datei exportieren; der ZIP-Export unter „Mehr → Daten“ enthält zusätzlich die Fotos.</li>
-  <li><strong>Löschung durch Sie:</strong> Unter „Mehr → Sync“ löscht „Konto löschen…“ nach Passwortabfrage das Konto endgültig samt Sammlung, Berichtsplan, KI-Aufträgen und den Fotos, die nur dieses Konto verwendet. Einträge im Protokoll administrativer Aktionen (Abschnitt 3) bleiben bis zum Überschreiben durch neuere Einträge bestehen.</li>
-  <li><strong>Löschung durch einen Administrator:</strong> Löscht ein Administrator ein Konto, entfernt das den Zugang und den Berichtsplan. Die Sammlungsdatei wird dabei nicht gelöscht, sondern umbenannt, und auch die Fotodateien und die KI-Aufträge des Kontos werden nicht entfernt. Sie bleiben ohne automatische Löschfrist auf dem Server, bis der Betreiber sie von Hand entfernt. Dabei handelt es sich nicht um eine Datensicherung im Sinne des folgenden Punkts.</li>
+  <li><strong>Löschung durch Sie:</strong> Unter „Mehr → Sync“ löscht „Konto löschen…“ nach Passwortabfrage das Konto endgültig samt Sammlung, Berichtsplan (einschließlich Abmeldeliste), KI-Aufträgen und den Fotos, die nur dieses Konto verwendet. Einträge im Protokoll administrativer Aktionen (Abschnitt 3) bleiben bis zum Überschreiben durch neuere Einträge bestehen.</li>
+  <li><strong>Löschung durch einen Administrator:</strong> Löscht ein Administrator ein Konto, entfernt das sofort den Zugang und den Berichtsplan (einschließlich Abmeldeliste). Die Sammlungsdatei wird dabei zunächst nicht gelöscht, sondern umbenannt, und auch die Fotodateien und die KI-Aufträge des Kontos bleiben zunächst bestehen. Sie werden spätestens nach 30 Tagen endgültig gelöscht. Dabei handelt es sich nicht um eine Datensicherung im Sinne des folgenden Punkts.</li>
   <li><strong>Datensicherungen:</strong> Für nailvault.de werden bewusst keine regelmäßigen Sicherungen (Backups) der Konto- und Sammlungsdaten angelegt, auch nicht auf Ebene des Hosters (Oracle). Gelöschte Konten und Einträge lassen sich daher nach der Löschung nicht aus einer Sicherung wiederherstellen; umgekehrt gehen die Daten bei einem Ausfall des Servers möglicherweise unwiederbringlich verloren. Wer seine Sammlung behalten möchte, sollte sie regelmäßig über „Mehr → Daten“ exportieren.</li>
+  <li><strong>Gelöschte Einträge</strong> (Löschvermerke) werden nach 90 Tagen endgültig entfernt (Abschnitt 3).</li>
   <li><strong>Protokolle</strong> werden nach den Fristen in Abschnitt 5 überschrieben beziehungsweise gelöscht.</li>
   <li><strong>Daten bei anderen Diensten</strong> (Nextcloud, KI-Anbieter, SMTP-Server) müssen dort gelöscht werden.</li>
 </ul>
@@ -155,8 +182,9 @@
 <h2>9. Ihre Rechte</h2>
 <p>
   Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung und Datenübertragbarkeit.
-  Außerdem können Sie sich bei einer Datenschutz-Aufsichtsbehörde beschweren. Für die Ausübung Ihrer Rechte nutzen Sie
-  die Funktionen in Abschnitt 8 oder den Kontakt in Abschnitt 10.
+  Erteilte Einwilligungen können Sie jederzeit widerrufen (Abschnitt 3). Außerdem können Sie sich bei einer
+  Datenschutz-Aufsichtsbehörde beschweren. Für die Ausübung Ihrer Rechte nutzen Sie die Funktionen in Abschnitt 8 oder
+  den Kontakt in Abschnitt 10.
 </p>
 <p>
   <strong>Widerspruchsrecht:</strong> Sie haben das Recht, der Verarbeitung Ihrer Daten, die auf berechtigten Interessen
@@ -234,12 +262,12 @@
   it there. The following is processed:
 </p>
 <ul>
-  <li><strong>Account data:</strong> user name, password (only as a salted hash, not in plain text), time of registration, role (administrator or user), as well as counters for failed logins and a temporary lockout after too many failed attempts.</li>
-  <li><strong>E-mail address (optional):</strong> It is needed for resetting the password and for report e-mails. Whether it is confirmed is recorded; for confirmation and for resetting, a one-time link is sent, of which only a hash is stored.</li>
+  <li><strong>Account data:</strong> user name (case-insensitive; it is stored in lower case), password (only as a salted hash, not in plain text), time of registration, role (administrator or user), as well as counters for failed logins and a temporary lockout after too many failed attempts.</li>
+  <li><strong>E-mail address (optional):</strong> It is needed for resetting the password and for report e-mails to your own account. Whether it is confirmed is recorded; for confirmation and for resetting, a one-time link is sent, of which only a hash is stored.</li>
   <li><strong>Two-factor login and passkeys (optional):</strong> secret for the authenticator app, hashes of the recovery codes and, for passkeys, the public key, a name, a counter and the times of creation and last use.</li>
-  <li><strong>Collection:</strong> polishes, categories, manicures, stickers and notes with timestamps. Deleted entries are marked as deleted so that syncing between devices works; they remain stored in the collection with their previous details, and there is currently no automatic permanent removal. This also applies to the local copy in the browser.</li>
-  <li><strong>Photos:</strong> The uploaded image files are stored unchanged; if they contain metadata (e.g. the location where they were taken), it is retained. The server remembers which account uploaded a photo. Photos can only be retrieved after logging in or via a signed, time-limited link.</li>
-  <li><strong>Report schedule (optional):</strong> recipient address (it may differ from the e-mail address of the account), frequency (weekly or monthly) and time of the last dispatch for automatic report e-mails.</li>
+  <li><strong>Collection:</strong> polishes, categories, manicures, stickers and notes with timestamps. Deleted entries are given a deletion marker so that syncing between devices works; they remain stored with their previous details for up to 90 days and are then permanently removed. This also applies to the local copy in the browser.</li>
+  <li><strong>Photos:</strong> On upload the server removes the metadata from the image file (JPEG, PNG, WebP), such as the location where it was taken, device make and model, time taken, XMP and IPTC data, comments and embedded thumbnails; the pixels are not changed in the process. Only details needed to display the image correctly are kept (orientation, color profile). This also applies to photos that were already stored, which are cleaned once when a server version with this feature first starts. The original on your device stays unchanged. The server remembers which account uploaded a photo. Photos can only be retrieved after logging in or via a signed, time-limited link.</li>
+  <li><strong>Report schedule (optional):</strong> recipient address (it may differ from the e-mail address of the account and is stored from the moment it is entered, even before it is confirmed), frequency (weekly or monthly), time of the last dispatch and details on the confirmation of the address (confirmed address and time, a sequence number for the confirmation links, and the times of the latest address changes and confirmation mails for rate limiting). Anyone who unsubscribes through the unsubscribe link of a report e-mail is recorded with their address in an unsubscribe list of this schedule (at most 50 addresses, plus the time of the latest unsubscribe). A report summarizes the account’s polishes, stickers, manicures and photos for the reporting period. Report e-mails, including the instant send (“Send by e-mail now”), go only to the verified e-mail address of your own account or to an address whose owner has confirmed receipt by link (see below).</li>
   <li><strong>AI jobs (only when used):</strong> inputs, results, error messages and the search terms of any web search of the most recent jobs (see section 6). The server keeps at most the last 200 jobs, counted across all accounts together; older ones are discarded. When you delete your own account (section 8), the account’s jobs are removed.</li>
   <li><strong>Log of administrative actions:</strong> When administrators create or delete accounts or change permissions, save settings (including appearance, legal texts, AI settings and API key), send a test e-mail (the recipient address is recorded as well), or when an account deletes itself, the time, action and user names are recorded in a log limited to the last 500 entries.</li>
 </ul>
@@ -247,14 +275,38 @@
   <strong>Required and optional details:</strong> A user name and password are required for an account; without them,
   logging in to a server is not possible. The web app can also be used locally without an account (section 2).
   E-mail address, two-factor login, passkeys and report schedule are optional. Without an e-mail address the password
-  cannot be reset by link and no report e-mails are sent. Without a confirmed e-mail address the account works, but
-  the password cannot be reset. Account data is stored until the account is deleted.
+  cannot be reset by link. Report e-mails are only sent to the verified address of your own account or to an address
+  confirmed by its owner; without such an address there are no reports. Without a confirmed e-mail address the account
+  works, but the password cannot be reset. Account data is stored until the account is deleted.
 </p>
 <p>
-  The purpose is to provide the web app with account, sync and photos. The legal basis is the performance of the
-  user relationship (Art. 6(1)(b) GDPR); for security measures such as lockouts and logs it is the legitimate interest
-  in secure operation (Art. 6(1)(f) GDPR). Report e-mails and password resets take place at your request for the
-  performance of this user relationship (Art. 6(1)(b) GDPR).
+  The purpose is to provide the web app with account, sync and photos. The legal basis for the required details (user
+  name, password, collection, photos) is the performance of the user relationship (Art. 6(1)(b) GDPR); for security
+  measures such as lockouts and logs it is the legitimate interest in secure operation (Art. 6(1)(f) GDPR). We process
+  the optional details (e-mail address, including the e-mails for confirmation and password reset, two-factor login,
+  passkeys, report schedule and report e-mails) on the basis of your consent (Art. 6(1)(a) GDPR), which you give by
+  entering the details or switching on the respective feature.
+</p>
+<p>
+  <strong>Withdrawing consent:</strong> You can withdraw any consent at any time with effect for the future; the
+  lawfulness of the processing carried out until then remains unaffected (Art. 7(3) GDPR). You stop reports under “More
+  → Reports” with “Send automatically”. You switch off two-factor login and remove passkeys under “More → Security”;
+  the associated data is deleted in the process. The recipient address entered last remains stored in a switched-off
+  schedule until it is replaced or the account is deleted. The e-mail address of the account can be changed but not
+  emptied; it is removed when you delete the account (section 8) or contact the address in section 10. As the recipient
+  of a report e-mail you withdraw with one click on the unsubscribe link at the end of the e-mail; after that no more
+  reports are sent to your address.
+</p>
+<p>
+  <strong>Report recipients without an account of their own:</strong> If an account enters your address as a recipient,
+  you first receive only a confirmation e-mail. It names the requesting account, describes what would be sent, and its
+  link is valid for 48 hours. Nothing is sent to your address without your confirmation. Your e-mail address is stored
+  in the report schedule of that account (the account holder gave it to us), only for sending these reports; the legal
+  basis is your consent by confirming (Art. 6(1)(a) GDPR). Every report e-mail contains an unsubscribe link and the
+  headers <code>List-Unsubscribe</code> and <code>List-Unsubscribe-Post</code> for one-click unsubscribing in the mail
+  program. After unsubscribing, your address is recorded in the unsubscribe list of that account so that the account
+  cannot enter it as a recipient again; this implements your withdrawal (Art. 6(1)(f) GDPR). You can exercise your
+  rights under section 9 via the contact in section 10.
 </p>
 
 <h2>4. Cookies and local storage</h2>
@@ -266,12 +318,13 @@
 
 <h2>5. Server logs, hosting and security</h2>
 <ul>
-  <li><strong>Server logs:</strong> The server records requests in the operating log: time, method, requested address including parameters (for photo links also the time-limited access token), status code, response time and the visitor’s IP address as passed on by the upstream reverse proxy (Traefik). The reverse proxy itself writes no access logs. The operating log is kept as a file on the server and is rotated with a limited size (at most 5 files of 10 MB each; the oldest entries are overwritten, after a few days to weeks depending on load); it is also deleted when the application is updated. It is not passed on to third parties. The purpose is safe and error-free operation and the prevention of abuse (Art. 6(1)(f) GDPR).</li>
-  <li><strong>Operating system logs:</strong> Independently of the app, the server’s operating system logs, among other things, login attempts at the administration access (SSH) with the source IP address. These logs are rotated weekly and deleted after about five weeks; the systemd journal is limited only in size, not in time, and may contain older entries. They contain no usage data of the web app but concern connections for administering the server (including automated scans from the internet). The purpose is the security of the server (Art. 6(1)(f) GDPR).</li>
+  <li><strong>Server logs:</strong> The server records requests in the operating log: time, method, requested address including parameters, status code, response time and the visitor’s IP address as passed on by the upstream reverse proxy (Traefik). The value of parameters that carry credentials (for example the time-limited access token of photo links or the token in the unsubscribe link) is replaced by <code>[REDACTED]</code> before it is written. The reverse proxy itself writes no access logs. The operating log is kept as a file on the server and is rotated with a limited size (at most 5 files of 10 MB each; the oldest entries are overwritten, after a few days to weeks depending on load); it is also deleted when the application is updated. It is not passed on to third parties. The purpose is safe and error-free operation and the prevention of abuse (Art. 6(1)(f) GDPR).</li>
+  <li><strong>Operating system logs:</strong> Independently of the app, the server’s operating system logs, among other things, login attempts at the administration access (SSH) with the source IP address. These logs, including the systemd journal, are deleted after about 14 days. They contain no usage data of the web app but concern connections for administering the server (including automated scans from the internet). The purpose is the security of the server (Art. 6(1)(f) GDPR).</li>
   <li><strong>Protection against abuse:</strong> Requests are counted per IP address in memory in order to limit overload and password guessing. These counters are not stored permanently and expire after a short time (Art. 6(1)(f) GDPR).</li>
   <li><strong>Hosting nailvault.de:</strong> The instance runs in a container on a virtual machine at Oracle Cloud Infrastructure in the Frankfurt region (Germany). The connection is encrypted via HTTPS (TLS certificate from Let’s Encrypt). DNS resolution for the domain is handled by Cloudflare; the traffic itself does not run through Cloudflare. Hosting and DNS are necessary to operate the instance (Art. 6(1)(b) and (f) GDPR).</li>
   <li><strong>Project page:</strong> It is delivered via GitHub Pages. GitHub technically processes connection data such as the IP address in the process; the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener" target="_blank">GitHub Privacy Statement</a> applies. The page is delivered on the basis of our legitimate interest in an accessible project page (Art. 6(1)(f) GDPR).</li>
-  <li><strong>Providers in the USA:</strong> Oracle, Cloudflare, GitHub (Microsoft) and Google (see section 6) are companies based in the USA. Even with a data center in Germany, processing by these providers under their own terms and access from the USA therefore cannot be ruled out.</li>
+  <li><strong>Providers in the USA and third-country transfers:</strong> Oracle, Cloudflare, GitHub (Microsoft) and Google (see section 6) are companies based in the USA. Even with a data center in Germany, processing by these providers under their own terms and access from the USA therefore cannot be ruled out. Where personal data is transferred to the USA in the process, the transfer is based on standard contractual clauses (Art. 46(2)(c) GDPR); their wording is published in the <a href="https://eur-lex.europa.eu/eli/dec_impl/2021/914/oj?locale=en" rel="noopener" target="_blank">European Commission’s Implementing Decision (EU) 2021/914</a>.</li>
+  <li><strong>Data processing agreements:</strong> There is no separately concluded data processing agreement under Art. 28 GDPR with Oracle (hosting) or Google (e-mail sending via Gmail); the providers’ general terms apply. The operator knowingly accepts this risk.</li>
   <li><strong>Protection of data:</strong> Passwords are hashed with scrypt, sessions run on signed tokens, repeated failed logins lead to a lockout.</li>
 </ul>
 
@@ -285,7 +338,7 @@
 <ul>
   <li><strong>AI features (Auto-Fill, Smart-Cart):</strong> Currently switched off on nailvault.de; no data is sent to AI providers. If the feature is switched on on a server, the server sends the request to the provider chosen by the operator, OpenRouter (openrouter.ai) or Google Gemini (generativelanguage.googleapis.com). For Auto-Fill this is the name, brand and number of a polish; for Smart-Cart the list of polishes in the collection and shopping cart (brand, number, name, color, finish) and the wish entered. The terms of the respective provider apply to the processing. The AI features deliver suggestions at your request; they make no decisions about you.</li>
   <li><strong>AI web search:</strong> Web search is part of the AI features and only works together with a stored AI key; on nailvault.de it is therefore currently not in operation. If the model can research on the internet on a server, the server sends search queries to the configured service, on nailvault.de DuckDuckGo, on other servers also the Brave Search API or a SearXNG instance run by the operator. The search terms formulated by the model are transmitted; they may be derived from your request and your collection, account data is not included.</li>
-  <li><strong>E-mail sending:</strong> Confirmation, password reset and report e-mails are sent via the SMTP server set by the operator; on nailvault.de this is Gmail (Google, USA), and <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google’s privacy policy</a> applies. The SMTP server receives the recipient address and the content of the message for this; reports contain signed, time-limited links to photos.</li>
+  <li><strong>E-mail sending:</strong> Confirmation, password reset and report e-mails (including the confirmation request to a report recipient) are sent via the SMTP server set by the operator; on nailvault.de this is Gmail (Google, USA), and <a href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google’s privacy policy</a> applies; for the transfer to the USA see section 5. The SMTP server receives the recipient address and the content of the message for this; reports contain details from the collection, signed, time-limited links to photos and an unsubscribe link.</li>
   <li><strong>Nextcloud sync:</strong> If you choose Nextcloud as the sync target, the browser transmits the collection and photos directly to the Nextcloud address you specify. Its privacy terms apply there. Google Drive, OneDrive and Dropbox appear in the selection but cannot yet be signed in to in the web app; no data is transmitted to them.</li>
 </ul>
 <p>
@@ -306,18 +359,19 @@
 <ul>
   <li><strong>Local data</strong> remains until it is deleted in the browser.</li>
   <li><strong>Access and data portability:</strong> Under “More → Sync” an account can be exported as a JSON file with “Download my account data”; the ZIP export under “More → Data” additionally contains the photos.</li>
-  <li><strong>Deletion by you:</strong> Under “More → Sync”, “Delete account…” permanently deletes the account after a password prompt, together with the collection, report schedule, AI jobs and the photos that only this account uses. Entries in the log of administrative actions (section 3) remain until they are overwritten by newer entries.</li>
-  <li><strong>Deletion by an administrator:</strong> If an administrator deletes an account, this removes the login and the report schedule. The collection file is not deleted in the process but renamed, and the photo files and AI jobs of the account are not removed either. They remain on the server without an automatic deletion period until the operator removes them by hand. This is not a backup in the sense of the following item.</li>
+  <li><strong>Deletion by you:</strong> Under “More → Sync”, “Delete account…” permanently deletes the account after a password prompt, together with the collection, report schedule (including the unsubscribe list), AI jobs and the photos that only this account uses. Entries in the log of administrative actions (section 3) remain until they are overwritten by newer entries.</li>
+  <li><strong>Deletion by an administrator:</strong> If an administrator deletes an account, this immediately removes the login and the report schedule (including the unsubscribe list). The collection file is not deleted at first but renamed, and the photo files and AI jobs of the account initially remain as well. They are permanently deleted after 30 days at the latest. This is not a backup in the sense of the following item.</li>
   <li><strong>Backups:</strong> For nailvault.de, no regular backups of the account and collection data are deliberately created, including at the level of the hosting provider (Oracle). Deleted accounts and entries can therefore not be restored from a backup after deletion; conversely, the data may be irretrievably lost if the server fails. Anyone who wants to keep their collection should export it regularly via “More → Data”.</li>
+  <li><strong>Deleted entries</strong> (deletion markers) are permanently removed after 90 days (section 3).</li>
   <li><strong>Logs</strong> are overwritten or deleted according to the periods in section 5.</li>
   <li><strong>Data at other services</strong> (Nextcloud, AI providers, SMTP server) has to be deleted there.</li>
 </ul>
 
 <h2>9. Your rights</h2>
 <p>
-  You have the right of access, rectification, erasure, restriction of processing and data portability. You can also
-  lodge a complaint with a data protection supervisory authority. To exercise your rights, use the functions in
-  section 8 or the contact in section 10.
+  You have the right of access, rectification, erasure, restriction of processing and data portability. You can
+  withdraw any consent you have given at any time (section 3). You can also lodge a complaint with a data protection
+  supervisory authority. To exercise your rights, use the functions in section 8 or the contact in section 10.
 </p>
 <p>
   <strong>Right to object:</strong> You have the right to object at any time, on grounds relating to your particular
