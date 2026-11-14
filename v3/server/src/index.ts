@@ -3148,9 +3148,9 @@ async function main() {
   // Checks every hour whether any user's scheduled report should be sent (runReportSchedules).
   setInterval(() => { void runReportSchedules(); }, 60 * 60 * 1000); // every hour
 
-  // ── Retention (#463, #464) ─────────────────────────────────────────────────
+  // ── Retention (#463, #464, #465) ─────────────────────────────────────────────────
   // Purges what an admin deletion left behind after 30 days and deletion markers older
-  // than 90 days. Once now, so a server that was down for a while catches up at start,
+  // than 90 days, and photo files no record references. Once now, so a server that was down for a while catches up at start,
   // then hourly. Idempotent, and a failing part is logged without stopping the rest.
   runRetentionJobs();
   setInterval(() => { runRetentionJobs(); }, 60 * 60 * 1000);

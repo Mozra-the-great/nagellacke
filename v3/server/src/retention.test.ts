@@ -418,3 +418,206 @@ describe('runRetentionJobs', () => {
     expect(db.getUser('dora')).toBeDefined();
   });
 });
+
+describe('sweepOrphanPhotos (#465)', () => {
+  const NOW = T0 + 500 * DAY;
+  const GRACE = 7 * DAY;
+
+  /** A photo file whose mtime is `age` ms before NOW. */
+  function oldPhoto(dir: string, name: string, age: number): string {
+    const f = putPhoto(dir, name);
+    const t = (NOW - age) / 1000;
+    fs.utimesSync(f, t, t);
+    return f;
+  }
+  const exists = (f: string): boolean => fs.existsSync(f);
+
+  it('removes an unreferenced photo older than the grace period and forgets its owner', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', withPolishes(polish('p1', 'kept.png')));
+    const orphan = oldPhoto(dir, 'orphan.png', GRACE + 1000);
+    const kept = oldPhoto(dir, 'kept.png', 100 * DAY);
+    db.recordPhotoOwner('orphan.png', 'alice');
+    const s = ret.sweepOrphanPhotos(NOW, silent);
+    expect(s).toMatchObject({ removed: 1, referenced: 1, withinGrace: 0, failed: 0, skipped: false });
+    expect(exists(orphan)).toBe(false);
+    expect(exists(kept)).toBe(true);
+    expect(db.photoOwner('orphan.png')).toBeUndefined();
+  });
+
+  it('keeps a photo that any collection references: stickers, manicure slots, legacy field, other accounts, soft-deleted records', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.createUser('bob', 'hash');
+    db.setData('alice', {
+      ...empty(),
+      polishes: [polish('p1', 'a-polish.png'), polish('p2', 'a-deleted.png', NOW - 10 * DAY)] as never,
+      stickers: [{ id: 's1', photo: 'a-sticker.png' }] as never,
+      manicures: [{ id: 'm1', photo: 'a-legacy.png', photos: { thumb: 'a-slot.png' } }] as never,
+    });
+    db.setData('bob', withPolishes(polish('b1', 'b-polish.png')));
+    const names = ['a-polish.png', 'a-deleted.png', 'a-sticker.png', 'a-legacy.png', 'a-slot.png', 'b-polish.png'];
+    const files = names.map((n) => oldPhoto(dir, n, 100 * DAY));
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 0, referenced: 6 });
+    for (const f of files) expect(exists(f)).toBe(true);
+  });
+
+  it('never removes a photo younger than the grace period; the boundary is exactly 7 days', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    const young = oldPhoto(dir, 'young.png', GRACE - 1000);
+    const edge = oldPhoto(dir, 'edge.png', GRACE);
+    const future = putPhoto(dir, 'future.png');
+    fs.utimesSync(future, (NOW + DAY) / 1000, (NOW + DAY) / 1000);
+    const s = ret.sweepOrphanPhotos(NOW, silent);
+    expect(s).toMatchObject({ removed: 1, withinGrace: 2 });
+    expect(exists(young)).toBe(true);
+    expect(exists(future)).toBe(true);
+    expect(exists(edge)).toBe(false);
+  });
+
+  it('judges photos without a recorded uploader and those of existing accounts like any other', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    const apiKeyUpload = oldPhoto(dir, 'apikey.jpg', 30 * DAY); // no owner row: X-Api-Key upload
+    const previewOnly = oldPhoto(dir, 'preview.webp', 30 * DAY);
+    db.recordPhotoOwner('preview.webp', 'alice'); // uploaded, never referenced
+    expect(ret.sweepOrphanPhotos(NOW, silent).removed).toBe(2);
+    expect(exists(apiKeyUpload)).toBe(false);
+    expect(exists(previewOnly)).toBe(false);
+  });
+
+  it('keeps the photos of an admin-deleted account for the whole deletion period, then they are removed', async () => {
+    const { ret, db, dir, p1, p2, renamed } = await deletedAliceAt();
+    for (const f of [p1, p2]) fs.utimesSync(f, (T0 - 40 * DAY) / 1000, (T0 - 40 * DAY) / 1000);
+    db.setData('bob', empty());
+    // Day 10: collection renamed and entry recorded -> both protect the photos.
+    expect(ret.sweepOrphanPhotos(T0 + 10 * DAY, silent)).toMatchObject({ removed: 0, referenced: 2 });
+    // The entry file is lost: the renamed collection alone still protects them.
+    fs.rmSync(path.join(dir, 'pending_deletions.json'));
+    expect(ret.sweepOrphanPhotos(T0 + 20 * DAY, silent).removed).toBe(0);
+    // Only the entry is left (renamed collection gone): the recorded list protects them.
+    fs.rmSync(renamed);
+    fs.writeFileSync(path.join(dir, 'pending_deletions.json'), JSON.stringify({
+      v: 1, entries: [{ id: 'e1', dir: 'alice', deletedAt: T0, files: [], photos: ['alice-1.png', 'alice-2.png'] }],
+    }));
+    expect(ret.sweepOrphanPhotos(T0 + 20 * DAY, silent).removed).toBe(0);
+    // Neither is left: orphans.
+    fs.rmSync(path.join(dir, 'pending_deletions.json'));
+    expect(ret.sweepOrphanPhotos(T0 + 20 * DAY, silent).removed).toBe(2);
+  });
+
+  it('removes the photos of a legacy deletion once its collection is purged (runRetentionJobs order)', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('bob', 'hash');
+    db.setData('bob', empty());
+    fs.mkdirSync(path.join(dir, 'users', 'old'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'users', 'old', `data.json.deleted-${T0}`), JSON.stringify(withPolishes(polish('x', 'legacy.png'))));
+    const photo = putPhoto(dir, 'legacy.png');
+    fs.utimesSync(photo, (T0 - 5 * DAY) / 1000, (T0 - 5 * DAY) / 1000);
+    ret.runRetentionJobs(T0 + 29 * DAY, silent);
+    expect(exists(photo)).toBe(true);
+    ret.runRetentionJobs(T0 + 31 * DAY, silent);
+    expect(exists(photo)).toBe(false);
+  });
+
+  it('judges the photo of a purged deletion marker only after the marker is gone (day 89 vs day 90)', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', withPolishes(polish('p89', 'p89.png', NOW - 89 * DAY), polish('p90', 'p90.png', NOW - 90 * DAY)));
+    const f89 = oldPhoto(dir, 'p89.png', 120 * DAY);
+    const f90 = oldPhoto(dir, 'p90.png', 120 * DAY);
+    const out = ret.runRetentionJobs(NOW, silent);
+    expect(out.orphanPhotosRemoved).toBe(1);
+    expect(exists(f89)).toBe(true);
+    expect(exists(f90)).toBe(false);
+    expect(db.getData('alice').polishes.map((p) => p.id)).toEqual(['p89']);
+  });
+
+  it('judges nothing while a collection cannot be parsed, then catches up', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    fs.mkdirSync(path.join(dir, 'users', 'broken'), { recursive: true });
+    const broken = path.join(dir, 'users', 'broken', 'data.json');
+    fs.writeFileSync(broken, '{not json');
+    const orphan = oldPhoto(dir, 'orphan.png', 30 * DAY);
+    const s = ret.sweepOrphanPhotos(NOW, silent);
+    expect(s).toMatchObject({ removed: 0, skipped: true });
+    expect(exists(orphan)).toBe(true);
+    expect(silent.warn).toHaveBeenCalledTimes(1);
+    expect(String(silent.warn.mock.calls[0][0])).not.toMatch(/broken|orphan\.png/);
+    fs.writeFileSync(broken, '[]'); // valid JSON but not a collection counts as unreadable too
+    expect(ret.sweepOrphanPhotos(NOW, silent).skipped).toBe(true);
+    fs.writeFileSync(broken, JSON.stringify(empty()));
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 1, skipped: false });
+    expect(exists(orphan)).toBe(false);
+  });
+
+  it('judges nothing when no collection exists at all (empty or wrongly mounted data)', async () => {
+    const { ret, dir } = await fresh();
+    const photo = oldPhoto(dir, 'lonely.png', 30 * DAY);
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 0, skipped: true });
+    expect(exists(photo)).toBe(true);
+  });
+
+  it('copes with a missing photo directory and an empty one', async () => {
+    const { ret, dir } = await fresh();
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 0, skipped: false });
+    fs.rmSync(path.join(dir, 'photos'), { recursive: true });
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 0, failed: 0, skipped: false });
+    expect(silent.warn).not.toHaveBeenCalled();
+  });
+
+  it('only touches files named like uploads: not directories, symlinks, dotfiles or foreign names', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    const photos = path.join(dir, 'photos');
+    const dirNamedLikePhoto = path.join(photos, 'folder.png');
+    fs.mkdirSync(dirNamedLikePhoto);
+    fs.writeFileSync(path.join(dirNamedLikePhoto, 'inner.png'), 'x');
+    const foreign = [oldPhoto(dir, 'notes.txt', 30 * DAY), oldPhoto(dir, '.gitkeep', 30 * DAY), oldPhoto(dir, 'photo.png.bak', 30 * DAY)];
+    const outside = path.join(dir, 'outside.png');
+    fs.writeFileSync(outside, 'x');
+    fs.utimesSync(outside, (NOW - 30 * DAY) / 1000, (NOW - 30 * DAY) / 1000);
+    let symlinked = true;
+    try { fs.symlinkSync(outside, path.join(photos, 'link.png')); } catch { symlinked = false; } // needs privileges on Windows
+    const s = ret.sweepOrphanPhotos(NOW, silent);
+    expect(s).toMatchObject({ removed: 0, failed: 0 });
+    expect(exists(path.join(dirNamedLikePhoto, 'inner.png'))).toBe(true);
+    for (const f of foreign) expect(exists(f)).toBe(true);
+    expect(exists(outside)).toBe(true);
+    if (symlinked) expect(fs.lstatSync(path.join(photos, 'link.png')).isSymbolicLink()).toBe(true);
+  });
+
+  it('removes a stale interrupted upload (.tmp) but not a fresh one', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    const stale = oldPhoto(dir, 'a1b2.png.tmp', 30 * DAY);
+    const recent = oldPhoto(dir, 'c3d4.png.tmp', 60 * 1000);
+    ret.sweepOrphanPhotos(NOW, silent);
+    expect(exists(stale)).toBe(false);
+    expect(exists(recent)).toBe(true);
+  });
+
+  it('is idempotent and logs counts only', async () => {
+    const { ret, db, dir } = await fresh();
+    db.createUser('alice', 'hash');
+    db.setData('alice', empty());
+    oldPhoto(dir, 'secret-name.png', 30 * DAY);
+    const log = { log: vi.fn(), warn: vi.fn() };
+    const first = ret.runRetentionJobs(NOW, log);
+    expect(first.orphanPhotosRemoved).toBe(1);
+    expect(log.log).toHaveBeenCalledTimes(1);
+    expect(String(log.log.mock.calls[0][0])).toMatch(/1 orphaned photo\(s\) removed/);
+    expect(String(log.log.mock.calls[0][0])).not.toMatch(/secret|\.png/);
+    expect(ret.runRetentionJobs(NOW, log).orphanPhotosRemoved).toBe(0);
+    expect(log.log).toHaveBeenCalledTimes(1);
+    expect(ret.sweepOrphanPhotos(NOW, silent)).toMatchObject({ removed: 0, failed: 0 });
+  });
+});
