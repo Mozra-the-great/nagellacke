@@ -4,11 +4,12 @@ import * as crypto from 'node:crypto';
 import { purgeExpiredTombstones, type AppData } from '@nagellacke/core';
 import {
   DATA_DIR, PHOTOS_DIR, USER_DATA_DIR, userDirName, deleteUser, deleteAiJobsOf, photosOwnedBy, photoOwner, getUser,
+  forgetPhotoOwner,
 } from './db';
 
 /**
- * Retention of what an account deletion leaves behind (#463) and of old deletion markers
- * in the collections (#464). Everything here is a periodic, idempotent job: it runs at
+ * Retention of what an account deletion leaves behind (#463), of old deletion markers
+ * in the collections (#464) and of photo files no record references any more (#465). Everything here is a periodic, idempotent job: it runs at
  * server start and then hourly (index.ts main()), every state it needs is on disk, and a
  * second run right after the first changes nothing.
  *
@@ -157,31 +158,52 @@ function userDirs(): string[] {
  * Every photo filename that some account's records still mention (deleted records
  * included, like userOwnsPhoto()), read from the collection files on disk rather than
  * from users.json so that an unreadable users.json can never read as "nobody uses
- * anything". null when any collection could not be parsed: then nothing may be judged
- * unused and the caller must not delete photos in this run.
+ * anything". `includeDeletedCollections` also reads the renamed `data.json.deleted-*`
+ * files an admin deletion left: the orphan sweep must not take their photos away before
+ * the deletion period is over, while the admin-deletion purge must not let them vouch
+ * for their own photos. null when any collection could not be parsed: then nothing may
+ * be judged unused and the caller must not delete photos in this run.
  */
-function referencedByAnyAccount(): Set<string> | null {
+function scanReferences(includeDeletedCollections: boolean): { refs: Set<string>; collections: number } | null {
   const refs = new Set<string>();
+  let collections = 0;
   const add = (v: unknown): void => { if (typeof v === 'string' && v) refs.add(v); };
   for (const dir of userDirs()) {
-    const file = path.join(USER_DATA_DIR, dir, 'data.json');
-    if (!fs.existsSync(file)) continue;
-    let data: Record<string, unknown>;
-    try {
-      data = JSON.parse(fs.readFileSync(file, 'utf-8')) as Record<string, unknown>;
-    } catch {
-      return null;
+    const names: string[] = [];
+    if (fs.existsSync(path.join(USER_DATA_DIR, dir, 'data.json'))) names.push('data.json');
+    if (includeDeletedCollections) {
+      try {
+        for (const n of fs.readdirSync(path.join(USER_DATA_DIR, dir))) if (DELETED_COLLECTION.test(n)) names.push(n);
+      } catch {
+        return null;
+      }
     }
-    const list = (k: string): Record<string, unknown>[] => (Array.isArray(data[k]) ? data[k] as Record<string, unknown>[] : []);
-    for (const p of list('polishes')) add(p?.photo);
-    for (const s of list('stickers')) add(s?.photo);
-    for (const m of list('manicures')) {
-      add(m?.photo);
-      const slots = m?.photos;
-      if (slots && typeof slots === 'object') for (const f of Object.values(slots)) add(f);
+    for (const name of names) {
+      let data: Record<string, unknown>;
+      try {
+        const raw: unknown = JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, dir, name), 'utf-8'));
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+        data = raw as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+      collections++;
+      const list = (k: string): Record<string, unknown>[] => (Array.isArray(data[k]) ? data[k] as Record<string, unknown>[] : []);
+      for (const p of list('polishes')) add(p?.photo);
+      for (const s of list('stickers')) add(s?.photo);
+      for (const m of list('manicures')) {
+        add(m?.photo);
+        const slots = m?.photos;
+        if (slots && typeof slots === 'object') for (const f of Object.values(slots)) add(f);
+      }
     }
   }
-  return refs;
+  return { refs, collections };
+}
+
+/** The photo references of the live collections only (see scanReferences()). */
+function referencedByAnyAccount(): Set<string> | null {
+  return scanReferences(false)?.refs ?? null;
 }
 
 /**
@@ -311,9 +333,108 @@ export function purgeStoredTombstones(now: number = Date.now(), logger: Logger =
   return rewritten;
 }
 
+// ── Orphaned photo files (#465) ──────────────────────────────────────────────
+
+/**
+ * How old a photo file must be before the sweep may remove it. An upload comes first and
+ * the record that references it follows with the next sync, which an offline-first client
+ * can hold back for a while (no connection, a sync that keeps failing); a younger file is
+ * never judged. A week covers that comfortably, and since an orphan is only the leftover
+ * of a failed delete, keeping it a few days longer costs nothing.
+ */
+export const ORPHAN_PHOTO_GRACE_DAYS = 7;
+export const ORPHAN_PHOTO_GRACE_MS = ORPHAN_PHOTO_GRACE_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * What the sweep looks at: files named like the server names its own (`<uuid>.<ext>`,
+ * image extensions only, plus the `.tmp` an interrupted upload leaves). Anything else an
+ * operator put into the photo directory is not ours to judge.
+ */
+const SWEEPABLE_PHOTO = /^[\w-]+\.(?:jpe?g|png|webp|gif)(?:\.tmp)?$/i;
+
+export interface OrphanPhotoSummary {
+  removed: number;
+  /** Could not be removed; retried next run. */
+  failed: number;
+  /** Old enough, but a collection (live, or awaiting its deletion period) references it. */
+  referenced: number;
+  /** Not old enough yet. */
+  withinGrace: number;
+  /** True when nothing was judged (unparsable or no collections). */
+  skipped: boolean;
+}
+
+/**
+ * Removes photo files that no record references any more. The web app deletes a photo
+ * when its entry is deleted (after the undo window), but a failed `DELETE /api/photos/...`
+ * leaves the file behind, and purging an old deletion marker (#464) does not touch it.
+ *
+ * What keeps a file:
+ * - Some collection on disk references it, deleted records included. That covers a record
+ *   inside its 90-day marker window and an admin-deleted account inside its 30 days (the
+ *   renamed `data.json.deleted-*`, plus the photo list in pending_deletions.json). A
+ *   recorded uploader is irrelevant here: it decides access, not retention.
+ * - It is younger than ORPHAN_PHOTO_GRACE_DAYS (by mtime; a file dated in the future is
+ *   young).
+ * - It is not a regular file (symlinks and directories are never followed or removed) or
+ *   not named like an upload.
+ *
+ * Photos without a recorded uploader (X-Api-Key uploads) are judged like all others:
+ * nothing says whose they are, so the references decide.
+ *
+ * Nothing is judged when a collection cannot be parsed, or when no collection could be
+ * read at all (an empty or wrongly mounted data directory must not read as "nothing is
+ * used"). The run is synchronous like the upload and sync handlers, so no request can add
+ * a reference between the scan and the removal. Idempotent; logs carry counts and error
+ * codes only.
+ */
+export function sweepOrphanPhotos(now: number = Date.now(), logger: Logger = console): OrphanPhotoSummary {
+  const summary: OrphanPhotoSummary = { removed: 0, failed: 0, referenced: 0, withinGrace: 0, skipped: false };
+  let names: string[];
+  try {
+    names = fs.readdirSync(PHOTOS_DIR, { withFileTypes: true })
+      .filter((d) => d.isFile() && SWEEPABLE_PHOTO.test(d.name))
+      .map((d) => d.name);
+  } catch (e) {
+    if ((e as { code?: unknown }).code !== 'ENOENT') logger.warn(`[retention] photo directory could not be read (${errCode(e)}).`);
+    return summary;
+  }
+  if (names.length === 0) return summary;
+
+  const scan = scanReferences(true);
+  if (scan === null || scan.collections === 0) {
+    summary.skipped = true;
+    logger.warn(scan === null
+      ? '[retention] a collection could not be parsed; orphaned photos were not judged this run.'
+      : '[retention] no collection could be read; orphaned photos were not judged this run.');
+    return summary;
+  }
+  const pendingPhotos = new Set<string>();
+  for (const entry of readPending(now, logger)) for (const name of entry.photos) pendingPhotos.add(name);
+
+  for (const name of names) {
+    try {
+      const st = fs.lstatSync(path.join(PHOTOS_DIR, name));
+      if (!st.isFile()) continue;
+      if (now - st.mtimeMs < ORPHAN_PHOTO_GRACE_MS) { summary.withinGrace++; continue; }
+      if (scan.refs.has(name) || pendingPhotos.has(name)) { summary.referenced++; continue; }
+      if (removeInside(PHOTOS_DIR, name) === 'removed') {
+        summary.removed++;
+        forgetPhotoOwner(name);
+      }
+    } catch (e) {
+      if ((e as { code?: unknown }).code === 'ENOENT') continue; // gone since the listing
+      summary.failed++;
+      logger.warn(`[retention] an orphaned photo could not be removed (${errCode(e)}); will retry.`);
+    }
+  }
+  return summary;
+}
+
 export interface RetentionSummary extends PurgeSummary {
   legacyCollectionsRemoved: number;
   tombstoneCollectionsRewritten: number;
+  orphanPhotosRemoved: number;
 }
 
 /**
@@ -323,7 +444,7 @@ export interface RetentionSummary extends PurgeSummary {
 export function runRetentionJobs(now: number = Date.now(), logger: Logger = console): RetentionSummary {
   const out: RetentionSummary = {
     entriesPurged: 0, entriesFailed: 0, collectionsRemoved: 0, photosRemoved: 0, photosKept: 0,
-    legacyCollectionsRemoved: 0, tombstoneCollectionsRewritten: 0,
+    legacyCollectionsRemoved: 0, tombstoneCollectionsRewritten: 0, orphanPhotosRemoved: 0,
   };
   const guard = (what: string, fn: () => void): void => {
     try { fn(); } catch (e) { logger.warn(`[retention] ${what} failed (${errCode(e)}).`); }
@@ -331,12 +452,13 @@ export function runRetentionJobs(now: number = Date.now(), logger: Logger = cons
   guard('pending deletions', () => Object.assign(out, purgePendingDeletions(now, logger)));
   guard('legacy leftovers', () => { out.legacyCollectionsRemoved = purgeLegacyDeletedCollections(now, logger); });
   guard('deletion markers', () => { out.tombstoneCollectionsRewritten = purgeStoredTombstones(now, logger); });
-  const did = out.entriesPurged + out.collectionsRemoved + out.photosRemoved + out.legacyCollectionsRemoved + out.tombstoneCollectionsRewritten;
+  guard('orphaned photos', () => { out.orphanPhotosRemoved = sweepOrphanPhotos(now, logger).removed; });
+  const did = out.orphanPhotosRemoved + out.entriesPurged + out.collectionsRemoved + out.photosRemoved + out.legacyCollectionsRemoved + out.tombstoneCollectionsRewritten;
   if (did > 0) {
     logger.log(
       `[retention] purged ${out.entriesPurged} admin deletion(s) (${out.collectionsRemoved} collection file(s), ` +
       `${out.photosRemoved} photo(s) removed, ${out.photosKept} kept), ${out.legacyCollectionsRemoved} legacy leftover(s), ` +
-      `${out.tombstoneCollectionsRewritten} collection(s) cleaned of old deletion markers.`,
+      `${out.tombstoneCollectionsRewritten} collection(s) cleaned of old deletion markers, ${out.orphanPhotosRemoved} orphaned photo(s) removed.`,
     );
   }
   return out;
