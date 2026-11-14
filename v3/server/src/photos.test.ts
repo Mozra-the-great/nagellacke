@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vite
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { plainPng } from './testImages';
 import type { FastifyInstance } from 'fastify';
 
 // Same reason as index.test.ts: DATA_DIR and everything derived from it resolves
@@ -41,7 +42,7 @@ async function register(username: string): Promise<{ token: string; refreshToken
 }
 
 /** A minimal but magic-byte-valid PNG payload; the server only checks the header. */
-const PNG_BYTES = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(64, 7)]);
+const PNG_BYTES = plainPng();
 
 async function uploadPhoto(token: string): Promise<string> {
   const res = await app.inject({

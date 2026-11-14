@@ -196,3 +196,16 @@ describe('sendTestEmail — TLS downgrade binding', () => {
     expect(createTransport).not.toHaveBeenCalled();
   });
 });
+
+describe('sendHtmlEmail headers (#457)', () => {
+  it('passes extra headers (List-Unsubscribe) to the message, and adds none by default', async () => {
+    const { email, dir } = await freshEmail(storedSmtp);
+    tmpDirs.push(dir);
+    await email.sendHtmlEmail('a@example.org', 's', '<p>x</p>');
+    expect(sendMail.mock.calls[0][0]).not.toHaveProperty('headers');
+
+    const headers = { 'List-Unsubscribe': '<https://app.example/api/reports/unsubscribe?token=t>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
+    await email.sendHtmlEmail('a@example.org', 's', '<p>x</p>', headers);
+    expect(sendMail.mock.calls[1][0]).toMatchObject({ to: 'a@example.org', subject: 's', headers });
+  });
+});

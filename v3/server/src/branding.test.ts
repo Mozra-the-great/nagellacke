@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { plainPng } from './testImages';
 import type { FastifyInstance } from 'fastify';
 import { resolveBranding, resolvePreset, parseBrandingInput } from './branding';
 
@@ -68,7 +69,7 @@ afterEach(() => {
   delete process.env.ALLOW_REGISTRATION;
 });
 
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(64, 7)]).toString('base64');
+const PNG = plainPng().toString('base64');
 
 describe('branding routes', () => {
   it('saves a custom branding that /api/instance-config then reports resolved', async () => {

@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import * as https from 'node:https';
+import type { Writable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { mergeData } from '@nagellacke/core';
@@ -16,7 +17,7 @@ import {
   getData, setData, getUser, getUserCount, createUser, updateUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
   getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
-  migrateScheduleToPerUser,
+  migrateScheduleToPerUser, migrateScheduleRecipients,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
   setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
@@ -48,10 +49,20 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
+import {
+  AddressThrottle, adHocTargets, applyConfirmation, checkChangeLimit, checkMailLimit, decideAdHocTarget, isRecipientConfirmed, issueConfirmation,
+  LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
+} from './reportRecipient';
+import {
+  applyUnsubscribe, BLOCKED_MESSAGE, isAddressBlocked, unsubscribeLinks, verifyUnsubscribeToken, type UnsubscribeLinks,
+} from './reportUnsubscribe';
+import { buildLoggerOptions } from './logRedact';
+import { stripImageMetadata, InvalidImageError } from './imageMeta';
+import { stripStoredPhotos } from './photoMigration';
 import { runUpdate, readUpdateState, writeUpdateState, detectDeployment, type DeploymentInfo } from './update';
 
 const SEARCH_BACKENDS: SearchBackend[] = ['duckduckgo', 'searxng', 'brave', 'off'];
@@ -187,6 +198,14 @@ function appBaseUrl(): string {
   return (getServerSettings().appUrl || process.env.APP_URL || '').replace(/\/$/, '');
 }
 
+/**
+ * Signed unsubscribe link and RFC 8058 headers for a report mail to the address (#457), or null
+ * without an App-URL. Built from the configured App-URL only, never from request data.
+ */
+function reportUnsubscribeLinks(username: string, address: string): UnsubscribeLinks | null {
+  return unsubscribeLinks(appBaseUrl(), JWT_SECRET, canonicalUsername(username), address);
+}
+
 // users.json already holds scrypt password hashes and, as of this PR, TOTP
 // secrets and recovery-code hashes too. writeUsers() (db.ts) now creates it
 // with mode 0600, but that only applies at file *creation* - installs
@@ -316,6 +335,15 @@ const MAGIC: [Buffer, string][] = [
 function validImage(buf: Buffer): boolean {
   return MAGIC.some(([m]) => buf.slice(0, m.length).equals(m));
 }
+/** The image without metadata (#451), or null when it is not a well-formed JPEG/PNG/WebP. */
+function scrubImage(buf: Buffer): Buffer | null {
+  try {
+    return stripImageMetadata(buf);
+  } catch (e) {
+    if (e instanceof InvalidImageError) return null;
+    throw e;
+  }
+}
 /** The MIME type the file's own magic bytes claim, or null for anything else. */
 function sniffImageType(buf: Buffer): string | null {
   return MAGIC.find(([m]) => buf.slice(0, m.length).equals(m))?.[1] ?? null;
@@ -420,7 +448,7 @@ function httpsGet(url: string): Promise<string> {
  * because moving them into buildApp() would leave dangling timers/open
  * handles behind every test that calls this function.
  */
-export async function buildApp(): Promise<FastifyInstance> {
+export async function buildApp(options: { logStream?: Writable } = {}): Promise<FastifyInstance> {
   // Must run before any request is served (#87, #173, #352, #353, #445). The username
   // migration goes first: the others look users and their data dirs up by name. It throws
   // (and the server does not start) when existing accounts collide case-insensitively.
@@ -428,7 +456,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   migrateGlobalDataToFirstUser();
   migrateFirstUserToAdmin();
   migrateScheduleToPerUser();
+  migrateScheduleRecipients();
   migratePhotoOwners();
+  stripStoredPhotos(PHOTOS_DIR, path.join(DATA_DIR, 'photo_metadata.json'));
 
   // trustProxy is off unless TRUST_PROXY names the reverse proxies to believe (#397).
   // The default deployment (install.sh) binds directly to 0.0.0.0, so req.ip (the
@@ -438,7 +468,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   // bucket. TRUST_PROXY takes IPs/CIDRs only - never `true`, or an X-Forwarded-For
   // header would let anyone spoof their way around the limits (see trustProxy.ts).
   const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
-  const app = Fastify({ trustProxy, logger: { level: process.env.VITEST ? 'silent' : 'info' } });
+  // The request URL is logged on every request and photo access tokens (`?t=`)
+  // travel in it, so the logger masks credential-like query parameters (#450,
+  // see logRedact.ts). A test passes logStream to capture and inspect the lines.
+  const logLevel = options.logStream ? 'info' : process.env.VITEST ? 'silent' : 'info';
+  const app = Fastify({ trustProxy, logger: buildLoggerOptions(logLevel, options.logStream) });
 
   // @fastify/cors defaults `methods` to the literal string 'GET,HEAD,POST' — it
   // does not reflect the routes actually registered. Every preflight therefore
@@ -819,8 +853,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     const { data: b64, mimeType } = request.body as { data?: string; mimeType?: string };
     if (!b64 || !mimeType) return reply.code(400).send({ error: 'data und mimeType erforderlich' });
-    const buf = Buffer.from(b64, 'base64');
-    if (!validImage(buf)) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
+    const original = Buffer.from(b64, 'base64');
+    if (!validImage(original)) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
+    // EXIF/XMP (GPS, device, timestamps) must not be stored or served back (#451).
+    // A file that is not a well-formed JPEG/PNG/WebP container cannot be scrubbed
+    // reliably, so it is refused rather than stored as is.
+    const buf = scrubImage(original);
+    if (!buf) return reply.code(400).send({ error: 'Ungültiges Bildformat' });
     const ext      = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
     const filename = `${uuidv4()}.${ext}`;
     const tmp      = path.join(PHOTOS_DIR, `${filename}.tmp`);
@@ -1840,7 +1879,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     return reply.type('text/html').send(html);
   });
 
-  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP)
+  // POST /api/reports/send — send email immediately (rate limited: 10/hour per IP).
+  // Since #456 only to an address that has agreed to receive reports: the account's own
+  // verified address or the schedule's currently confirmed recipient (reportRecipient.ts,
+  // #449). Anything else is a 403 that says why and sends nothing.
   app.post('/api/reports/send', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
@@ -1849,10 +1891,29 @@ export async function buildApp(): Promise<FastifyInstance> {
       return reply.code(503).send({ error: 'E-Mail nicht konfiguriert (SMTP_HOST, SMTP_USER, SMTP_PASS fehlen)' });
     }
     const { username } = request.user as { username: string };
-    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = request.body as { period?: string; date?: string; toEmail?: string };
-    const toEmail = (rawToEmail ?? '').trim();
-    if (!toEmail || !isValidEmail(toEmail)) {
+    const { period: rawPeriod, date: rawDate, toEmail: rawToEmail } = (request.body ?? {}) as { period?: string; date?: string; toEmail?: string };
+    const requested = (typeof rawToEmail === 'string' ? rawToEmail : '').trim();
+    if (!requested || !isValidEmail(requested)) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
+    }
+    const schedule = getScheduleConfig(username);
+    const user = getUser(username);
+    const decision = decideAdHocTarget(schedule, user, requested);
+    if (!decision.allowed) {
+      // An address that opted out says so (#457), instead of "not confirmed yet".
+      const optedOut = isAddressBlocked(schedule, user, requested);
+      return reply.code(403).send({
+        error: optedOut ? BLOCKED_MESSAGE : decision.message,
+        code: 'recipient-not-allowed',
+        reason: optedOut ? 'recipient-unsubscribed' : decision.reason,
+        allowed: adHocTargets(schedule, user).map((t) => t.email),
+      });
+    }
+    const toEmail = decision.target.email;
+    // Like every report mail it carries the unsubscribe link (#457). A third party is not mailed without it.
+    const unsubscribe = reportUnsubscribeLinks(username, toEmail);
+    if (!unsubscribe && decision.target.kind === 'recipient') {
+      return reply.code(503).send({ error: 'Die App-URL des Servers fehlt, daher kann der Bericht keinen Abmeldelink enthalten. Bitte unter Admin → Server-Einstellungen setzen.' });
     }
     const period = (rawPeriod === 'month' ? 'month' : 'week') as 'week' | 'month';
     const date = rawDate ? new Date(rawDate + 'T00:00:00') : new Date();
@@ -1860,15 +1921,76 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { label } = getPeriodBounds(period, date);
     const periodLabel = period === 'week' ? 'Wochen' : 'Monats';
-    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username));
+    const html = generateReportHtml(getData(username), period, date, appBaseUrl(), reportPhotoSigner(username), unsubscribe?.pageUrl);
     try {
-      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
+      await sendHtmlEmail(toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
     } catch (e: unknown) {
       request.log.error({ err: e }, '[reports] Failed to send email');
       return reply.code(502).send({ error: 'E-Mail konnte nicht gesendet werden. Bitte SMTP-Konfiguration prüfen.' });
     }
     return { ok: true };
   });
+
+  // ── Report schedule and its recipient (#353, #449) ───────────────────────────────
+  //
+  // The schedule is per account (#353). Since #449 its recipient needs a double
+  // opt-in (reportRecipient.ts): an address receives reports only once it is the
+  // account's own verified address or its owner has clicked the link in the
+  // confirmation mail. The hourly job skips every other schedule.
+
+  /** Per target address, across all accounts: one victim cannot be flooded through many accounts. */
+  const confirmationAddressThrottle = new AddressThrottle();
+
+  /** What the routes reveal about a schedule: no counters or sequence numbers. */
+  function scheduleView(username: string, cfg: ScheduleConfig | null) {
+    const user = getUser(username);
+    // Where "Jetzt per E-Mail senden" may go (#456); the web UI offers exactly these.
+    const sendTargets = adHocTargets(cfg, user);
+    if (!cfg) return { config: null, recipient: { status: 'none' as const }, sendTargets };
+    const { status, via } = recipientStatus(cfg, user);
+    return {
+      sendTargets,
+      config: { enabled: cfg.enabled, frequency: cfg.frequency, toEmail: cfg.toEmail, lastSentAt: cfg.lastSentAt, username: cfg.username },
+      recipient: {
+        status,
+        ...(via ? { via } : {}),
+        // Set only while pending and once a mail for the current address has gone out;
+        // the UI says "sent to ..." only then.
+        ...(status === 'pending' && cfg.confirmSentAt ? { confirmationSentAt: cfg.confirmSentAt } : {}),
+        // The recipient used the unsubscribe link (#457): the owner is told here. `blocked`: that address
+        // may not be asked again, so the UI offers no resend.
+        ...(cfg.lastUnsubscribe && normalizeEmail(cfg.lastUnsubscribe.email) === normalizeEmail(cfg.toEmail) && !cfg.enabled
+          ? { unsubscribedAt: cfg.lastUnsubscribe.at } : {}),
+        ...(isAddressBlocked(cfg, user, cfg.toEmail) ? { blocked: true } : {}),
+      },
+    };
+  }
+
+  /** Why no confirmation mail may be sent for this schedule right now, or null. */
+  function confirmationLimit(cfg: ScheduleConfig, now: number): LimitReason | null {
+    return checkMailLimit(cfg, now)
+      ?? (confirmationAddressThrottle.allowed(cfg.toEmail, now) ? null : 'address');
+  }
+
+  /**
+   * Issues a fresh confirmation (older links die), stores it and mails it. The caller has
+   * checked the limits and accountMailAvailable(). 'failed' means the schedule is saved and
+   * pending but the mail did not go out (SMTP trouble); the user can ask for it again.
+   */
+  async function sendRecipientConfirmation(username: string, cfg: ScheduleConfig, now: number): Promise<'sent' | 'failed'> {
+    const owner = canonicalUsername(username);
+    const { cfg: issued, token } = issueConfirmation(cfg, owner, JWT_SECRET, now);
+    setScheduleConfig(username, issued);
+    confirmationAddressThrottle.record(issued.toEmail, now);
+    const mail = reportRecipientMail(appName(), appBaseUrl(), owner, issued.frequency, token);
+    try {
+      await sendHtmlEmail(issued.toEmail, mail.subject, mail.html);
+      return 'sent';
+    } catch (e) {
+      logAccountMailError('report recipient confirmation', e);
+      return 'failed';
+    }
+  }
 
   // GET /api/reports/schedule — scoped to the caller's own schedule (#353:
   // schedule.json used to be one record shared by every account).
@@ -1877,32 +1999,166 @@ export async function buildApp(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (request) => {
     const { username } = request.user as { username: string };
-    return { config: getScheduleConfig(username), smtpConfigured: isEmailConfigured() };
+    return {
+      ...scheduleView(username, getScheduleConfig(username)),
+      smtpConfigured: isEmailConfigured(),
+      // Whether this server can send the confirmation mail at all (SMTP and an App-URL).
+      confirmationAvailable: accountMailAvailable(),
+    };
   });
 
-  // POST /api/reports/schedule — likewise scoped to the caller (#353).
+  // POST /api/reports/schedule — likewise scoped to the caller (#353). A new or changed
+  // recipient is pending until confirmed (#449) and triggers the confirmation mail.
   app.post('/api/reports/schedule', {
     preHandler: requireJwt,
     config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const body = request.body as Partial<ScheduleConfig>;
+    const body = (request.body ?? {}) as Partial<ScheduleConfig>;
     const toEmail = (body.toEmail ?? '').trim();
     if (body.enabled && (!toEmail || !isValidEmail(toEmail))) {
       return reply.code(400).send({ error: 'toEmail fehlt oder ist ungültig' });
     }
+    const now = Date.now();
     const current = getScheduleConfig(username);
-    const config: ScheduleConfig = {
+    const address = toEmail || current?.toEmail || '';
+    const changed = normalizeEmail(address) !== normalizeEmail(current?.toEmail ?? '');
+    // An address that used the unsubscribe link in a report mail (#457) is not switched back on.
+    if (body.enabled && isAddressBlocked(current, getUser(username), address)) {
+      return reply.code(409).send({ error: BLOCKED_MESSAGE, code: 'recipient-unsubscribed' });
+    }
+
+    let config: ScheduleConfig = {
+      ...current,
       enabled:     !!body.enabled,
       frequency:   body.frequency === 'monthly' ? 'monthly' : 'weekly',
-      toEmail:     toEmail || current?.toEmail || '',
+      toEmail:     address,
       lastSentAt:  current?.lastSentAt,
       // The caller owns the collection this reports on — collections are
       // per-user since #87, so the hourly job needs to know which one.
       username,
     };
-    setScheduleConfig(username, config);
-    return { ok: true, config };
+    // The "recipient unsubscribed" notice is about the last pause; saving the schedule on again (own
+    // address) or pointing it elsewhere ends it.
+    if (config.enabled || changed) config.lastUnsubscribe = undefined;
+    if (changed) {
+      const blocked = checkChangeLimit(current, now);
+      if (blocked) return reply.code(429).send({ error: LIMIT_MESSAGES[blocked] });
+      // A new address starts unconfirmed; the bumped sequence number kills any link mailed for the old one.
+      config = {
+        ...config,
+        confirmedEmail: undefined, confirmedAt: undefined, confirmSentAt: undefined,
+        confirmSeq: (current?.confirmSeq ?? 0) + 1,
+        recipientChangesAt: [...recent(current?.recipientChangesAt, now), now],
+      };
+    }
+
+    const { status } = recipientStatus(config, getUser(username));
+    const wantsMail = config.enabled && isValidEmail(config.toEmail) && status === 'pending'
+      && (changed || config.confirmSentAt === undefined);
+    if (!wantsMail) {
+      setScheduleConfig(username, config);
+      const confirmation = config.enabled && status === 'pending' ? 'pending' : 'not-needed';
+      return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation };
+    }
+    if (!accountMailAvailable()) {
+      // Saved, but nothing can be mailed: it stays pending and no report goes out.
+      setScheduleConfig(username, config);
+      return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation: 'unavailable' };
+    }
+    const limit = confirmationLimit(config, now);
+    if (limit) return reply.code(429).send({ error: LIMIT_MESSAGES[limit] });
+
+    const confirmation = await sendRecipientConfirmation(username, config, now);
+    return { ok: true, ...scheduleView(username, getScheduleConfig(username)), confirmation };
+  });
+
+  // POST /api/reports/schedule/confirmation — "Bestätigungsmail erneut senden" for the
+  // pending recipient. Same limits as above, so it cannot be used to flood an address.
+  app.post('/api/reports/schedule/confirmation', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const cfg = getScheduleConfig(username);
+    if (!cfg?.toEmail || !isValidEmail(cfg.toEmail)) {
+      return reply.code(400).send({ error: 'Keine Empfängeradresse hinterlegt' });
+    }
+    if (recipientStatus(cfg, getUser(username)).status === 'confirmed') return { ok: true, alreadyConfirmed: true };
+    if (isAddressBlocked(cfg, getUser(username), cfg.toEmail)) {
+      return reply.code(409).send({ error: BLOCKED_MESSAGE, code: 'recipient-unsubscribed' });
+    }
+    if (!accountMailAvailable()) {
+      return reply.code(503).send({ error: 'Dieser Server kann keine E-Mails versenden' });
+    }
+    const now = Date.now();
+    const limit = confirmationLimit(cfg, now);
+    if (limit) return reply.code(429).send({ error: LIMIT_MESSAGES[limit] });
+    if (await sendRecipientConfirmation(username, cfg, now) === 'failed') {
+      return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
+    }
+    return { ok: true };
+  });
+
+  // POST /api/reports/schedule/confirm — public: the link is opened by the recipient, who has
+  // no session (and no account). The signed token alone identifies schedule and address.
+  app.post('/api/reports/schedule/confirm', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { token } = (request.body ?? {}) as { token?: unknown };
+    const invalid = () => reply.code(400).send({ error: 'Der Link ist ungültig oder abgelaufen.' });
+    const payload = verifyRecipientToken(token, JWT_SECRET);
+    if (!payload) return invalid();
+    const schedule = getScheduleConfig(payload.u);
+    // A confirmation mail that was already out when the recipient unsubscribed cannot undo that (#457).
+    if (isAddressBlocked(schedule, getUser(payload.u), payload.e)) return invalid();
+    const confirmed = applyConfirmation(schedule, payload, Date.now());
+    if (!confirmed) return invalid();
+    setScheduleConfig(payload.u, confirmed);
+    return { ok: true };
+  });
+
+  // ── Unsubscribe from report mails (#457, RFC 8058) ────────────────────────────────
+  //
+  // Public, like the confirmation: the link is opened by the recipient, who has no account. The
+  // signed token alone names schedule and address (reportUnsubscribe.ts). One handler for the
+  // web page (JSON body) and for mail clients, which POST `List-Unsubscribe=One-Click` as a
+  // form to the URL from the List-Unsubscribe header, with the token in the query string (it
+  // is masked in the request log by logRedact). It is its own plugin so the form parser exists
+  // for this route only, not for the JSON API. A valid token always answers 200, however often
+  // it is used: the first call stops the reports, later calls change nothing.
+  await app.register(async (scope) => {
+    scope.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 4096 }, (_request, body, done) => {
+      done(null, Object.fromEntries(new URLSearchParams(typeof body === 'string' ? body : body.toString('utf-8'))));
+    });
+
+    const tokenFrom = (request: FastifyRequest): unknown => {
+      const fromBody = (request.body ?? {}) as { token?: unknown };
+      const fromQuery = (request.query ?? {}) as { token?: unknown };
+      return fromBody.token ?? fromQuery.token;
+    };
+
+    scope.post('/api/reports/unsubscribe', {
+      // Mail providers post for many users from shared addresses, hence a generous limit.
+      config: { rateLimit: { max: 60, timeWindow: '15 minutes' } },
+    }, async (request, reply) => {
+      const payload = verifyUnsubscribeToken(tokenFrom(request), JWT_SECRET);
+      if (!payload) return reply.code(400).send({ error: 'Der Link ist ungültig.' });
+      const result = applyUnsubscribe(getScheduleConfig(payload.u), getUser(payload.u), payload, Date.now());
+      if (result?.changed) setScheduleConfig(payload.u, result.cfg);
+      return { ok: true, email: payload.e };
+    });
+
+    // A client without one-click support opens the header URL in a browser: send it to the page.
+    scope.get('/api/reports/unsubscribe', {
+      config: { rateLimit: { max: 60, timeWindow: '15 minutes' } },
+    }, async (request, reply) => {
+      const token = tokenFrom(request);
+      if (!verifyUnsubscribeToken(token, JWT_SECRET) || typeof token !== 'string' || !appBaseUrl()) {
+        return reply.code(400).send({ error: 'Der Link ist ungültig.' });
+      }
+      return reply.redirect(`${appBaseUrl()}/#/bericht-abbestellen?token=${token}`, 302);
+    });
   });
 
   /**
@@ -2007,9 +2263,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     const { username: actor } = request.user as { username: string };
     const { data } = (request.body ?? {}) as { data?: string };
     if (!data) return reply.code(400).send({ error: 'data erforderlich' });
-    const buf = Buffer.from(data, 'base64');
-    const mimeType = sniffImageType(buf);
+    const original = Buffer.from(data, 'base64');
+    const mimeType = sniffImageType(original);
     if (!mimeType) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
+    // The logo is served publicly, so it gets the same metadata scrub as photos (#451).
+    const buf = scrubImage(original);
+    if (!buf) return reply.code(400).send({ error: 'Logo muss ein PNG-, JPEG- oder WebP-Bild sein' });
     const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
     fs.mkdirSync(BRANDING_DIR, { recursive: true });
     const filename = `logo.${ext}`;
@@ -2803,56 +3062,87 @@ export async function buildApp(): Promise<FastifyInstance> {
   return app;
 }
 
+/** Accounts already warned about an unconfirmed recipient, so the log says it once. */
+const unconfirmedWarned = new Set<string>();
+const noLinkWarned = new Set<string>();
+
+/**
+ * The hourly report job. Schedules are per-user since #353 - each is independent, so one
+ * user's config being broken (bad email, send failure) must not block the rest. `at` is
+ * injectable so the tests can run it at "Monday 08:00 UTC".
+ *
+ * Every mail carries the unsubscribe link and headers (#457). A third-party recipient is
+ * never mailed without them: if the server has lost its App-URL the report waits (the
+ * owner's own address can still be mailed, they manage it in Settings).
+ */
+export async function runReportSchedules(at: Date = new Date()): Promise<void> {
+  if (!isEmailConfigured()) return;
+
+  for (const [reportUser, cfg] of getAllScheduleConfigs()) {
+    if (!cfg.enabled || !cfg.toEmail) continue;
+
+    const hour = at.getUTCHours();
+    const dayOfWeek = at.getUTCDay(); // 0=Sun, 1=Mon
+    const dayOfMonth = at.getUTCDate();
+
+    const shouldSend = cfg.frequency === 'weekly'
+      ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
+      : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
+
+    if (!shouldSend) continue;
+
+    // Double opt-in (#449): a recipient nobody has confirmed gets nothing.
+    const reportAccount = getUser(reportUser);
+    if (!isRecipientConfirmed(cfg, reportAccount)) {
+      if (!unconfirmedWarned.has(reportUser)) {
+        unconfirmedWarned.add(reportUser);
+        console.warn(`[reports] Schedule of "${reportUser}" skipped: its recipient is not confirmed (#449).`);
+      }
+      continue;
+    }
+
+    // Avoid sending twice in the same hour window
+    if (cfg.lastSentAt) {
+      const hoursSinceLast = (at.getTime() - cfg.lastSentAt) / (1000 * 60 * 60);
+      if (hoursSinceLast < 2) continue;
+    }
+
+    const unsubscribe = reportUnsubscribeLinks(reportUser, cfg.toEmail);
+    if (!unsubscribe && recipientStatus(cfg, reportAccount).via !== 'account') {
+      if (!noLinkWarned.has(reportUser)) {
+        noLinkWarned.add(reportUser);
+        console.warn(`[reports] Schedule of "${reportUser}" skipped: no App-URL, so the mail could not carry an unsubscribe link (#457).`);
+      }
+      continue;
+    }
+
+    const refDate = new Date(at);
+    if (cfg.frequency === 'weekly') {
+      refDate.setUTCDate(at.getUTCDate() - 7);
+    } else {
+      refDate.setUTCMonth(at.getUTCMonth() - 1);
+    }
+
+    try {
+      const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
+      const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
+      const baseUrl = appBaseUrl() || `http://localhost:${PORT}`;
+      const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser), unsubscribe?.pageUrl);
+      await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
+      markScheduleSent(reportUser, at.getTime());
+      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
+    } catch (e: unknown) {
+      console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 async function main() {
   const app = await buildApp();
 
   // ── Report scheduler ──────────────────────────────────────────────────────────
-  // Checks every hour whether any user's scheduled report should be sent.
-  // Schedules are per-user since #353 — each is independent, so one user's
-  // config being broken (bad email, send failure) must not block the rest.
-  setInterval(async () => {
-    if (!isEmailConfigured()) return;
-
-    for (const [reportUser, cfg] of getAllScheduleConfigs()) {
-      if (!cfg.enabled || !cfg.toEmail) continue;
-
-      const now = new Date();
-      const hour = now.getUTCHours();
-      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
-      const dayOfMonth = now.getUTCDate();
-
-      const shouldSend = cfg.frequency === 'weekly'
-        ? dayOfWeek === 1 && hour === 8  // Every Monday at 08:00 UTC
-        : dayOfMonth === 1 && hour === 8; // 1st of each month at 08:00 UTC
-
-      if (!shouldSend) continue;
-
-      // Avoid sending twice in the same hour window
-      if (cfg.lastSentAt) {
-        const hoursSinceLast = (Date.now() - cfg.lastSentAt) / (1000 * 60 * 60);
-        if (hoursSinceLast < 2) continue;
-      }
-
-      const refDate = new Date(now);
-      if (cfg.frequency === 'weekly') {
-        refDate.setUTCDate(now.getUTCDate() - 7);
-      } else {
-        refDate.setUTCMonth(now.getUTCMonth() - 1);
-      }
-
-      try {
-        const { label } = getPeriodBounds(cfg.frequency === 'monthly' ? 'month' : 'week', refDate);
-        const periodLabel = cfg.frequency === 'weekly' ? 'Wochen' : 'Monats';
-        const baseUrl = appBaseUrl() || `http://localhost:${PORT}`;
-        const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser));
-        await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html);
-        markScheduleSent(reportUser, Date.now());
-        console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
-      } catch (e: unknown) {
-        console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
-      }
-    }
-  }, 60 * 60 * 1000); // every hour
+  // Checks every hour whether any user's scheduled report should be sent (runReportSchedules).
+  setInterval(() => { void runReportSchedules(); }, 60 * 60 * 1000); // every hour
 
   // ── AI job queue safety net ────────────────────────────────────────────────
   // Jobs are normally picked up immediately (see setImmediate calls above); this

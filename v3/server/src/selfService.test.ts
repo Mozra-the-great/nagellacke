@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { plainPng } from './testImages';
 import type { FastifyInstance } from 'fastify';
 
 /** #324 S20 (own data export) and S21 (deleting one's own account). */
@@ -35,7 +36,7 @@ async function register(app: FastifyInstance, username: string): Promise<string>
 }
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(64, 7)]).toString('base64');
+const PNG = plainPng().toString('base64');
 
 async function upload(app: FastifyInstance, token: string): Promise<string> {
   const res = await app.inject({ method: 'POST', url: '/api/photos', headers: auth(token), payload: { data: PNG, mimeType: 'image/png' } });
