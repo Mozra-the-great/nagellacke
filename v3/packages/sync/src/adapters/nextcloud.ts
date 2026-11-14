@@ -1,5 +1,5 @@
 import type { AppData } from '@nagellacke/core';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncAdapter, SyncConfig, SyncResult, PhotoUploadResult } from '../adapter';
 
 export class NextcloudAdapter implements SyncAdapter {
@@ -29,7 +29,7 @@ export class NextcloudAdapter implements SyncAdapter {
       const dataUrl = this.webdavUrl('nagellacke/nagellacke-data.json');
       const getRes = await fetch(dataUrl, { headers: this.headers() });
       const remote: AppData | null = getRes.ok ? await getRes.json() : null;
-      const merged = remote ? mergeData(local, remote) : local;
+      const merged = purgeExpiredTombstones(remote ? mergeData(local, remote) : local);
 
       await fetch(dataUrl, {
         method: 'PUT',

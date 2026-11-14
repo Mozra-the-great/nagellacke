@@ -1,5 +1,5 @@
 import type { AppData } from '@nagellacke/core';
-import { mergeData } from '@nagellacke/core';
+import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { SyncAdapter, SyncConfig, SyncResult, PhotoUploadResult } from '../adapter';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
@@ -67,7 +67,7 @@ export class GoogleDriveAdapter implements SyncAdapter {
     try {
       const fileId = await this.findFile(DATA_FILENAME);
       const remote = fileId ? await this.downloadJson(fileId) : null;
-      const merged = remote ? mergeData(local, remote) : local;
+      const merged = purgeExpiredTombstones(remote ? mergeData(local, remote) : local);
       await this.uploadJson(merged, fileId ?? undefined);
       return { success: true, lastSyncAt: Date.now(), merged };
     } catch (err) {

@@ -5,6 +5,7 @@
 /opt/nagellacke/v3/server/data/users.json     ← Konten (Passwort-Hashes, Rollen, 2FA, Passkeys)
 /opt/nagellacke/v3/server/data/photos/        ← Fotos (gemeinsames Verzeichnis, Zugriff nur mit Anmeldung)
 /opt/nagellacke/v3/server/data/photo_owners.json ← wer welches Foto hochgeladen hat (Besitzprüfung beim Löschen)
+/opt/nagellacke/v3/server/data/pending_deletions.json ← vom Admin gelöschte Konten: was nach 30 Tagen endgültig entfernt wird (optional)
 /opt/nagellacke/v3/server/data/.api_key       ← API-Schlüssel
 /opt/nagellacke/v3/server/data/.jwt_secret    ← JWT-Signing-Schlüssel (falls JWT_SECRET nicht gesetzt ist)
 /opt/nagellacke/v3/server/data/server_settings.json ← Admin-Panel-Einstellungen inkl. SMTP (mode 0600, optional)
@@ -18,6 +19,14 @@
 ```
 
 Im Container-Deployment liegt dasselbe Verzeichnis im Volume (`DATA_DIR=/data`).
+
+## Löschen und Aufbewahrungsfristen
+
+Der Server räumt beim Start und danach stündlich selbst auf (`src/retention.ts`); alle Schritte sind wiederholbar und lassen Daten nicht gelöschter Konten unberührt.
+
+- **Konto löschen durch das Konto selbst** (Mehr → Sync): sofort und endgültig, samt Sammlung, Berichtsplan, KI-Aufträgen und den Fotos, die nur dieses Konto verwendet.
+- **Konto löschen durch einen Admin** (Admin → Benutzer): Login, Berichtsplan (samt Abmeldeliste) und KI-Aufträge sind sofort weg. Die Sammlung wird zu `users/<name>/data.json.deleted-<Zeitstempel>` umbenannt, und die Fotodateien des Kontos bleiben liegen; beides steht in `pending_deletions.json`. **30 Tage nach dem Löschen** entfernt der Server die umbenannte Datei und die Fotos endgültig und streicht den Eintrag. Ein Foto, das die Sammlung eines anderen Kontos noch verwendet, bleibt. Danach gibt es **keine Wiederherstellung** mehr; in den 30 Tagen gibt es dafür keine Funktion in der App, sondern nur von Hand (umbenannte Datei zurück nach `data.json` kopieren und Konto neu anlegen). Die Frist (`ADMIN_DELETION_RETENTION_DAYS`) steht an einer Stelle in `v3/server/src/retention.ts`.
+- **Gelöschte Einträge** (Lack, Sticker, Maniküre, Kategorie): bleiben als Löschmarkierung (`deletedAt`), damit andere Geräte die Löschung beim Sync erfahren. **90 Tage** nach dem Löschen werden sie endgültig entfernt, in der Kollektion auf dem Server (bei jedem Sync-Schreiben und stündlich für alle Konten) und in der lokalen Kopie der Web-App (beim Laden und nach jedem Sync). Die Frist (`TOMBSTONE_RETENTION_DAYS`) steht in `v3/packages/core/src/logic.ts`. **Grenze:** Ein Gerät, das länger als 90 Tage offline war und den Eintrag noch als vorhanden kennt, lädt ihn beim nächsten Sync wieder hoch, die Löschung kommt dann zurück. Die Foto-Dateien gelöschter Einträge entfernt die Web-App beim Löschen selbst (nach dem Rückgängig-Fenster); der Server räumt beim Entfernen der Markierung keine Fotos auf.
 
 Backup erstellen:
 ```bash

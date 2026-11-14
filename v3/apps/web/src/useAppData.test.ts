@@ -139,3 +139,41 @@ describe('public-instance local mode (#324 S16)', () => {
     expect(() => setLocalOnlyAck(true)).not.toThrow();
   });
 });
+
+describe('deletion marker purge in the local copy (#464)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const polish = (id: string, deletedAt?: number): Polish => ({
+    id, name: id, brand: 'B', num: '1', color: '#fff', finish: ['Classic'], status: 'ok',
+    createdAt: 1, updatedAt: 1, ...(deletedAt === undefined ? {} : { deletedAt }),
+  });
+
+  beforeEach(() => { vi.stubGlobal('localStorage', makeMockStorage()); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('drops markers older than 90 days when loading, from memory and from localStorage', () => {
+    const data: AppData = {
+      ...emptyAppData(),
+      polishes: [polish('old', Date.now() - 91 * DAY), polish('recent', Date.now() - 89 * DAY), polish('live')],
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+    const { data: loaded, corrupted } = loadLocal();
+
+    expect(corrupted).toBe(false);
+    expect(loaded.polishes.map((p) => p.id)).toEqual(['recent', 'live']);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as AppData;
+    expect(stored.polishes.map((p) => p.id)).toEqual(['recent', 'live']);
+  });
+
+  it('leaves the stored copy byte-for-byte alone when nothing expired', () => {
+    const raw = JSON.stringify({ ...emptyAppData(), polishes: [polish('recent', Date.now() - DAY)] }, null, 1);
+    localStorage.setItem(STORAGE_KEY, raw);
+    loadLocal();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+
+  it('mergeImport does not bring an expired marker of a backup into the collection', () => {
+    const backup: AppData = { ...emptyAppData(), polishes: [polish('old', Date.now() - 200 * DAY), polish('live')] };
+    expect(mergeImport(emptyAppData(), backup).polishes.map((p) => p.id)).toEqual(['live']);
+  });
+});

@@ -26,7 +26,7 @@ fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 
 const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stickers: [] };
 
-const USER_DATA_DIR = path.join(DATA_DIR, 'users');
+export const USER_DATA_DIR = path.join(DATA_DIR, 'users');
 
 /**
  * The canonical form of a username (#445): Unicode NFKC, then lowercase. Every
@@ -62,7 +62,7 @@ function escapedDirName(name: string): string {
   return encodeURIComponent(name).replace(/[.*]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
 }
 
-function userDirName(username: string): string {
+export function userDirName(username: string): string {
   return escapedDirName(canonicalUsername(username));
 }
 
@@ -187,6 +187,11 @@ export function forgetPhotoOwner(filename: string): void {
 
 export function photoOwner(filename: string): string | undefined {
   return photoOwners().get(filename);
+}
+
+/** Filenames of the photos whose recorded uploader (#352) is this account. */
+export function photosOwnedBy(username: string): string[] {
+  return [...photoOwners()].filter(([, owner]) => sameUsername(owner, username)).map(([f]) => f);
 }
 
 /**
@@ -854,17 +859,21 @@ export function setUserRole(username: string, role: UserRole): void {
 /**
  * Removes a user's login. The user's collection file is renamed (not
  * deleted) — same "rename, never destroy" pattern as
- * migrateGlobalDataToFirstUser() above — so it stays recoverable by hand.
+ * migrateGlobalDataToFirstUser() above — to `data.json.deleted-<now>`; the
+ * leftover is purged 30 days later by retention.ts (#463), which is also where
+ * the admin route's adminDeleteAccount() records it. Returns the new file name
+ * (null when there was no collection file).
  * Does not touch schedule.json or ai_jobs.json; callers (index.ts) handle the
  * schedule-orphan cleanup, since that also has to talk to the report
  * scheduler's config shape.
  */
-export function deleteUser(username: string): void {
+export function deleteUser(username: string, now: number = Date.now()): string | null {
   const users = readUsers().filter((u) => !sameUsername(u.username, username));
   writeUsers(users);
   const dataFile = userDataFile(username);
-  if (fs.existsSync(dataFile)) {
-    fs.renameSync(dataFile, `${dataFile}.deleted-${Date.now()}`);
+  const renamed = fs.existsSync(dataFile) ? `${path.basename(dataFile)}.deleted-${now}` : null;
+  if (renamed) {
+    fs.renameSync(dataFile, path.join(path.dirname(dataFile), renamed));
   }
   // Otherwise a later account registered under the same name would inherit
   // this one's photos (#352).
@@ -872,6 +881,7 @@ export function deleteUser(username: string): void {
   if ([...owners.values()].some((o) => sameUsername(o, username))) {
     writePhotoOwners(new Map([...owners].filter(([, u]) => !sameUsername(u, username))));
   }
+  return renamed;
 }
 
 /**
