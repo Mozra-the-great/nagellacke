@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { confirmationMessage, recipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget, unsubscribeNotice, unsubscribeFromReports } from './reportRecipient';
+import { confirmationMessage, recipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget, unsubscribeNotice, unsubscribeFromReports, expiredRecipientNotice } from './reportRecipient';
 import type { SendTarget } from './reportRecipient';
 import { accountRouteForHash } from './account';
 
@@ -188,5 +188,22 @@ describe('unsubscribe (#457)', () => {
   it('surfaces the server message for a bad link', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Der Link ist ungültig.' }) }));
     await expect(unsubscribeFromReports('x', 'https://app.example')).rejects.toThrow('Der Link ist ungültig.');
+  });
+});
+
+/** #470: the server removed a recipient that was not confirmed within 48 hours. */
+describe('expiredRecipientNotice', () => {
+  it('says the address was deleted after 48 hours unconfirmed and how to ask again', () => {
+    const n = expiredRecipientNotice({ status: 'none', expiredAt: Date.UTC(2026, 10, 18) }, '')!;
+    expect(n.tone).toBe('warn');
+    expect(n.text).toContain('48 Stunden');
+    expect(n.text).toContain('gelöscht');
+    expect(n.text).toContain('erneut ein');
+  });
+
+  it('says nothing once a recipient is saved again or nothing was removed', () => {
+    expect(expiredRecipientNotice({ status: 'pending', expiredAt: 1 }, 'new@example.org')).toBeNull();
+    expect(expiredRecipientNotice({ status: 'none' }, '')).toBeNull();
+    expect(expiredRecipientNotice(null, '')).toBeNull();
   });
 });

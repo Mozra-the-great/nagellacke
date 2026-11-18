@@ -1965,6 +1965,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
         ...(cfg.lastUnsubscribe && normalizeEmail(cfg.lastUnsubscribe.email) === normalizeEmail(cfg.toEmail) && !cfg.enabled
           ? { unsubscribedAt: cfg.lastUnsubscribe.at } : {}),
         ...(isAddressBlocked(cfg, user, cfg.toEmail) ? { blocked: true } : {}),
+        // The retention job removed a recipient that never confirmed (#470); the UI says why the field is empty.
+        ...(!cfg.toEmail && cfg.recipientExpiredAt ? { expiredAt: cfg.recipientExpiredAt } : {}),
       },
     };
   }
@@ -2044,6 +2046,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     // The "recipient unsubscribed" notice is about the last pause; saving the schedule on again (own
     // address) or pointing it elsewhere ends it.
     if (config.enabled || changed) config.lastUnsubscribe = undefined;
+    // Likewise the "recipient removed after 48 h" notice (#470) ends with the next recipient.
+    if (changed) config.recipientExpiredAt = undefined;
     if (changed) {
       const blocked = checkChangeLimit(current, now);
       if (blocked) return reply.code(429).send({ error: LIMIT_MESSAGES[blocked] });

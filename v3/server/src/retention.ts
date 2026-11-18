@@ -4,12 +4,16 @@ import * as crypto from 'node:crypto';
 import { purgeExpiredTombstones, type AppData } from '@nagellacke/core';
 import {
   DATA_DIR, PHOTOS_DIR, USER_DATA_DIR, userDirName, deleteUser, deleteAiJobsOf, photosOwnedBy, photoOwner, getUser,
-  forgetPhotoOwner,
+  forgetPhotoOwner, readScheduleStoreStrict, writeScheduleStoreStrict, readUsersStrict, sameUsername,
+  type ScheduleConfig,
 } from './db';
+import { RECIPIENT_CONFIRM_TTL_MS, normalizeEmail, recipientStatus } from './reportRecipient';
+import { isAddressBlocked } from './reportUnsubscribe';
 
 /**
  * Retention of what an account deletion leaves behind (#463), of old deletion markers
- * in the collections (#464) and of photo files no record references any more (#465). Everything here is a periodic, idempotent job: it runs at
+ * in the collections (#464), of photo files no record references any more (#465) and of report
+ * recipients that never confirmed (#470). Everything here is a periodic, idempotent job: it runs at
  * server start and then hourly (index.ts main()), every state it needs is on disk, and a
  * second run right after the first changes nothing.
  *
@@ -431,20 +435,115 @@ export function sweepOrphanPhotos(now: number = Date.now(), logger: Logger = con
   return summary;
 }
 
+// ── Unconfirmed report recipients (#470) ─────────────────────────────────────
+
+/**
+ * How long an unconfirmed recipient address is kept (F116.5 a): exactly as long as the
+ * newest confirmation link is valid. Once it has expired nothing the recipient could still
+ * click needs the address.
+ */
+export const UNCONFIRMED_RECIPIENT_TTL_MS = RECIPIENT_CONFIRM_TTL_MS;
+
+export interface RecipientPurgeSummary {
+  removed: number;
+  /** Unconfirmed, but the last confirmation mail or change is younger than the TTL. */
+  waiting: number;
+  /** True when nothing was judged (schedule.json or users.json unreadable). */
+  skipped: boolean;
+}
+
+/**
+ * Since when the current recipient has been waiting: the newest of the last confirmation
+ * mail and the last recipient change. Null for a schedule with neither, which only a
+ * schedule saved before #449 can be (every change since records its time); such an address
+ * has been unconfirmed for far longer than the TTL.
+ */
+function pendingSince(cfg: ScheduleConfig): number | null {
+  const stamps = [cfg.confirmSentAt, ...(cfg.confirmMailsAt ?? []), ...(cfg.recipientChangesAt ?? [])]
+    .filter((t): t is number => typeof t === 'number' && Number.isFinite(t));
+  return stamps.length > 0 ? Math.max(...stamps) : null;
+}
+
+/**
+ * Removes report recipients that never confirmed (double opt-in, #449) once
+ * UNCONFIRMED_RECIPIENT_TTL_MS has passed since the last confirmation mail or recipient
+ * change. The address of a third party who never agreed is not kept beyond the life of
+ * its link (Art. 5(1)(c), (e) GDPR).
+ *
+ * Left alone:
+ * - a confirmed recipient (by link, or as the account's own verified address);
+ * - the account's own address while it is unverified: not a third party's, the account
+ *   record holds it anyway, and it counts as confirmed once the account verifies it;
+ * - an address that opted out via the unsubscribe link (#457): it is on the suppression
+ *   list regardless, and the owner's "unsubscribed" notice needs it.
+ *
+ * A removed recipient leaves the schedule paused with no address, the confirmation fields
+ * cleared and `confirmSeq` bumped (no older link can match), and `recipientExpiredAt` set
+ * so Settings can say why. The rate-limit timestamps stay, so the purge cannot be used to
+ * reset them.
+ *
+ * Fail-closed: nothing is changed when schedule.json or users.json cannot be parsed. The
+ * run is synchronous like the schedule routes, so no request writes in between.
+ * Idempotent; logs carry counts only.
+ */
+export function purgeUnconfirmedRecipients(now: number = Date.now(), logger: Logger = console): RecipientPurgeSummary {
+  const summary: RecipientPurgeSummary = { removed: 0, waiting: 0, skipped: false };
+  const store = readScheduleStoreStrict();
+  if (store === null) {
+    summary.skipped = true;
+    logger.warn('[retention] schedule.json could not be parsed; unconfirmed report recipients were not judged this run.');
+    return summary;
+  }
+  if (store.size === 0) return summary;
+  const users = readUsersStrict();
+  if (users === null) {
+    summary.skipped = true;
+    logger.warn('[retention] users.json could not be parsed; unconfirmed report recipients were not judged this run.');
+    return summary;
+  }
+  let changed = false;
+  for (const [key, cfg] of store) {
+    const to = normalizeEmail(typeof cfg.toEmail === 'string' ? cfg.toEmail : '');
+    if (!to) continue;
+    const user = users.find((u) => typeof u?.username === 'string' && sameUsername(u.username, key));
+    if (recipientStatus(cfg, user).status !== 'pending') continue;
+    if (user?.email && normalizeEmail(user.email) === to) continue;
+    if (isAddressBlocked(cfg, user, cfg.toEmail)) continue;
+    const since = pendingSince(cfg);
+    if (since !== null && now - since < UNCONFIRMED_RECIPIENT_TTL_MS) { summary.waiting++; continue; }
+    store.set(key, {
+      ...cfg,
+      enabled: false,
+      toEmail: '',
+      confirmedEmail: undefined,
+      confirmedAt: undefined,
+      confirmSentAt: undefined,
+      confirmSeq: (cfg.confirmSeq ?? 0) + 1,
+      recipientExpiredAt: now,
+    });
+    summary.removed++;
+    changed = true;
+  }
+  if (changed) writeScheduleStoreStrict(store);
+  return summary;
+}
+
 export interface RetentionSummary extends PurgeSummary {
   legacyCollectionsRemoved: number;
   tombstoneCollectionsRewritten: number;
   orphanPhotosRemoved: number;
+  unconfirmedRecipientsRemoved: number;
 }
 
 /**
- * The periodic job: pending admin deletions, old leftovers, expired markers. Each part
+ * The periodic job: pending admin deletions, old leftovers, expired markers, orphaned photos,
+ * unconfirmed report recipients. Each part
  * is isolated so one failing does not stop the others. `now` is injectable for tests.
  */
 export function runRetentionJobs(now: number = Date.now(), logger: Logger = console): RetentionSummary {
   const out: RetentionSummary = {
     entriesPurged: 0, entriesFailed: 0, collectionsRemoved: 0, photosRemoved: 0, photosKept: 0,
-    legacyCollectionsRemoved: 0, tombstoneCollectionsRewritten: 0, orphanPhotosRemoved: 0,
+    legacyCollectionsRemoved: 0, tombstoneCollectionsRewritten: 0, orphanPhotosRemoved: 0, unconfirmedRecipientsRemoved: 0,
   };
   const guard = (what: string, fn: () => void): void => {
     try { fn(); } catch (e) { logger.warn(`[retention] ${what} failed (${errCode(e)}).`); }
@@ -453,12 +552,14 @@ export function runRetentionJobs(now: number = Date.now(), logger: Logger = cons
   guard('legacy leftovers', () => { out.legacyCollectionsRemoved = purgeLegacyDeletedCollections(now, logger); });
   guard('deletion markers', () => { out.tombstoneCollectionsRewritten = purgeStoredTombstones(now, logger); });
   guard('orphaned photos', () => { out.orphanPhotosRemoved = sweepOrphanPhotos(now, logger).removed; });
-  const did = out.orphanPhotosRemoved + out.entriesPurged + out.collectionsRemoved + out.photosRemoved + out.legacyCollectionsRemoved + out.tombstoneCollectionsRewritten;
+  guard('unconfirmed recipients', () => { out.unconfirmedRecipientsRemoved = purgeUnconfirmedRecipients(now, logger).removed; });
+  const did = out.unconfirmedRecipientsRemoved + out.orphanPhotosRemoved + out.entriesPurged + out.collectionsRemoved + out.photosRemoved + out.legacyCollectionsRemoved + out.tombstoneCollectionsRewritten;
   if (did > 0) {
     logger.log(
       `[retention] purged ${out.entriesPurged} admin deletion(s) (${out.collectionsRemoved} collection file(s), ` +
       `${out.photosRemoved} photo(s) removed, ${out.photosKept} kept), ${out.legacyCollectionsRemoved} legacy leftover(s), ` +
-      `${out.tombstoneCollectionsRewritten} collection(s) cleaned of old deletion markers, ${out.orphanPhotosRemoved} orphaned photo(s) removed.`,
+      `${out.tombstoneCollectionsRewritten} collection(s) cleaned of old deletion markers, ${out.orphanPhotosRemoved} orphaned photo(s) removed, ` +
+      `${out.unconfirmedRecipientsRemoved} unconfirmed report recipient(s) removed.`,
     );
   }
   return out;
