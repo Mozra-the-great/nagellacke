@@ -18,6 +18,8 @@ export interface RecipientState {
   unsubscribedAt?: number;
   /** That address opted out and may not be asked again: no resend, no switching back on. */
   blocked?: boolean;
+  /** The server removed a recipient that was not confirmed within 48 hours (#470); the field is empty since. */
+  expiredAt?: number;
 }
 
 /** What POST /api/reports/schedule says happened to the confirmation mail. */
@@ -107,6 +109,21 @@ export function unsubscribeNotice(state: RecipientState | null, savedEmail: stri
     text: state.blocked
       ? `Der automatische Zeitplan ist pausiert: ${savedEmail.trim()} hat die Berichte am ${when} über den Abmeldelink abbestellt. Die Bestätigung ist entfernt, und die Adresse wird nicht noch einmal angeschrieben. Wähle eine andere Adresse, wenn du weiter Berichte senden willst.`
       : `Der automatische Zeitplan ist pausiert: Die Berichte an ${savedEmail.trim()} wurden am ${when} über den Abmeldelink in einer Berichtsmail beendet. Schalte den Zeitplan wieder ein, wenn du sie doch haben willst.`,
+  };
+}
+
+/**
+ * The notice after the server removed a recipient that never confirmed (#470): unconfirmed
+ * addresses are deleted 48 hours after the last confirmation mail. Null while the schedule has
+ * a recipient again or nothing was removed.
+ */
+export function expiredRecipientNotice(state: RecipientState | null, savedEmail: string): { tone: 'warn'; text: string } | null {
+  if (!state?.expiredAt || savedEmail.trim()) return null;
+  const when = new Date(state.expiredAt).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' });
+  return {
+    tone: 'warn',
+    text: `Der automatische Zeitplan ist pausiert: Die Empfängeradresse wurde am ${when} gelöscht, weil sie nicht innerhalb von 48 Stunden bestätigt wurde. `
+      + 'Trage sie erneut ein, dann geht eine neue Bestätigungsmail an sie.',
   };
 }
 

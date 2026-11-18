@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Behoben
+- **Unbestätigte Berichtsempfänger blieben gespeichert (#470, F116.5 a).** Nach Ablauf des 48-Stunden-Bestätigungslinks (#449) bekam die Adresse zwar keine Berichte, blieb aber im Berichtsplan, bis der Kontoinhaber sie ersetzte oder das Konto gelöscht wurde. Der stündliche Retention-Job (`v3/server/src/retention.ts`, `purgeUnconfirmedRecipients()`) löscht jetzt jede Empfängeradresse, die 48 Stunden nach der letzten Bestätigungsmail oder Änderung noch unbestätigt ist (Plan pausiert, Bestätigungsfelder geleert, `confirmSeq` erhöht; die Zeitstempel der Mengenbegrenzungen bleiben). Unberührt bleiben bestätigte Empfänger, die eigene Konto-Adresse und Adressen, die sich über den Abmeldelink abgemeldet haben (#457). Ist `schedule.json` oder `users.json` nicht lesbar, ändert der Lauf nichts (`readScheduleStoreStrict()`/`readUsersStrict()` in `db.ts`); die Logs nennen nur Zahlen. Einstellungen → Berichte sagt dem Inhaber, warum das Feld leer ist (`recipient.expiredAt`, `expiredRecipientNotice()` in `apps/web/src/utils/reportRecipient.ts`).
+
 ## [3.5.0] – 2026-11-18
 
 ### Behoben
