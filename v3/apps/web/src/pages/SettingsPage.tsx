@@ -20,7 +20,7 @@ import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
-import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
+import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, expiredRecipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
 
@@ -900,7 +900,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     sendTargets, savedAccountEmail ?? '', emailVerified, scheduleRecipient, scheduleSavedEmail,
   );
 
-  const unsubscribeInfo = unsubscribeNotice(scheduleRecipient, scheduleSavedEmail);
+  // An opt-out (#457) or a recipient the server removed after 48 h unconfirmed (#470); never both at once.
+  const unsubscribeInfo = unsubscribeNotice(scheduleRecipient, scheduleSavedEmail)
+    ?? expiredRecipientNotice(scheduleRecipient, scheduleSavedEmail);
 
   const recipientInfo = recipientNotice(
     scheduleRecipient, scheduleSavedEmail, scheduleEmail, confirmationAvailable,
@@ -1407,7 +1409,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
               Jede Berichtsmail enthält einen Link, mit dem der Empfänger sie abbestellen kann.
             </p>
 
-            {/* The recipient stopped the reports with the unsubscribe link in a mail (#457). Shown whether or not the schedule is switched on. */}
+            {/* The recipient stopped the reports with the unsubscribe link in a mail (#457), or was removed unconfirmed (#470). Shown whether or not the schedule is switched on. */}
             <div role="status" aria-live="polite" aria-atomic="true" data-testid="unsubscribe-notice">
               {unsubscribeInfo && (
                 <div className={styles.warningBanner} style={{ marginBottom: 12 }}>{unsubscribeInfo.text}</div>

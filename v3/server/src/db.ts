@@ -487,6 +487,21 @@ function writeUsers(users: User[]): void {
   fs.renameSync(tmp, USERS_FILE);
 }
 
+/**
+ * The accounts for a job that must not mistake an unreadable users.json for "no accounts"
+ * (readUsers() answers [] then): null when the file exists but cannot be parsed or is not
+ * a list.
+ */
+export function readUsersStrict(): User[] | null {
+  try {
+    if (!fs.existsSync(USERS_FILE)) return [];
+    const raw: unknown = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+    return Array.isArray(raw) ? raw as User[] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getUser(username: string): User | undefined {
   return readUsers().find((u) => sameUsername(u.username, username));
 }
@@ -1191,6 +1206,12 @@ export interface ScheduleConfig {
   unsubscribedEmails?: string[];
   /** The latest unsubscribe that hit the current recipient; Settings shows it as a notice to the owner. */
   lastUnsubscribe?: { email: string; at: number };
+  /**
+   * When the retention job removed a recipient that was never confirmed (#470, retention.ts
+   * purgeUnconfirmedRecipients); Settings tells the owner why the field is empty. Cleared as
+   * soon as a recipient is saved again.
+   */
+  recipientExpiredAt?: number;
 }
 
 /**
@@ -1266,6 +1287,27 @@ export function markScheduleSent(username: string, at: number): void {
 export function deleteScheduleConfig(username: string): void {
   const store = readScheduleStore();
   if (!store.delete(canonicalUsername(username))) return;
+  writeScheduleStore(store);
+}
+
+/**
+ * The schedules for a job that rewrites them (#470): null when schedule.json exists but
+ * cannot be parsed or is not the v2 shape. readScheduleStore() reads such a file as "no
+ * schedules", which is right for a lookup but would wipe every schedule if a job wrote its
+ * result back.
+ */
+export function readScheduleStoreStrict(): Map<string, ScheduleConfig> | null {
+  try {
+    if (!fs.existsSync(SCHEDULE_FILE)) return new Map();
+    const raw: unknown = JSON.parse(fs.readFileSync(SCHEDULE_FILE, 'utf-8'));
+    return isScheduleFile(raw) ? new Map(Object.entries(raw.schedules)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Writes a store read with readScheduleStoreStrict() back (temp file + rename). */
+export function writeScheduleStoreStrict(store: Map<string, ScheduleConfig>): void {
   writeScheduleStore(store);
 }
 
