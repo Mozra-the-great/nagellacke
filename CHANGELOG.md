@@ -7,6 +7,8 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.6.0] – 2026-11-18
+
 ### Hinzugefügt
 - **Konto-E-Mail entfernen (#471, F116.5 b).** Die Konto-Adresse ließ sich ändern, aber nicht entfernen; wer die Einwilligung dahinter widerrufen wollte (Art. 7 Abs. 3 DSGVO), musste den Betreiber anschreiben. Einstellungen → Sync hat jetzt „Konto-E-Mail entfernen…“: eine Bestätigung mit deutlicher Warnung (ohne Adresse kein Zurücksetzen des Passworts) und Passwortabfrage. Der neue Endpunkt `POST /api/auth/email/remove` (JWT plus Passwort, 5 je 15 Minuten) entfernt Adresse, Verifizierungsstatus und alle offenen Verifizierungs- und Rücksetz-Links (`removeUserEmail()` in `db.ts`); ein Berichtsplan, der an diese Adresse ging, wird pausiert und sein Empfänger geleert. Anmelden per Benutzername, 2FA und Passkeys bleiben unverändert; eine neue Adresse lässt sich jederzeit wieder eintragen und ist bis zum Bestätigungslink unbestätigt. Web-Logik in `apps/web/src/utils/account.ts` (`removeAccountEmail()`, `removeEmailWarning()`), keine neuen Komponenten (#468).
 
