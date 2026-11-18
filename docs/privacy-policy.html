@@ -114,7 +114,12 @@
   zuerst nur eine Bestätigungsmail. Sie nennt das anfragende Konto, beschreibt, was gesendet würde, und ihr Link gilt
   48 Stunden. Ohne Ihre Bestätigung wird nichts an Ihre Adresse gesendet. Gespeichert wird Ihre E-Mail-Adresse im
   Berichtsplan dieses Kontos (der Kontoinhaber hat sie uns mitgeteilt), nur zum Versand dieser Berichte;
-  Rechtsgrundlage ist Ihre Einwilligung durch die Bestätigung (Art. 6 Abs. 1 lit. a DSGVO). Jede Berichtsmail enthält
+  Rechtsgrundlage ist Ihre Einwilligung durch die Bestätigung (Art. 6 Abs. 1 lit. a DSGVO). Bis zu Ihrer Bestätigung
+  speichern wir die Adresse und senden Ihnen die Bestätigungsmail, um Ihre Einwilligung einzuholen und zu verhindern,
+  dass Ihre Adresse ohne Ihr Wissen genutzt wird; Rechtsgrundlage dafür ist unser berechtigtes Interesse am Schutz vor
+  Missbrauch (Art. 6 Abs. 1 lit. f DSGVO). Eine nicht bestätigte Adresse wird nach Ablauf der 48 Stunden nicht
+  automatisch gelöscht; sie bleibt im Berichtsplan, bis das Konto sie ersetzt oder gelöscht wird, wird aber nie für einen
+  Berichtsversand genutzt. Auf Anfrage über den Kontakt in Abschnitt 10 entfernen wir sie. Jede Berichtsmail enthält
   einen Abmeldelink und die Kopfzeilen <code>List-Unsubscribe</code> und <code>List-Unsubscribe-Post</code> für das
   Abmelden mit einem Klick im Mailprogramm. Nach der Abmeldung wird Ihre Adresse in der Abmeldeliste jenes Kontos
   vermerkt, damit das Konto sie nicht erneut als Empfänger einsetzen kann; das dient der Umsetzung Ihres Widerrufs
@@ -124,8 +129,8 @@
 <h2>4. Cookies und lokaler Speicher</h2>
 <ul>
   <li><strong>Cookie <code>nl_refresh</code>:</strong> Nach der Anmeldung setzt der Server dieses Cookie, damit die Sitzung ein Neuladen der Seite überdauert. Es ist als <code>httpOnly</code> gesetzt (Skripte der Seite können es nicht lesen), gilt nur für Anfragen an <code>/api/auth</code> und läuft standardmäßig nach 30 Tagen ab. Bei „Abmelden“ wird es gelöscht. Es ist für den von Ihnen ausdrücklich gewünschten Dienst unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG); eine Einwilligung ist dafür nicht nötig.</li>
-  <li><strong>Lokaler Speicher des Browsers:</strong> Die Web-App legt dort die Sammlung (siehe Abschnitt 2), die Sync-Einstellungen und Anzeigeeinstellungen ab. Die Sync-Einstellungen enthalten die gewählte Sync-Art und die Server-Adresse; bei Nextcloud-Sync zusätzlich die Nextcloud-Adresse, den Benutzernamen und das App-Passwort, bei Nutzung eines API-Schlüssels auch diesen. Der lokale Speicher ist nicht verschlüsselt; Skripte, die auf der Seite ausgeführt werden, könnten ihn lesen. Die Anmelde-Token der Sitzung werden nicht im lokalen Speicher abgelegt.</li>
-  <li><strong>Projektseite:</strong> Sie setzt keine Cookies. Sie merkt sich im lokalen Speicher nur die gewählte Sprache; das verlässt den Browser nicht.</li>
+  <li><strong>Lokaler Speicher des Browsers:</strong> Die Web-App legt dort die Sammlung (siehe Abschnitt 2), die Sync-Einstellungen und Anzeigeeinstellungen ab. Die Sync-Einstellungen enthalten die gewählte Sync-Art und die Server-Adresse; bei Nextcloud-Sync zusätzlich die Nextcloud-Adresse, den Benutzernamen und das App-Passwort, bei Nutzung eines API-Schlüssels auch diesen. Der lokale Speicher ist nicht verschlüsselt; Skripte, die auf der Seite ausgeführt werden, könnten ihn lesen. Die Anmelde-Token der Sitzung werden nicht im lokalen Speicher abgelegt. Auch diese Speicherung ist für den von Ihnen ausdrücklich gewünschten Dienst unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG); eine Einwilligung ist dafür nicht nötig.</li>
+  <li><strong>Projektseite:</strong> Sie setzt keine Cookies. Sie merkt sich im lokalen Speicher nur die gewählte Sprache; das verlässt den Browser nicht. Die Speicherung geschieht erst auf Ihre ausdrückliche Sprachwahl und dient allein dieser Funktion (§ 25 Abs. 2 Nr. 2 TDDDG).</li>
 </ul>
 
 <h2>5. Server-Protokolle, Hosting und Sicherheit</h2>
@@ -303,7 +308,12 @@
   you first receive only a confirmation e-mail. It names the requesting account, describes what would be sent, and its
   link is valid for 48 hours. Nothing is sent to your address without your confirmation. Your e-mail address is stored
   in the report schedule of that account (the account holder gave it to us), only for sending these reports; the legal
-  basis is your consent by confirming (Art. 6(1)(a) GDPR). Every report e-mail contains an unsubscribe link and the
+  basis is your consent by confirming (Art. 6(1)(a) GDPR). Until you confirm, we store the address and send you the
+  confirmation e-mail in order to obtain your consent and to prevent your address from being used without your
+  knowledge; the legal basis for this is our legitimate interest in protection against abuse (Art. 6(1)(f) GDPR). An
+  address that has not been confirmed is not deleted automatically after the 48 hours have passed; it stays in the
+  report schedule until the account replaces it or is deleted, but is never used for sending reports. On request via the
+  contact in section 10 we remove it. Every report e-mail contains an unsubscribe link and the
   headers <code>List-Unsubscribe</code> and <code>List-Unsubscribe-Post</code> for one-click unsubscribing in the mail
   program. After unsubscribing, your address is recorded in the unsubscribe list of that account so that the account
   cannot enter it as a recipient again; this implements your withdrawal (Art. 6(1)(f) GDPR). You can exercise your
@@ -313,8 +323,8 @@
 <h2>4. Cookies and local storage</h2>
 <ul>
   <li><strong>Cookie <code>nl_refresh</code>:</strong> After login the server sets this cookie so that the session survives reloading the page. It is set as <code>httpOnly</code> (scripts of the page cannot read it), applies only to requests to <code>/api/auth</code> and by default expires after 30 days. It is deleted on “Log out”. It is strictly necessary for the service you have expressly requested (Section 25(2) no. 2 TDDDG); no consent is required for it.</li>
-  <li><strong>Browser local storage:</strong> The web app keeps the collection (see section 2), the sync settings and display settings there. The sync settings contain the chosen sync type and the server address; for Nextcloud sync additionally the Nextcloud address, the user name and the app password, and, when an API key is used, that key as well. Local storage is not encrypted; scripts running on the page could read it. The session’s login tokens are not stored in local storage.</li>
-  <li><strong>Project page:</strong> It sets no cookies. In local storage it only remembers the chosen language; this does not leave the browser.</li>
+  <li><strong>Browser local storage:</strong> The web app keeps the collection (see section 2), the sync settings and display settings there. The sync settings contain the chosen sync type and the server address; for Nextcloud sync additionally the Nextcloud address, the user name and the app password, and, when an API key is used, that key as well. Local storage is not encrypted; scripts running on the page could read it. The session’s login tokens are not stored in local storage. This storage, too, is strictly necessary for the service you have expressly requested (Section 25(2) no. 2 TDDDG); no consent is required for it.</li>
+  <li><strong>Project page:</strong> It sets no cookies. In local storage it only remembers the chosen language; this does not leave the browser. The storage only happens once you have expressly chosen a language and serves only that function (Section 25(2) no. 2 TDDDG).</li>
 </ul>
 
 <h2>5. Server logs, hosting and security</h2>
