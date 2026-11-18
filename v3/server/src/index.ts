@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { mergeData, purgeExpiredTombstones } from '@nagellacke/core';
 import type { AppData } from '@nagellacke/core';
 import {
-  getData, setData, getUser, getUserCount, createUser, updateUserEmail,
+  getData, setData, getUser, getUserCount, createUser, updateUserEmail, removeUserEmail,
   bumpTokenVersion, migrateGlobalDataToFirstUser, migrateFirstUserToAdmin,
   getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
   migrateScheduleToPerUser, migrateScheduleRecipients,
@@ -2119,6 +2119,45 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!confirmed) return invalid();
     setScheduleConfig(payload.u, confirmed);
     return { ok: true };
+  });
+
+  // POST /api/auth/email/remove — the account removes its own e-mail address (#471), so the
+  // consent behind it can be withdrawn without asking the operator (Art. 7(3) GDPR). Needs the
+  // password, like deleting the account: without an address there is no password reset, and a
+  // stolen session token alone must not be able to take that away. Login by username, 2FA and
+  // passkeys are unaffected. A report schedule that mails this address is paused and its
+  // recipient cleared, so nothing goes to it any more. Adding an address later is the usual
+  // PATCH /api/auth/me, unverified until its link is opened. Lives here, after the schedule
+  // routes, because it answers with their view.
+  app.post('/api/auth/email/remove', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { password } = (request.body ?? {}) as { password?: unknown };
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    if (typeof password !== 'string' || !verifyPassword(password, user.password_hash)) {
+      return reply.code(403).send({ error: 'Passwort falsch' });
+    }
+    if (!user.email) return reply.code(400).send({ error: 'Keine E-Mail-Adresse hinterlegt' });
+    const removed = removeUserEmail(username);
+    let scheduleCleared = false;
+    const schedule = getScheduleConfig(username);
+    if (removed && schedule?.toEmail && normalizeEmail(schedule.toEmail) === normalizeEmail(removed)) {
+      setScheduleConfig(username, {
+        ...schedule,
+        enabled: false,
+        toEmail: '',
+        confirmedEmail: undefined,
+        confirmedAt: undefined,
+        confirmSentAt: undefined,
+        confirmSeq: (schedule.confirmSeq ?? 0) + 1,
+        lastUnsubscribe: undefined,
+      });
+      scheduleCleared = true;
+    }
+    return { ok: true, scheduleCleared, schedule: scheduleView(username, getScheduleConfig(username)) };
   });
 
   // ── Unsubscribe from report mails (#457, RFC 8058) ────────────────────────────────

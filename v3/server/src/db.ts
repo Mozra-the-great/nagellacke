@@ -551,6 +551,26 @@ export function updateUserEmail(username: string, email: string): void {
   }
 }
 
+/**
+ * Removes the account's e-mail address (#471): the address, its verification state and any
+ * outstanding verification or password-reset token, so no link mailed to it earlier still
+ * works. Returns the removed address (as stored), or null when the account had none.
+ * Without an address there is no password reset; the route warns about that first.
+ */
+export function removeUserEmail(username: string): string | null {
+  const users = readUsers();
+  const idx = users.findIndex((u) => sameUsername(u.username, username));
+  if (idx < 0 || !users[idx].email) return null;
+  const removed = users[idx].email ?? null;
+  const next: User = { ...users[idx] };
+  for (const k of ['email', 'email_verified', 'verify_hash', 'verify_expires', 'verify_sent_at', 'reset_hash', 'reset_expires', 'reset_sent_at'] as const) {
+    delete next[k];
+  }
+  users[idx] = next;
+  writeUsers(users);
+  return removed;
+}
+
 /** Shallow-merges `changes` into one user; a key set to undefined is removed. */
 export function patchUser(username: string, changes: Partial<Omit<User, 'username'>>): void {
   const users = readUsers();

@@ -19,7 +19,7 @@ import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
-import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount } from '../utils/account';
+import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
 import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
@@ -140,6 +140,35 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     } catch (e) {
       setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
       setAccountEmailStatus('error');
+    }
+  };
+
+  const doRemoveAccountEmail = async () => {
+    setRemoveEmailStep('loading');
+    setRemoveEmailError('');
+    try {
+      const result = await removeAccountEmail(removeEmailPassword);
+      setSavedAccountEmail(null);
+      setAccountEmail('');
+      setEmailVerified((v) => (v === null ? null : false));
+      if (result.schedule) {
+        const cfg = result.schedule.config;
+        if (cfg) {
+          setScheduleEnabled(cfg.enabled);
+          setScheduleFrequency(cfg.frequency);
+          setScheduleEmail(cfg.toEmail ?? '');
+          setScheduleSavedEmail(cfg.toEmail ?? '');
+        }
+        setScheduleRecipient(result.schedule.recipient ?? null);
+        setSendTargets(result.schedule.sendTargets ?? null);
+      }
+      setRemoveEmailStep('idle');
+      setRemoveEmailPassword('');
+      setAccountEmailStatus('idle');
+      setAccountEmailMessage(removeEmailMessage(result));
+    } catch (e) {
+      setRemoveEmailError(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setRemoveEmailStep('confirm');
     }
   };
 
@@ -459,6 +488,10 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [accountEmailStatus, setAccountEmailStatus] = useState<'idle' | 'saving' | 'resending' | 'error'>('idle');
   const [accountEmailMessage, setAccountEmailMessage] = useState('');
+  // Removing the address (#471): an inline confirmation with the password, like deleting the account.
+  const [removeEmailStep, setRemoveEmailStep] = useState<'idle' | 'confirm' | 'loading'>('idle');
+  const [removeEmailPassword, setRemoveEmailPassword] = useState('');
+  const [removeEmailError, setRemoveEmailError] = useState('');
 
   // ── Eigene Daten und Konto löschen (#324 S20, S21) ──
   const [meUsername, setMeUsername] = useState<string | null>(null);
@@ -981,7 +1014,47 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     {accountEmailStatus === 'resending' ? 'Sende…' : 'Bestätigungsmail erneut senden'}
                   </button>
                 )}
+                {savedAccountEmail && removeEmailStep === 'idle' && (
+                  <button
+                    type="button"
+                    className={styles.syncBtn}
+                    onClick={() => { setRemoveEmailStep('confirm'); setAccountEmailMessage(''); }}
+                  >
+                    Konto-E-Mail entfernen…
+                  </button>
+                )}
               </div>
+              {savedAccountEmail && removeEmailStep !== 'idle' && (
+                <div className={styles.loginBox} style={{ marginBottom: 12 }}>
+                  <p className={styles.fieldHelpText}>
+                    {removeEmailWarning(savedAccountEmail, !!scheduleSavedEmail && scheduleSavedEmail.trim().toLowerCase() === savedAccountEmail.trim().toLowerCase())}
+                  </p>
+                  <label className={styles.field}>
+                    <span>Passwort</span>
+                    <input type="password" autoComplete="current-password" value={removeEmailPassword} onChange={(e) => setRemoveEmailPassword(e.target.value)} />
+                  </label>
+                  <div role="status" aria-live="polite" aria-atomic="true">
+                    {removeEmailError && <div className={styles.errorBanner}>{removeEmailError}</div>}
+                  </div>
+                  <div className={styles.btnRow}>
+                    <button
+                      type="button"
+                      className={styles.saveBtn}
+                      disabled={!removeEmailPassword || removeEmailStep === 'loading'}
+                      onClick={() => void doRemoveAccountEmail()}
+                    >
+                      {removeEmailStep === 'loading' ? 'Entferne…' : 'Adresse entfernen'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.syncBtn}
+                      onClick={() => { setRemoveEmailStep('idle'); setRemoveEmailPassword(''); setRemoveEmailError(''); }}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
               <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '4px 0 8px' }}>Dein Konto</h3>
               <p className={styles.fieldHelpText}>
                 Lädt alles herunter, was der Server über dein Konto speichert: Kontodaten, Sammlung und Berichtsplan, als
