@@ -1,4 +1,5 @@
 import { serverBase, serverSession } from './serverBase';
+import type { RecipientState, SendTarget } from './reportRecipient';
 
 /**
  * Password reset, e-mail verification (#324 S18, S19) and report-recipient confirmation (#449). The server mails links to
@@ -97,4 +98,46 @@ export async function downloadAccountExport(): Promise<void> {
 export async function deleteOwnAccount(password: string): Promise<void> {
   const { base, headers } = bearer();
   await post('/api/me/delete', { password }, base, headers);
+}
+
+/** What POST /api/auth/email/remove answers (#471): whether the report schedule lost its recipient, and its new view. */
+export interface RemoveEmailResult {
+  scheduleCleared: boolean;
+  schedule?: {
+    config: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null;
+    recipient?: RecipientState;
+    sendTargets?: SendTarget[];
+  };
+}
+
+/** Removes the account's e-mail address (#471); needs the password. */
+export async function removeAccountEmail(password: string): Promise<RemoveEmailResult> {
+  const { base, headers } = bearer();
+  const { data } = await post('/api/auth/email/remove', { password }, base, headers);
+  return {
+    scheduleCleared: data.scheduleCleared === true,
+    ...(data.schedule && typeof data.schedule === 'object' ? { schedule: data.schedule as RemoveEmailResult['schedule'] } : {}),
+  };
+}
+
+/**
+ * The warning shown before the account address is removed (#471). Without an address there is
+ * no password reset, so the user has to be told plainly; and a report schedule that mails this
+ * address stops.
+ */
+export function removeEmailWarning(address: string, scheduleUsesIt: boolean): string {
+  const parts = [
+    `Entfernt ${address.trim()} aus deinem Konto. Anmelden kannst du dich weiter mit Benutzername und Passwort.`,
+    'Wichtig: Ohne E-Mail-Adresse kannst du dein Passwort nicht mehr zurücksetzen. Vergisst du es, kommst du nicht mehr in dein Konto (Passkeys, falls eingerichtet, funktionieren weiter).',
+  ];
+  if (scheduleUsesIt) parts.push('Dein automatischer Berichtsplan sendet an diese Adresse; er wird pausiert und die Adresse daraus entfernt.');
+  parts.push('Du kannst später jederzeit wieder eine Adresse eintragen; sie muss dann neu bestätigt werden.');
+  return parts.join(' ');
+}
+
+/** The message after removing, from the server's answer. */
+export function removeEmailMessage(result: RemoveEmailResult): string {
+  return result.scheduleCleared
+    ? 'Adresse entfernt. Der automatische Berichtsplan ist pausiert, weil er an diese Adresse ging.'
+    : 'Adresse entfernt.';
 }

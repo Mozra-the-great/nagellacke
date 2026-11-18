@@ -247,3 +247,28 @@ describe('App-URL read live (#324 S17)', () => {
     }
   });
 });
+
+describe('removing the account address (#471)', () => {
+  it('a verified link that went out before still dies, and a later reset mails nothing', async () => {
+    const { app } = await createTestApp();
+    const token = await verifiedUser(app, 'anna', 'anna@example.org');
+    await app.inject({ method: 'POST', url: '/api/auth/password/forgot', payload: { identifier: 'anna' } });
+    await flush();
+    const resetToken = tokenFrom(sent.pop()!, 'passwort-neu');
+
+    const removed = await app.inject({
+      method: 'POST', url: '/api/auth/email/remove', headers: { authorization: `Bearer ${token}` }, payload: { password: 'password123' },
+    });
+    expect(removed.statusCode).toBe(200);
+    // The reset link mailed to the removed address no longer works.
+    const reset = await app.inject({ method: 'POST', url: '/api/auth/password/reset', payload: { token: resetToken, password: 'brand-new-secret' } });
+    expect(reset.statusCode).toBe(400);
+
+    for (const identifier of ['anna@example.org', 'anna']) {
+      const res = await app.inject({ method: 'POST', url: '/api/auth/password/forgot', payload: { identifier } });
+      expect(res.statusCode).toBe(200);
+    }
+    await flush();
+    expect(sent).toHaveLength(0);
+  });
+});
