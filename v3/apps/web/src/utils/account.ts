@@ -1,5 +1,6 @@
 import { serverBase, serverSession } from './serverBase';
 import type { RecipientState, SendTarget } from './reportRecipient';
+import { apiError, type ReauthPayload } from './reauth';
 
 /**
  * Password reset, e-mail verification (#324 S18, S19) and report-recipient confirmation (#449). The server mails links to
@@ -35,9 +36,8 @@ async function post(path: string, body: unknown, base = serverBase(), headers: R
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : `Fehler ${res.status}`);
-  }
+  // 403/429 from a re-auth route carry totpRequired/locked (#479); ApiError keeps them.
+  if (!res.ok) throw apiError(res.status, data);
   return { ok: true, data };
 }
 
@@ -45,8 +45,9 @@ export async function requestPasswordReset(identifier: string, base = serverBase
   await post('/api/auth/password/forgot', { identifier }, base);
 }
 
-export async function resetPassword(token: string, password: string): Promise<void> {
-  await post('/api/auth/password/reset', { token, password });
+/** `removePasskeys` drops every passkey of the account too (#478), for someone who suspects an intruder added one. */
+export async function resetPassword(token: string, password: string, removePasskeys = false): Promise<void> {
+  await post('/api/auth/password/reset', { token, password, ...(removePasskeys ? { removePasskeys: true } : {}) });
 }
 
 export async function verifyEmail(token: string): Promise<void> {
@@ -75,15 +76,15 @@ export function emailChangeNeedsPassword(typed: string, saved: string | null): b
  * the current password (#475): the address is where a password reset goes, so a stolen session
  * alone must not be able to change it.
  */
-export async function saveAccountEmail(email: string, password: string): Promise<boolean> {
+export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<boolean> {
   const { base, headers } = bearer();
   const res = await fetch(`${base}/api/auth/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, ...reauth }),
   });
-  const data = await res.json().catch(() => ({})) as { error?: string; verificationSent?: boolean };
-  if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) throw apiError(res.status, data);
   return data.verificationSent === true;
 }
 
@@ -105,9 +106,9 @@ export async function downloadAccountExport(): Promise<void> {
 }
 
 /** POST /api/me/delete (#324 S21). The caller ends the local session afterwards. */
-export async function deleteOwnAccount(password: string): Promise<void> {
+export async function deleteOwnAccount(reauth: ReauthPayload): Promise<void> {
   const { base, headers } = bearer();
-  await post('/api/me/delete', { password }, base, headers);
+  await post('/api/me/delete', reauth, base, headers);
 }
 
 /** What POST /api/auth/email/remove answers (#471): whether the report schedule lost its recipient, and its new view. */
@@ -120,10 +121,10 @@ export interface RemoveEmailResult {
   };
 }
 
-/** Removes the account's e-mail address (#471); needs the password. */
-export async function removeAccountEmail(password: string): Promise<RemoveEmailResult> {
+/** Removes the account's e-mail address (#471); needs the password (and the 2FA code when 2FA is on, #479). */
+export async function removeAccountEmail(reauth: ReauthPayload): Promise<RemoveEmailResult> {
   const { base, headers } = bearer();
-  const { data } = await post('/api/auth/email/remove', { password }, base, headers);
+  const { data } = await post('/api/auth/email/remove', reauth, base, headers);
   return {
     scheduleCleared: data.scheduleCleared === true,
     ...(data.schedule && typeof data.schedule === 'object' ? { schedule: data.schedule as RemoveEmailResult['schedule'] } : {}),

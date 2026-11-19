@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addPasskey, listPasskeys, passkeyErrorMessage, passkeysSupported, removePasskey } from '../utils/passkeys';
 import type { PasskeyInfo } from '../utils/passkeys';
+import { needsTotpCode, reauthComplete, reauthPayload } from '../utils/reauth';
+import TotpCodeField from './TotpCodeField';
 import styles from '../pages/SettingsPage.module.css';
 
 const dateFmt = (ms: number) => new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -10,7 +12,12 @@ const dateFmt = (ms: number) => new Date(ms).toLocaleDateString('de-DE', { day: 
  * browser or the server cannot do passkeys, the section says why instead of offering
  * something that would fail — the pattern the AI gating uses.
  */
-export default function PasskeySection() {
+export default function PasskeySection({ totpEnabled, onTotpRequired }: {
+  /** Adding and removing need the password, plus the 2FA code when 2FA is on (#478, #479). */
+  totpEnabled: boolean;
+  /** The server asked for a code although we thought 2FA was off: show the field. */
+  onTotpRequired: () => void;
+}) {
   const browserOk = passkeysSupported();
   const [state, setState] = useState<{ available: boolean; reason: string | null; passkeys: PasskeyInfo[] } | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -18,6 +25,15 @@ export default function PasskeySection() {
   const [status, setStatus] = useState<'idle' | 'adding' | 'error'>('idle');
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const ready = reauthComplete(password, code, totpEnabled);
+
+  const failed = (e: unknown) => {
+    if (needsTotpCode(e)) onTotpRequired();
+    setError(passkeyErrorMessage(e));
+    setStatus('error');
+  };
 
   const reload = useCallback(() => {
     listPasskeys().then(setState).catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Verbindungsfehler'));
@@ -28,25 +44,28 @@ export default function PasskeySection() {
     setStatus('adding');
     setError('');
     try {
-      await addPasskey(name.trim());
+      await addPasskey(name.trim(), reauthPayload(password, code, totpEnabled));
       setName('');
+      setPassword('');
+      setCode('');
       setStatus('idle');
       reload();
     } catch (e) {
-      setError(passkeyErrorMessage(e));
-      setStatus('error');
+      failed(e);
     }
   };
 
   const remove = async (id: string) => {
     setError('');
     try {
-      await removePasskey(id);
+      await removePasskey(id, reauthPayload(password, code, totpEnabled));
       setConfirmRemove(null);
+      setPassword('');
+      setCode('');
+      setStatus('idle');
       reload();
     } catch (e) {
-      setError(passkeyErrorMessage(e));
-      setStatus('error');
+      failed(e);
     }
   };
 
@@ -80,7 +99,7 @@ export default function PasskeySection() {
                   </span>
                   {confirmRemove === p.id ? (
                     <span className={styles.btnRow} style={{ marginTop: 0 }}>
-                      <button type="button" className={styles.logoutBtn} onClick={() => void remove(p.id)}>Entfernen</button>
+                      <button type="button" className={styles.logoutBtn} disabled={!ready} onClick={() => void remove(p.id)}>Entfernen</button>
                       <button type="button" className={styles.logoutBtn} onClick={() => setConfirmRemove(null)}>Abbrechen</button>
                     </span>
                   ) : (
@@ -90,6 +109,16 @@ export default function PasskeySection() {
               ))}
             </ul>
           )}
+          {(state.available || state.passkeys.length > 0) && (
+            <>
+              <label className={styles.field}>
+                <span>Passwort zur Bestätigung</span>
+                <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <p className={styles.fieldHelpText}>Zum Hinzufügen und zum Entfernen eines Passkeys nötig.</p>
+              </label>
+              <TotpCodeField visible={totpEnabled} value={code} onChange={setCode} />
+            </>
+          )}
           {state.available ? (
             <>
               <label className={styles.field}>
@@ -97,7 +126,7 @@ export default function PasskeySection() {
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Handy, Laptop" maxLength={60} />
               </label>
               <div className={styles.btnRow}>
-                <button type="button" className={styles.syncBtn} disabled={status === 'adding'} onClick={() => void add()}>
+                <button type="button" className={styles.syncBtn} disabled={status === 'adding' || !ready} onClick={() => void add()}>
                   {status === 'adding' ? 'Warte auf das Gerät…' : 'Passkey hinzufügen'}
                 </button>
               </div>

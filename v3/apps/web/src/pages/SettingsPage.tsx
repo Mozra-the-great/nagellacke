@@ -19,6 +19,8 @@ import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
+import TotpCodeField from '../components/TotpCodeField';
+import { needsTotpCode, reauthComplete, reauthPayload } from '../utils/reauth';
 import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
 import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, expiredRecipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
@@ -130,15 +132,17 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setAccountEmailStatus('saving');
     setAccountEmailMessage('');
     try {
-      const sent = await saveAccountEmail(accountEmail.trim(), accountEmailPassword);
+      const sent = await saveAccountEmail(accountEmail.trim(), reauthPayload(accountEmailPassword, accountEmailCode, totpEnabled));
       const normalized = accountEmail.trim().toLowerCase();
       if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
       setSavedAccountEmail(normalized);
       setAccountEmail(normalized);
       setAccountEmailPassword('');
+      setAccountEmailCode('');
       setAccountEmailStatus('idle');
       setAccountEmailMessage(sent ? 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.' : 'Gespeichert.');
     } catch (e) {
+      if (needsTotpCode(e)) setTotpEnabled(true);
       setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
       setAccountEmailStatus('error');
     }
@@ -148,7 +152,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setRemoveEmailStep('loading');
     setRemoveEmailError('');
     try {
-      const result = await removeAccountEmail(removeEmailPassword);
+      const result = await removeAccountEmail(reauthPayload(removeEmailPassword, removeEmailCode, totpEnabled));
       setSavedAccountEmail(null);
       setAccountEmail('');
       setEmailVerified((v) => (v === null ? null : false));
@@ -165,9 +169,11 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       }
       setRemoveEmailStep('idle');
       setRemoveEmailPassword('');
+      setRemoveEmailCode('');
       setAccountEmailStatus('idle');
       setAccountEmailMessage(removeEmailMessage(result));
     } catch (e) {
+      if (needsTotpCode(e)) setTotpEnabled(true);
       setRemoveEmailError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setRemoveEmailStep('confirm');
     }
@@ -202,8 +208,9 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setDeleteStep('loading');
     setDeleteError('');
     try {
-      await deleteOwnAccount(deletePassword);
+      await deleteOwnAccount(reauthPayload(deletePassword, deleteCode, totpEnabled));
     } catch (e) {
+      if (needsTotpCode(e)) setTotpEnabled(true);
       setDeleteError(e instanceof Error ? e.message : 'Verbindungsfehler');
       setDeleteStep('confirm');
       return;
@@ -215,6 +222,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     clearPhotoToken();
     if (deleteLocalToo) appData.clearLocalCollection();
     setDeletePassword('');
+    setDeleteCode('');
     setDeleteTypedName('');
     setDeleteStep('done');
     onAuthChange();
@@ -491,9 +499,12 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [accountEmailMessage, setAccountEmailMessage] = useState('');
   // A new address needs the current password (#475).
   const [accountEmailPassword, setAccountEmailPassword] = useState('');
+  // With 2FA on, every re-auth also needs a TOTP or recovery code (#479).
+  const [accountEmailCode, setAccountEmailCode] = useState('');
   // Removing the address (#471): an inline confirmation with the password, like deleting the account.
   const [removeEmailStep, setRemoveEmailStep] = useState<'idle' | 'confirm' | 'loading'>('idle');
   const [removeEmailPassword, setRemoveEmailPassword] = useState('');
+  const [removeEmailCode, setRemoveEmailCode] = useState('');
   const [removeEmailError, setRemoveEmailError] = useState('');
 
   // ── Eigene Daten und Konto löschen (#324 S20, S21) ──
@@ -502,6 +513,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [exportError, setExportError] = useState('');
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'loading' | 'done'>('idle');
   const [deletePassword, setDeletePassword] = useState('');
+  const [deleteCode, setDeleteCode] = useState('');
   const [deleteTypedName, setDeleteTypedName] = useState('');
   const [deleteLocalToo, setDeleteLocalToo] = useState(true);
   const [deleteError, setDeleteError] = useState('');
@@ -536,9 +548,11 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [enableError, setEnableError] = useState('');
   const [revealedRecoveryCodes, setRevealedRecoveryCodes] = useState<string[] | null>(null);
   const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
   const [disableStatus, setDisableStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [disableError, setDisableError] = useState('');
   const [regenPassword, setRegenPassword] = useState('');
+  const [regenCode, setRegenCode] = useState('');
   const [regenStatus, setRegenStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [regenError, setRegenError] = useState('');
   const [regenConfirmVisible, setRegenConfirmVisible] = useState(false);
@@ -764,7 +778,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       const res = await fetch(`${serverBase}/api/auth/totp/disable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
-        body: JSON.stringify({ password: disablePassword }),
+        // Password plus a TOTP or recovery code (#479).
+        body: JSON.stringify(reauthPayload(disablePassword, disableCode, true)),
       });
       const data = await res.json() as { ok?: boolean; token?: string; refreshToken?: string; error?: string };
       if (!res.ok || !data.ok) {
@@ -784,6 +799,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setTotpEnabled(false);
       setRecoveryCodesRemaining(0);
       setDisablePassword('');
+      setDisableCode('');
       setDisableStatus('idle');
       setRevealedRecoveryCodes(null);
     } catch (e) {
@@ -799,7 +815,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       const res = await fetch(`${serverBase}/api/auth/totp/recovery-codes/regenerate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...bearerHeaders() },
-        body: JSON.stringify({ password: regenPassword }),
+        body: JSON.stringify(reauthPayload(regenPassword, regenCode, true)),
       });
       const data = await res.json() as { recoveryCodes?: string[]; error?: string };
       if (!res.ok || !data.recoveryCodes) {
@@ -810,6 +826,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setRecoveryCodesRemaining(data.recoveryCodes.length);
       setRevealedRecoveryCodes(data.recoveryCodes);
       setRegenPassword('');
+      setRegenCode('');
       setRegenStatus('idle');
       setRegenConfirmVisible(false);
     } catch (e) {
@@ -1004,6 +1021,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   </p>
                 </label>
               )}
+              <TotpCodeField visible={totpEnabled && emailChangeNeedsPassword(accountEmail, savedAccountEmail)} value={accountEmailCode} onChange={setAccountEmailCode} />
               <div role="status" aria-live="polite" aria-atomic="true">
                 {accountEmailMessage && (
                   <div className={accountEmailStatus === 'error' ? styles.errorBanner : styles.successBanner}>{accountEmailMessage}</div>
@@ -1013,7 +1031,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 <button
                   type="button"
                   className={styles.syncBtn}
-                  disabled={!emailChangeNeedsPassword(accountEmail, savedAccountEmail) || !accountEmailPassword || accountEmailStatus === 'saving'}
+                  disabled={!emailChangeNeedsPassword(accountEmail, savedAccountEmail) || !reauthComplete(accountEmailPassword, accountEmailCode, totpEnabled) || accountEmailStatus === 'saving'}
                   onClick={() => void doSaveAccountEmail()}
                 >
                   {accountEmailStatus === 'saving' ? 'Speichere…' : 'Adresse speichern'}
@@ -1047,6 +1065,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     <span>Passwort</span>
                     <input type="password" autoComplete="current-password" value={removeEmailPassword} onChange={(e) => setRemoveEmailPassword(e.target.value)} />
                   </label>
+                  <TotpCodeField visible={totpEnabled} value={removeEmailCode} onChange={setRemoveEmailCode} />
                   <div role="status" aria-live="polite" aria-atomic="true">
                     {removeEmailError && <div className={styles.errorBanner}>{removeEmailError}</div>}
                   </div>
@@ -1054,7 +1073,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     <button
                       type="button"
                       className={styles.saveBtn}
-                      disabled={!removeEmailPassword || removeEmailStep === 'loading'}
+                      disabled={!reauthComplete(removeEmailPassword, removeEmailCode, totpEnabled) || removeEmailStep === 'loading'}
                       onClick={() => void doRemoveAccountEmail()}
                     >
                       {removeEmailStep === 'loading' ? 'Entferne…' : 'Adresse entfernen'}
@@ -1062,7 +1081,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     <button
                       type="button"
                       className={styles.syncBtn}
-                      onClick={() => { setRemoveEmailStep('idle'); setRemoveEmailPassword(''); setRemoveEmailError(''); }}
+                      onClick={() => { setRemoveEmailStep('idle'); setRemoveEmailPassword(''); setRemoveEmailCode(''); setRemoveEmailError(''); }}
                     >
                       Abbrechen
                     </button>
@@ -1095,6 +1114,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     <span>Passwort</span>
                     <input type="password" autoComplete="current-password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
                   </label>
+                  <TotpCodeField visible={totpEnabled} value={deleteCode} onChange={setDeleteCode} />
                   <label className={styles.field}>
                     <span>Zur Bestätigung deinen Benutzernamen eintippen{meUsername ? `: ${meUsername}` : ''}</span>
                     <input value={deleteTypedName} onChange={(e) => setDeleteTypedName(e.target.value)} autoComplete="off" />
@@ -1111,7 +1131,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                       type="button"
                       className={styles.saveBtn}
                       style={{ background: 'rgba(179, 38, 30, 0.85)', color: '#fff' }}
-                      disabled={!deletePassword || !meUsername || deleteTypedName.trim() !== meUsername || deleteStep === 'loading'}
+                      disabled={!reauthComplete(deletePassword, deleteCode, totpEnabled) || !meUsername || deleteTypedName.trim() !== meUsername || deleteStep === 'loading'}
                       onClick={() => void doDeleteAccount()}
                     >
                       {deleteStep === 'loading' ? 'Lösche…' : 'Konto endgültig löschen'}
@@ -1119,7 +1139,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                     <button
                       type="button"
                       className={styles.syncBtn}
-                      onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteTypedName(''); setDeleteError(''); }}
+                      onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteCode(''); setDeleteTypedName(''); setDeleteError(''); }}
                     >
                       Abbrechen
                     </button>
@@ -1763,16 +1783,17 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                         autoComplete="current-password"
                       />
                     </label>
+                    <TotpCodeField visible value={regenCode} onChange={setRegenCode} />
                     {regenStatus === 'error' && <div className={styles.errorBanner}>{regenError}</div>}
                     <div className={styles.btnRow}>
                       <button
                         className={styles.saveBtn}
                         onClick={() => void regenerateRecoveryCodes()}
-                        disabled={!regenPassword || regenStatus === 'loading'}
+                        disabled={!reauthComplete(regenPassword, regenCode, true) || regenStatus === 'loading'}
                       >
                         {regenStatus === 'loading' ? 'Erzeuge…' : 'Neue Codes erzeugen'}
                       </button>
-                      <button className={styles.syncBtn} onClick={() => { setRegenConfirmVisible(false); setRegenPassword(''); setRegenError(''); }}>Abbrechen</button>
+                      <button className={styles.syncBtn} onClick={() => { setRegenConfirmVisible(false); setRegenPassword(''); setRegenCode(''); setRegenError(''); }}>Abbrechen</button>
                     </div>
                   </div>
                 )}
@@ -1790,12 +1811,13 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                       autoComplete="current-password"
                     />
                   </label>
+                  <TotpCodeField visible value={disableCode} onChange={setDisableCode} />
                   {disableStatus === 'error' && <div className={styles.errorBanner}>{disableError}</div>}
                   <div className={styles.btnRow}>
                     <button
                       className={styles.syncBtn}
                       onClick={() => void disableTotpAccount()}
-                      disabled={!disablePassword || disableStatus === 'loading'}
+                      disabled={!reauthComplete(disablePassword, disableCode, true) || disableStatus === 'loading'}
                     >
                       {disableStatus === 'loading' ? 'Deaktiviere…' : '2FA deaktivieren'}
                     </button>
@@ -1864,7 +1886,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 </div>
               </div>
             )}
-            {serverToken && <PasskeySection />}
+            {serverToken && <PasskeySection totpEnabled={totpEnabled} onTotpRequired={() => setTotpEnabled(true)} />}
           </>
         )}
       </section>

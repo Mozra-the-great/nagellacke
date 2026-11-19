@@ -32,6 +32,7 @@ export default function AccountLinkPage({ route, onDone }: { route: AccountRoute
 function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
+  const [removePasskeys, setRemovePasskeys] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [error, setError] = useState('');
 
@@ -40,7 +41,7 @@ function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
     setStatus('loading');
     setError('');
     try {
-      await resetPassword(token, pass);
+      await resetPassword(token, pass, removePasskeys);
       setStatus('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Verbindungsfehler');
@@ -55,6 +56,9 @@ function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
         <p className={styles.fieldHelpText}>
           Du kannst dich jetzt mit dem neuen Passwort anmelden. Alle bisherigen Sitzungen dieses Kontos sind beendet,
           auch auf anderen Geräten.
+          {removePasskeys
+            ? ' Alle Passkeys dieses Kontos sind entfernt; richte deine eigenen bei Bedarf unter Einstellungen → Sicherheit neu ein.'
+            : ' Passkeys gelten weiter: Prüfe nach dem Anmelden unter Einstellungen → Sicherheit die Liste und entferne jeden, den du nicht kennst.'}
         </p>
         <button type="button" className={styles.saveBtn} onClick={onDone}>Zur Anmeldung</button>
       </>
@@ -78,6 +82,10 @@ function ResetForm({ token, onDone }: { token: string; onDone: () => void }) {
           onChange={(e) => setPass2(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
         />
+      </label>
+      <label className={styles.field} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <input type="checkbox" checked={removePasskeys} onChange={(e) => setRemovePasskeys(e.target.checked)} />
+        <span>Auch alle Passkeys entfernen (wenn jemand anderes Zugriff auf dein Konto hatte)</span>
       </label>
       <div role="status" aria-live="polite" aria-atomic="true">
         {status === 'error' && <div className={styles.errorBanner}>{error}</div>}
