@@ -1465,8 +1465,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const previous = user.email_verified && user.email ? user.email : null;
     updateUserEmail(username, address);
-    // A failed mail must not fail the change, which is already saved; the account log says
-    // that one failed, never to whom.
+    // A failed mail must not fail the change, which is already saved.
     if (previous && accountMailAvailable()) {
       const mail = emailChangedMail(appName(), username, address);
       try {

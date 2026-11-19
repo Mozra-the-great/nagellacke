@@ -108,7 +108,7 @@ export function maskEmail(address: string): string {
 /**
  * Goes to the *old*, verified address when the account's address is changed (#475). It carries no
  * link: a link in a mail about a possible takeover is exactly what a phisher would copy. The
- * advice is to change the password, which also ends every session.
+ * advice is to restore the address and reset the password (there is no password-change route), which also ends every session.
  */
 export function emailChangedMail(appName: string, username: string, newAddress: string): { subject: string; html: string } {
   const title = 'E-Mail-Adresse geändert';
@@ -117,7 +117,7 @@ export function emailChangedMail(appName: string, username: string, newAddress: 
     html: `<!doctype html><html lang="de"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#222">
 <h2 style="font-weight:600">${escapeHtml(title)}</h2>
 <p>Die E-Mail-Adresse des Kontos „${escapeHtml(username)}“ wurde auf ${escapeHtml(maskEmail(newAddress))} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.</p>
-<p style="font-size:13px;color:#555">Warst du das nicht, melde dich an und ändere sofort dein Passwort („Überall abmelden“ beendet alle Sitzungen), und sage dem Betreiber Bescheid.</p>
+<p style="font-size:13px;color:#555">Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle deine Adresse wieder ein und bestätige sie, setze dann das Passwort über „Passwort vergessen?“ zurück (das beendet alle Sitzungen) und sage dem Betreiber Bescheid.</p>
 </body></html>`,
   };
 }
