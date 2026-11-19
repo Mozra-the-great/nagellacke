@@ -472,8 +472,8 @@ function pendingSince(cfg: ScheduleConfig): number | null {
  *
  * Left alone:
  * - a confirmed recipient (by link, or as the account's own verified address);
- * - the account's own address while it is unverified: not a third party's, the account
- *   record holds it anyway, and it counts as confirmed once the account verifies it;
+ * - nothing else: the account's own address counts only once it is verified (#483), since an
+ *   unverified account address may just as well be a third party's that nobody confirmed;
  * - an address that opted out via the unsubscribe link (#457): it is on the suppression
  *   list regardless, and the owner's "unsubscribed" notice needs it.
  *
@@ -507,7 +507,9 @@ export function purgeUnconfirmedRecipients(now: number = Date.now(), logger: Log
     if (!to) continue;
     const user = users.find((u) => typeof u?.username === 'string' && sameUsername(u.username, key));
     if (recipientStatus(cfg, user).status !== 'pending') continue;
-    if (user?.email && normalizeEmail(user.email) === to) continue;
+    // A verified own address is confirmed already (recipientStatus); an unverified one is judged
+    // like any other pending recipient (#483).
+    if (user?.email && user.email_verified && normalizeEmail(user.email) === to) continue;
     if (isAddressBlocked(cfg, user, cfg.toEmail)) continue;
     const since = pendingSince(cfg);
     if (since !== null && now - since < UNCONFIRMED_RECIPIENT_TTL_MS) { summary.waiting++; continue; }

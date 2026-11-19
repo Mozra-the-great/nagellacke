@@ -462,6 +462,9 @@ export interface User {
   verify_hash?: string;
   verify_expires?: number;
   verify_sent_at?: number;
+  // Timestamps of address changes in the last 24 h (#483), for the daily limit. Kept when the
+  // address is removed, so remove + add cannot reset it.
+  email_changes_at?: number[];
   // Passkeys (#228). The user handle is random rather than the username, so an
   // authenticator's stored account list does not carry the name into other contexts.
   webauthn_user_id?: string;     // base64url, 16 random bytes, fixed per account
