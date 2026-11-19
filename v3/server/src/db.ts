@@ -610,8 +610,10 @@ export function findUsers(predicate: (u: User) => boolean): User[] {
  * Replaces the password after a reset (#324 S17): clears the reset token so the link
  * works once, clears the login lockout the forgotten password may have caused, and
  * bumps token_version so every session and photo link issued before is dead.
+ * `removePasskeys` also drops every passkey (#478): a passkey an intruder added signs in
+ * without the password and would otherwise survive the reset.
  */
-export function resetPassword(username: string, passwordHash: string): void {
+export function resetPassword(username: string, passwordHash: string, options: { removePasskeys?: boolean } = {}): void {
   const users = readUsers();
   const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
@@ -624,6 +626,7 @@ export function resetPassword(username: string, passwordHash: string): void {
   delete next.reset_expires;
   delete next.login_fail_count;
   delete next.login_locked_until;
+  if (options.removePasskeys) delete next.webauthn_credentials;
   users[idx] = next;
   writeUsers(users);
 }

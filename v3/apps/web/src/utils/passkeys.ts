@@ -1,4 +1,5 @@
 import { serverBase, serverSession } from './serverBase';
+import { apiError, type ReauthPayload } from './reauth';
 
 /**
  * Browser side of passkeys (#228). The server hands out the WebAuthn options as JSON
@@ -98,7 +99,7 @@ export function passkeyErrorMessage(e: unknown): string {
 
 async function json(res: Response): Promise<Record<string, unknown>> {
   const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `Fehler ${res.status}`);
+  if (!res.ok) throw apiError(res.status, data);
   return data;
 }
 
@@ -115,9 +116,14 @@ export async function listPasskeys(): Promise<{ available: boolean; reason: stri
   return await json(await fetch(`${base}/api/auth/passkeys`, { headers })) as unknown as { available: boolean; reason: string | null; passkeys: PasskeyInfo[] };
 }
 
-export async function addPasskey(name: string): Promise<void> {
+/** Adding needs the password (and the 2FA code when 2FA is on) before the server hands out a challenge (#478). */
+export async function addPasskey(name: string, reauth: ReauthPayload): Promise<void> {
   const { base, headers } = session();
-  const options = await json(await fetch(`${base}/api/auth/passkeys/register/options`, { method: 'POST', headers }));
+  const options = await json(await fetch(`${base}/api/auth/passkeys/register/options`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(reauth),
+  }));
   const cred = await navigator.credentials.create({ publicKey: creationOptionsFromJSON(options) }) as PublicKeyCredential | null;
   if (!cred) throw new Error('Abgebrochen oder abgelaufen.');
   await json(await fetch(`${base}/api/auth/passkeys/register/verify`, {
@@ -127,9 +133,14 @@ export async function addPasskey(name: string): Promise<void> {
   }));
 }
 
-export async function removePasskey(id: string): Promise<void> {
+/** Removing needs the same re-auth as adding (#478). */
+export async function removePasskey(id: string, reauth: ReauthPayload): Promise<void> {
   const { base, headers } = session();
-  await json(await fetch(`${base}/api/auth/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE', headers }));
+  await json(await fetch(`${base}/api/auth/passkeys/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(reauth),
+  }));
 }
 
 /** Signs in with a discoverable passkey; resolves to the token pair a password login would get. */

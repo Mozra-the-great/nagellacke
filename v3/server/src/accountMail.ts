@@ -106,18 +106,52 @@ export function maskEmail(address: string): string {
 }
 
 /**
+ * What to do when a notice describes a change the owner did not make (#475, #478). Someone then
+ * had the password and a session, so the advice covers every way back in: restore the address,
+ * replace the password (a reset ends every session), end all sessions, and remove passkeys the
+ * owner does not recognise, since a passkey signs in without password and outlives a reset.
+ */
+export const TAKEOVER_ADVICE = 'Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle unter Einstellungen → Sync deine Adresse wieder ein und bestätige sie, '
+  + 'setze dann das Passwort über „Passwort vergessen?“ zurück, melde dich über „Von allen Geräten abmelden…“ überall ab, '
+  + 'prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.';
+
+function noticeHtml(title: string, text: string, advice: string): string {
+  return `<!doctype html><html lang="de"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#222">
+<h2 style="font-weight:600">${escapeHtml(title)}</h2>
+<p>${escapeHtml(text)}</p>
+<p style="font-size:13px;color:#555">${escapeHtml(advice)}</p>
+</body></html>`;
+}
+
+/**
  * Goes to the *old*, verified address when the account's address is changed (#475). It carries no
- * link: a link in a mail about a possible takeover is exactly what a phisher would copy. The
- * advice is to restore the address and reset the password (there is no password-change route), which also ends every session.
+ * link: a link in a mail about a possible takeover is exactly what a phisher would copy.
  */
 export function emailChangedMail(appName: string, username: string, newAddress: string): { subject: string; html: string } {
-  const title = 'E-Mail-Adresse geändert';
   return {
     subject: `${appName}: E-Mail-Adresse deines Kontos geändert`,
-    html: `<!doctype html><html lang="de"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#222">
-<h2 style="font-weight:600">${escapeHtml(title)}</h2>
-<p>Die E-Mail-Adresse des Kontos „${escapeHtml(username)}“ wurde auf ${escapeHtml(maskEmail(newAddress))} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.</p>
-<p style="font-size:13px;color:#555">Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle deine Adresse wieder ein und bestätige sie, setze dann das Passwort über „Passwort vergessen?“ zurück (das beendet alle Sitzungen) und sage dem Betreiber Bescheid.</p>
-</body></html>`,
+    html: noticeHtml(
+      'E-Mail-Adresse geändert',
+      `Die E-Mail-Adresse des Kontos „${username}“ wurde auf ${maskEmail(newAddress)} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.`,
+      TAKEOVER_ADVICE,
+    ),
+  };
+}
+
+/**
+ * Goes to the verified account address when a passkey is added or removed (#478). A passkey signs
+ * in without password or 2FA, so an unexpected one is a takeover the owner must hear about. No link.
+ */
+export function passkeyChangedMail(appName: string, username: string, kind: 'added' | 'removed', passkeyName: string): { subject: string; html: string } {
+  const added = kind === 'added';
+  return {
+    subject: `${appName}: Passkey ${added ? 'hinzugefügt' : 'entfernt'}`,
+    html: noticeHtml(
+      added ? 'Neuer Passkey' : 'Passkey entfernt',
+      added
+        ? `Zum Konto „${username}“ wurde der Passkey „${passkeyName}“ hinzugefügt. Mit ihm kann man sich ohne Passwort und ohne 2FA-Code anmelden.`
+        : `Vom Konto „${username}“ wurde der Passkey „${passkeyName}“ entfernt. Mit ihm ist keine Anmeldung mehr möglich.`,
+      TAKEOVER_ADVICE,
+    ),
   };
 }

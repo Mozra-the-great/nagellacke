@@ -39,6 +39,8 @@ afterEach(() => {
 });
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+// Adding and removing a passkey needs the password since #478.
+const REAUTH = { password: 'password123' };
 
 async function register(app: FastifyInstance, username: string): Promise<string> {
   const res = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { username, password: 'password123' } });
@@ -47,7 +49,7 @@ async function register(app: FastifyInstance, username: string): Promise<string>
 }
 
 async function addPasskey(app: FastifyInstance, token: string, device = new SoftAuthenticator(RP), name = 'Handy') {
-  const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token) })).json();
+  const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token), payload: REAUTH })).json();
   const res = await app.inject({
     method: 'POST', url: '/api/auth/passkeys/register/verify', headers: auth(token),
     payload: { response: device.register(options), name },
@@ -127,7 +129,7 @@ describe('passkey routes (#228)', () => {
     const { app } = await createTestApp();
     const anna = await register(app, 'anna');
     const ben = await register(app, 'ben');
-    const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(anna) })).json();
+    const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(anna), payload: REAUTH })).json();
     const res = await app.inject({
       method: 'POST', url: '/api/auth/passkeys/register/verify', headers: auth(ben),
       payload: { response: new SoftAuthenticator(RP).register(options) },
@@ -154,7 +156,7 @@ describe('passkey routes (#228)', () => {
     const { app } = await createTestApp();
     const token = await register(app, 'anna');
     const { device } = await addPasskey(app, token);
-    const del = await app.inject({ method: 'DELETE', url: `/api/auth/passkeys/${device.id}`, headers: auth(token) });
+    const del = await app.inject({ method: 'DELETE', url: `/api/auth/passkeys/${device.id}`, headers: auth(token), payload: REAUTH });
     expect(del.statusCode).toBe(200);
     expect((await loginWith(app, device.authenticate(await loginOptions(app)))).statusCode).toBe(401);
     const pw = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'anna', password: 'password123' } });
@@ -165,7 +167,7 @@ describe('passkey routes (#228)', () => {
     const { app } = await createTestApp();
     const token = await register(app, 'anna');
     const { device } = await addPasskey(app, token);
-    const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token) })).json() as { excludeCredentials: { id: string }[] };
+    const options = (await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token), payload: REAUTH })).json() as { excludeCredentials: { id: string }[] };
     expect(options.excludeCredentials.map((c) => c.id)).toEqual([device.id]);
     const again = await app.inject({
       method: 'POST', url: '/api/auth/passkeys/register/verify', headers: auth(token),
@@ -178,7 +180,7 @@ describe('passkey routes (#228)', () => {
     const { app } = await createTestApp('http://192.168.1.5:3001');
     const token = await register(app, 'anna');
     expect((await app.inject({ method: 'GET', url: '/api/auth/registration-status' })).json()).toMatchObject({ passkeys: false });
-    const res = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token) });
+    const res = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: auth(token), payload: REAUTH });
     expect(res.statusCode).toBe(409);
     expect((res.json() as { error: string }).error).toMatch(/HTTPS/);
     expect((await app.inject({ method: 'POST', url: '/api/auth/passkeys/login/options' })).statusCode).toBe(409);
