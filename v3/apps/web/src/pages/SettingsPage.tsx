@@ -21,7 +21,8 @@ import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import TotpCodeField from '../components/TotpCodeField';
 import { needsTotpCode, reauthComplete, reauthPayload } from '../utils/reauth';
-import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
+import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage, changePassword, newPasswordProblem } from '../utils/account';
+import type { FreshTokens } from '../utils/account';
 import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, expiredRecipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
@@ -128,11 +129,46 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     onAuthChange();
   };
 
+  /**
+   * Switches this session to the fresh pair a sensitive change returned (#480): the change ended
+   * every other session, this one included, so the old access token is dead. A photo token minted
+   * for the old session is dead too.
+   */
+  const adoptFreshTokens = (tokens: FreshTokens | null | undefined) => {
+    if (!tokens) return;
+    const c: SyncConfig = { provider: 'server', serverUrl, serverToken: tokens.token, serverRefreshToken: tokens.refreshToken };
+    saveSyncConfig(c);
+    setConfig(c);
+    setServerToken(tokens.token);
+    clearPhotoToken();
+  };
+
+  const doChangePassword = async () => {
+    const problem = newPasswordProblem(newPassword, newPasswordRepeat, currentPassword);
+    if (problem) { setPasswordChangeMessage(problem); setPasswordChangeStatus('error'); return; }
+    setPasswordChangeStatus('saving');
+    setPasswordChangeMessage('');
+    try {
+      adoptFreshTokens(await changePassword(reauthPayload(currentPassword, passwordChangeCode, totpEnabled), newPassword));
+      setCurrentPassword('');
+      setNewPassword('');
+      setNewPasswordRepeat('');
+      setPasswordChangeCode('');
+      setPasswordChangeStatus('idle');
+      setPasswordChangeMessage('Passwort geändert. Alle anderen Sitzungen dieses Kontos sind beendet.');
+    } catch (e) {
+      if (needsTotpCode(e)) setTotpEnabled(true);
+      setPasswordChangeMessage(e instanceof Error ? e.message : 'Verbindungsfehler');
+      setPasswordChangeStatus('error');
+    }
+  };
+
   const doSaveAccountEmail = async () => {
     setAccountEmailStatus('saving');
     setAccountEmailMessage('');
     try {
-      const sent = await saveAccountEmail(accountEmail.trim(), reauthPayload(accountEmailPassword, accountEmailCode, totpEnabled));
+      const { verificationSent: sent, tokens } = await saveAccountEmail(accountEmail.trim(), reauthPayload(accountEmailPassword, accountEmailCode, totpEnabled));
+      adoptFreshTokens(tokens);
       const normalized = accountEmail.trim().toLowerCase();
       if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
       setSavedAccountEmail(normalized);
@@ -153,6 +189,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setRemoveEmailError('');
     try {
       const result = await removeAccountEmail(reauthPayload(removeEmailPassword, removeEmailCode, totpEnabled));
+      adoptFreshTokens(result.tokens);
       setSavedAccountEmail(null);
       setAccountEmail('');
       setEmailVerified((v) => (v === null ? null : false));
@@ -556,6 +593,14 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [regenStatus, setRegenStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [regenError, setRegenError] = useState('');
   const [regenConfirmVisible, setRegenConfirmVisible] = useState(false);
+
+  // ── Passwort ändern (#480) ──
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordRepeat, setNewPasswordRepeat] = useState('');
+  const [passwordChangeCode, setPasswordChangeCode] = useState('');
+  const [passwordChangeStatus, setPasswordChangeStatus] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState('');
 
   const isServerSync = config?.provider === 'server';
   const serverBase = config?.serverUrl?.replace(/\/$/, '') ?? '';
@@ -1749,6 +1794,44 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   <button className={styles.syncBtn} onClick={() => setRevealedRecoveryCodes(null)}>Verstanden</button>
                 </div>
               </div>
+            )}
+
+            {serverToken && (
+              <>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--md-on-surface-variant)', margin: '0 0 8px' }}>Passwort ändern</h3>
+              <p className={styles.fieldHelpText}>
+                Beendet alle anderen Sitzungen dieses Kontos, auf allen Geräten. Geht auch ohne E-Mail-Adresse.
+              </p>
+              <label className={styles.field}>
+                <span>Aktuelles Passwort</span>
+                <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+              </label>
+              <TotpCodeField visible={totpEnabled} value={passwordChangeCode} onChange={setPasswordChangeCode} />
+              <label className={styles.field}>
+                <span>Neues Passwort</span>
+                <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                <p className={styles.fieldHelpText}>Mindestens 8 Zeichen.</p>
+              </label>
+              <label className={styles.field}>
+                <span>Neues Passwort wiederholen</span>
+                <input type="password" autoComplete="new-password" value={newPasswordRepeat} onChange={(e) => setNewPasswordRepeat(e.target.value)} />
+              </label>
+              <div role="status" aria-live="polite" aria-atomic="true">
+                {passwordChangeMessage && (
+                  <div className={passwordChangeStatus === 'error' ? styles.errorBanner : styles.successBanner}>{passwordChangeMessage}</div>
+                )}
+              </div>
+              <div className={styles.btnRow} style={{ marginBottom: 16 }}>
+                <button
+                  type="button"
+                  className={styles.syncBtn}
+                  disabled={!reauthComplete(currentPassword, passwordChangeCode, totpEnabled) || !newPassword || !newPasswordRepeat || passwordChangeStatus === 'saving'}
+                  onClick={() => void doChangePassword()}
+                >
+                  {passwordChangeStatus === 'saving' ? 'Speichere…' : 'Passwort ändern'}
+                </button>
+              </div>
+              </>
             )}
 
             {totpEnabled ? (

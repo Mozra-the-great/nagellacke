@@ -49,7 +49,7 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail, passkeyChangedMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail, passkeyChangedMail, passwordChangedMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
@@ -1483,6 +1483,9 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!reauthOk(reply, user, request.body)) return reply;
     const previous = user.email_verified && user.email ? user.email : null;
     updateUserEmail(username, address);
+    // Every other session ends (#480): whoever changed the recovery address should be the only
+    // one still signed in. The caller gets a fresh pair, like after turning 2FA off.
+    const tokens = issueTokens(username, bumpTokenVersion(username), reply);
     // A failed mail must not fail the change, which is already saved.
     if (previous && accountMailAvailable()) {
       const mail = emailChangedMail(appName(), username, address);
@@ -1494,7 +1497,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     // A new address gets a verification mail right away (#324 S19).
     const verificationSent = await sendVerificationMail(username);
-    return { ok: true, verificationSent };
+    return { ok: true, verificationSent, ...tokens };
   });
 
   // ── Passkeys (#228) ─────────────────────────────────────────────────────────────
@@ -1873,6 +1876,41 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     return { ok: true, passkeysRemoved: removePasskeys === true };
   });
 
+  // POST /api/auth/password/change (#480) — the signed-in account replaces its password. Before
+  // this only the mailed reset could, which an account without a (verified) address cannot use.
+  // Re-auth through the shared helper (current password, plus the 2FA code when 2FA is on, with
+  // the login lockout). resetPassword() bumps token_version, so every other session and photo link
+  // ends and an outstanding reset link dies; the caller gets a fresh pair. A verified address is
+  // told, without a link.
+  app.post('/api/auth/password/change', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { newPassword } = (request.body ?? {}) as { newPassword?: unknown };
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return reply.code(400).send({ error: 'Das neue Passwort braucht mindestens 8 Zeichen' });
+    }
+    if (newPassword.length > 1024) return reply.code(400).send({ error: 'Das neue Passwort ist zu lang' });
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    if (!reauthOk(reply, user, request.body)) return reply;
+    if (verifyPassword(newPassword, user.password_hash)) {
+      return reply.code(400).send({ error: 'Das neue Passwort muss sich vom bisherigen unterscheiden' });
+    }
+    resetPassword(username, hashPassword(newPassword));
+    const tokens = issueTokens(username, getUser(username)?.token_version ?? 0, reply);
+    if (user.email && user.email_verified && isEmailConfigured()) {
+      const mail = passwordChangedMail(appName(), username);
+      try {
+        await sendHtmlEmail(user.email, mail.subject, mail.html);
+      } catch (e) {
+        logAccountMailError('password change notice', e);
+      }
+    }
+    return { ok: true, ...tokens };
+  });
+
   // POST /api/auth/email/verify — public, since the link may be opened on a device with
   // no session. The token alone identifies the account.
   app.post('/api/auth/email/verify', {
@@ -2206,6 +2244,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!reauthOk(reply, user, request.body)) return reply;
     if (!user.email) return reply.code(400).send({ error: 'Keine E-Mail-Adresse hinterlegt' });
     const removed = removeUserEmail(username);
+    // Ends every other session (#480); the caller gets a fresh pair.
+    const tokens = issueTokens(username, bumpTokenVersion(username), reply);
     let scheduleCleared = false;
     const schedule = getScheduleConfig(username);
     if (removed && schedule?.toEmail && normalizeEmail(schedule.toEmail) === normalizeEmail(removed)) {
@@ -2222,7 +2262,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       });
       scheduleCleared = true;
     }
-    return { ok: true, scheduleCleared, schedule: scheduleView(username, getScheduleConfig(username)) };
+    return { ok: true, scheduleCleared, schedule: scheduleView(username, getScheduleConfig(username)), ...tokens };
   });
 
   // ── Unsubscribe from report mails (#457, RFC 8058) ────────────────────────────────

@@ -65,6 +65,20 @@ export async function resendVerification(): Promise<void> {
   await post('/api/auth/email/resend', {}, base, headers);
 }
 
+/**
+ * A fresh token pair from a change that ended every other session (#480): e-mail change and
+ * removal, password change. The caller must switch to it, or its next request is a 401.
+ */
+export interface FreshTokens {
+  token: string;
+  refreshToken?: string;
+}
+
+export function freshTokens(data: Record<string, unknown>): FreshTokens | null {
+  if (typeof data.token !== 'string' || !data.token) return null;
+  return { token: data.token, ...(typeof data.refreshToken === 'string' ? { refreshToken: data.refreshToken } : {}) };
+}
+
 /** Whether saving `typed` would change the account address, which then needs the password (#475). */
 export function emailChangeNeedsPassword(typed: string, saved: string | null): boolean {
   const next = typed.trim().toLowerCase();
@@ -72,11 +86,12 @@ export function emailChangeNeedsPassword(typed: string, saved: string | null): b
 }
 
 /**
- * Saves the account's address; true when a verification mail went out for it. A new address needs
- * the current password (#475): the address is where a password reset goes, so a stolen session
- * alone must not be able to change it.
+ * Saves the account's address: whether a verification mail went out for it, and the fresh tokens
+ * when the address changed (#480, every other session ended). A new address needs the current
+ * password (#475): the address is where a password reset goes, so a stolen session alone must not
+ * be able to change it.
  */
-export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<boolean> {
+export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<{ verificationSent: boolean; tokens: FreshTokens | null }> {
   const { base, headers } = bearer();
   const res = await fetch(`${base}/api/auth/me`, {
     method: 'PATCH',
@@ -85,7 +100,7 @@ export async function saveAccountEmail(email: string, reauth: ReauthPayload): Pr
   });
   const data = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (!res.ok) throw apiError(res.status, data);
-  return data.verificationSent === true;
+  return { verificationSent: data.verificationSent === true, tokens: freshTokens(data) };
 }
 
 /** GET /api/me/export as a file download (#324 S20). */
@@ -114,6 +129,8 @@ export async function deleteOwnAccount(reauth: ReauthPayload): Promise<void> {
 /** What POST /api/auth/email/remove answers (#471): whether the report schedule lost its recipient, and its new view. */
 export interface RemoveEmailResult {
   scheduleCleared: boolean;
+  /** Every other session ended (#480); the caller continues with these. */
+  tokens?: FreshTokens | null;
   schedule?: {
     config: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null;
     recipient?: RecipientState;
@@ -127,8 +144,27 @@ export async function removeAccountEmail(reauth: ReauthPayload): Promise<RemoveE
   const { data } = await post('/api/auth/email/remove', reauth, base, headers);
   return {
     scheduleCleared: data.scheduleCleared === true,
+    tokens: freshTokens(data),
     ...(data.schedule && typeof data.schedule === 'object' ? { schedule: data.schedule as RemoveEmailResult['schedule'] } : {}),
   };
+}
+
+/** What is wrong with a new password before it is sent, or null (#480). Same minimum as the reset. */
+export function newPasswordProblem(newPassword: string, repeat: string, current: string): string | null {
+  if (newPassword.length < 8) return 'Das neue Passwort braucht mindestens 8 Zeichen.';
+  if (newPassword !== repeat) return 'Die beiden neuen Passwörter stimmen nicht überein.';
+  if (newPassword === current) return 'Das neue Passwort muss sich vom bisherigen unterscheiden.';
+  return null;
+}
+
+/**
+ * POST /api/auth/password/change (#480): the current password (plus the 2FA code when 2FA is on)
+ * and the new one. Every other session ends; the fresh pair for this one comes back.
+ */
+export async function changePassword(reauth: ReauthPayload, newPassword: string): Promise<FreshTokens | null> {
+  const { base, headers } = bearer();
+  const { data } = await post('/api/auth/password/change', { ...reauth, newPassword }, base, headers);
+  return freshTokens(data);
 }
 
 /**
