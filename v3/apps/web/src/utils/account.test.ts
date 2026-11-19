@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { accountRouteForHash, removeEmailWarning, removeEmailMessage, emailChangeNeedsPassword, saveAccountEmail, removeAccountEmail, deleteOwnAccount, resetPassword, changePassword, newPasswordProblem, freshTokens } from './account';
+import { accountRouteForHash, removeEmailWarning, removeEmailMessage, emailChangeNeedsPassword, saveAccountEmail, removeAccountEmail, deleteOwnAccount, resetPassword, changePassword, newPasswordProblem, freshTokens, emailSavedMessage } from './account';
 import { ApiError } from './reauth';
 import { serverSession } from './serverBase';
 
@@ -64,7 +64,7 @@ describe('saveAccountEmail (#475)', () => {
     vi.stubGlobal('fetch', fetchMock);
     // The change ended every other session; the fresh pair comes back for this one (#480).
     expect(await saveAccountEmail('new@example.org', { password: 'secret-pw' })).toEqual({
-      verificationSent: true, tokens: { token: 'new-jwt', refreshToken: 'new-refresh' },
+      verificationSent: true, verificationThrottled: false, tokens: { token: 'new-jwt', refreshToken: 'new-refresh' },
     });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://server.example/api/auth/me');
@@ -148,6 +148,22 @@ describe('fresh tokens after a sensitive change (#480)', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Zu viele Fehlversuche. Bitte versuche es in 15 Minuten erneut.', locked: true }), { status: 429 })));
     const err = await changePassword({ password: 'x' }, 'new-password').catch((e: unknown) => e) as ApiError;
     expect(err.locked).toBe(true);
+  });
+});
+
+describe('emailSavedMessage (#483)', () => {
+  it('says whether the link went out, or why not', () => {
+    expect(emailSavedMessage({ verificationSent: true, verificationThrottled: false })).toMatch(/Link in der Mail/);
+    expect(emailSavedMessage({ verificationSent: false, verificationThrottled: true })).toMatch(/zu viele Bestätigungsmails/);
+    expect(emailSavedMessage({ verificationSent: false, verificationThrottled: false })).toBe('Gespeichert.');
+  });
+
+  it('saveAccountEmail reads the throttle flag', async () => {
+    vi.mocked(serverSession).mockReturnValue({ base: 'https://server.example', token: 'jwt' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, verificationSent: false, verificationThrottled: true, token: 't' }), { status: 200 })));
+    expect(await saveAccountEmail('x@example.org', { password: 'pw' })).toMatchObject({ verificationSent: false, verificationThrottled: true });
+    vi.unstubAllGlobals();
+    vi.mocked(serverSession).mockReset();
   });
 });
 

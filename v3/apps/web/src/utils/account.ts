@@ -91,7 +91,23 @@ export function emailChangeNeedsPassword(typed: string, saved: string | null): b
  * password (#475): the address is where a password reset goes, so a stolen session alone must not
  * be able to change it.
  */
-export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<{ verificationSent: boolean; tokens: FreshTokens | null }> {
+export interface SaveEmailResult {
+  verificationSent: boolean;
+  /** The address already got too many verification mails today (#483); the save itself worked. */
+  verificationThrottled: boolean;
+  tokens: FreshTokens | null;
+}
+
+/** The message after saving the address. */
+export function emailSavedMessage(result: Pick<SaveEmailResult, 'verificationSent' | 'verificationThrottled'>): string {
+  if (result.verificationSent) return 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.';
+  if (result.verificationThrottled) {
+    return 'Gespeichert. An diese Adresse gingen heute schon zu viele Bestätigungsmails; fordere die Mail morgen über „Bestätigungsmail erneut senden“ an.';
+  }
+  return 'Gespeichert.';
+}
+
+export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<SaveEmailResult> {
   const { base, headers } = bearer();
   const res = await fetch(`${base}/api/auth/me`, {
     method: 'PATCH',
@@ -100,7 +116,7 @@ export async function saveAccountEmail(email: string, reauth: ReauthPayload): Pr
   });
   const data = await res.json().catch(() => ({})) as Record<string, unknown>;
   if (!res.ok) throw apiError(res.status, data);
-  return { verificationSent: data.verificationSent === true, tokens: freshTokens(data) };
+  return { verificationSent: data.verificationSent === true, verificationThrottled: data.verificationThrottled === true, tokens: freshTokens(data) };
 }
 
 /** GET /api/me/export as a file download (#324 S20). */

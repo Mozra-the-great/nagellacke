@@ -21,7 +21,7 @@ import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
 import TotpCodeField from '../components/TotpCodeField';
 import { needsTotpCode, reauthComplete, reauthPayload } from '../utils/reauth';
-import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage, changePassword, newPasswordProblem } from '../utils/account';
+import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage, changePassword, newPasswordProblem, emailSavedMessage } from '../utils/account';
 import type { FreshTokens } from '../utils/account';
 import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, expiredRecipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
@@ -167,8 +167,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setAccountEmailStatus('saving');
     setAccountEmailMessage('');
     try {
-      const { verificationSent: sent, tokens } = await saveAccountEmail(accountEmail.trim(), reauthPayload(accountEmailPassword, accountEmailCode, totpEnabled));
-      adoptFreshTokens(tokens);
+      const saved = await saveAccountEmail(accountEmail.trim(), reauthPayload(accountEmailPassword, accountEmailCode, totpEnabled));
+      adoptFreshTokens(saved.tokens);
       const normalized = accountEmail.trim().toLowerCase();
       if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
       setSavedAccountEmail(normalized);
@@ -176,7 +176,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
       setAccountEmailPassword('');
       setAccountEmailCode('');
       setAccountEmailStatus('idle');
-      setAccountEmailMessage(sent ? 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.' : 'Gespeichert.');
+      setAccountEmailMessage(emailSavedMessage(saved));
     } catch (e) {
       if (needsTotpCode(e)) setTotpEnabled(true);
       setAccountEmailMessage(e instanceof Error ? e.message : 'Verbindungsfehler');

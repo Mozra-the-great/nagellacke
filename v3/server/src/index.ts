@@ -49,19 +49,19 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail, passkeyChangedMail, passwordChangedMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail, passkeyChangedMail, passwordChangedMail, maskEmail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
 import { checkReauth, verifySecondFactor, type ReauthOptions } from './reauth';
 import {
   AddressThrottle, adHocTargets, applyConfirmation, checkChangeLimit, checkMailLimit, decideAdHocTarget, isRecipientConfirmed, issueConfirmation,
-  LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
+  LIMIT_MESSAGES, MAX_EMAIL_CHANGES_PER_DAY, MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
 } from './reportRecipient';
 import {
   applyUnsubscribe, BLOCKED_MESSAGE, isAddressBlocked, unsubscribeLinks, verifyUnsubscribeToken, type UnsubscribeLinks,
 } from './reportUnsubscribe';
-import { buildLoggerOptions } from './logRedact';
+import { buildLoggerOptions, mailErrorText } from './logRedact';
 import { stripImageMetadata, InvalidImageError } from './imageMeta';
 import { stripStoredPhotos } from './photoMigration';
 import { adminDeleteAccount, runRetentionJobs } from './retention';
@@ -1481,8 +1481,18 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const address = email.trim().toLowerCase();
     if (user.email === address) return { ok: true, verificationSent: false };
     if (!reauthOk(reply, user, request.body)) return reply;
+    // At most MAX_EMAIL_CHANGES_PER_DAY changes per account and 24 h (#483): each one mails a
+    // verification link to whatever address was typed, so A→B→A must not become a mail cannon.
+    const now = Date.now();
+    const changes = recent(user.email_changes_at, now);
+    if (changes.length >= MAX_EMAIL_CHANGES_PER_DAY) {
+      return reply.code(429).send({ error: 'Du hast die Adresse in den letzten 24 Stunden schon zu oft geändert. Bitte versuche es später noch einmal.' });
+    }
     const previous = user.email_verified && user.email ? user.email : null;
     updateUserEmail(username, address);
+    patchUser(username, { email_changes_at: [...changes, now] });
+    // Audit trail without the address (#482).
+    logAdminAction(username, 'account.email_changed', username);
     // Every other session ends (#480): whoever changed the recovery address should be the only
     // one still signed in. The caller gets a fresh pair, like after turning 2FA off.
     const tokens = issueTokens(username, bumpTokenVersion(username), reply);
@@ -1495,9 +1505,15 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
         logAccountMailError('e-mail change notice', e);
       }
     }
-    // A new address gets a verification mail right away (#324 S19).
-    const verificationSent = await sendVerificationMail(username);
-    return { ok: true, verificationSent, ...tokens };
+    // A new address gets a verification mail right away (#324 S19), unless that address already
+    // got too many today (#483).
+    const verification = await sendVerificationMail(username);
+    return {
+      ok: true,
+      verificationSent: verification === 'sent',
+      ...(verification === 'throttled' ? { verificationThrottled: true } : {}),
+      ...tokens,
+    };
   });
 
   // ── Passkeys (#228) ─────────────────────────────────────────────────────────────
@@ -1643,6 +1659,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       createdAt: Date.now(),
     };
     patchUser(username, { webauthn_credentials: [...existing, stored] });
+    logAdminAction(username, 'account.passkey_added', username);
     await sendPasskeyNotice(username, 'added', stored.name);
     return { ok: true, id: stored.id, name: stored.name };
   });
@@ -1662,6 +1679,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!removed) return reply.code(404).send({ error: 'Passkey nicht gefunden' });
     const keep = list.filter((c) => c.id !== id);
     patchUser(username, { webauthn_credentials: keep.length ? keep : undefined });
+    logAdminAction(username, 'account.passkey_removed', username);
     await sendPasskeyNotice(username, 'removed', removed.name);
     return { ok: true };
   });
@@ -1801,25 +1819,37 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     return resolveBranding(getBranding()).title;
   }
 
-  /** Issues a fresh verification token and mails it. False when nothing could be sent. */
-  async function sendVerificationMail(username: string): Promise<boolean> {
+  // Verification mails per target address and 24 h, across accounts (#483): the report
+  // confirmation has had this since #449. In memory, like that one.
+  const verificationAddressThrottle = new AddressThrottle(MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY);
+
+  /**
+   * Issues a fresh verification token and mails it: 'sent', 'throttled' (that address already got
+   * MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY today), 'failed' (delivery), or 'none' (nothing to send:
+   * no address, already verified, no mail delivery).
+   */
+  async function sendVerificationMail(username: string): Promise<'sent' | 'throttled' | 'failed' | 'none'> {
     const user = getUser(username);
-    if (!user?.email || user.email_verified || !accountMailAvailable()) return false;
-    const { token, hash } = newAccountToken();
+    if (!user?.email || user.email_verified || !accountMailAvailable()) return 'none';
     const now = Date.now();
+    if (!verificationAddressThrottle.allowed(user.email, now)) return 'throttled';
+    verificationAddressThrottle.record(user.email, now);
+    const { token, hash } = newAccountToken();
     patchUser(username, { verify_hash: hash, verify_expires: now + VERIFY_TTL_MS, verify_sent_at: now });
     const mail = verifyMail(appName(), appBaseUrl(), username, token);
     try {
       await sendHtmlEmail(user.email, mail.subject, mail.html);
-      return true;
+      return 'sent';
     } catch (e) {
       logAccountMailError('verification mail', e);
-      return false;
+      return 'failed';
     }
   }
 
+  // SMTP rejections usually quote the recipient; mailErrorText() keeps the error code and masks
+  // every address (#481). The logs are readable by admins (GET /api/logs).
   function logAccountMailError(what: string, e: unknown): void {
-    app.log.error(`[account] ${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+    app.log.error(`[account] ${what} failed: ${mailErrorText(e)}`);
   }
 
   // POST /api/auth/password/forgot — always answers the same way whether or not the
@@ -1873,6 +1903,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!user || !user.reset_expires || user.reset_expires <= now) return invalid();
     // Optionally drops every passkey too (#478), for an owner who suspects an intruder added one.
     resetPassword(user.username, hashPassword(password), { removePasskeys: removePasskeys === true });
+    logAdminAction(user.username, 'account.password_reset', user.username, { passkeysRemoved: removePasskeys === true });
     return { ok: true, passkeysRemoved: removePasskeys === true };
   });
 
@@ -1899,6 +1930,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(400).send({ error: 'Das neue Passwort muss sich vom bisherigen unterscheiden' });
     }
     resetPassword(username, hashPassword(newPassword));
+    logAdminAction(username, 'account.password_changed', username);
     const tokens = issueTokens(username, getUser(username)?.token_version ?? 0, reply);
     if (user.email && user.email_verified && isEmailConfigured()) {
       const mail = passwordChangedMail(appName(), username);
@@ -1941,9 +1973,11 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (user.verify_sent_at && Date.now() - user.verify_sent_at < VERIFY_RESEND_MS) {
       return reply.code(429).send({ error: 'Bitte warte eine Stunde, bevor du die Mail erneut anforderst' });
     }
-    if (!(await sendVerificationMail(username))) {
-      return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
+    const sent = await sendVerificationMail(username);
+    if (sent === 'throttled') {
+      return reply.code(429).send({ error: 'An diese Adresse gingen in den letzten 24 Stunden schon zu viele Bestätigungsmails. Bitte versuche es morgen noch einmal.' });
     }
+    if (sent !== 'sent') return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
     return { ok: true };
   });
 
@@ -2244,6 +2278,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!reauthOk(reply, user, request.body)) return reply;
     if (!user.email) return reply.code(400).send({ error: 'Keine E-Mail-Adresse hinterlegt' });
     const removed = removeUserEmail(username);
+    logAdminAction(username, 'account.email_removed', username);
     // Ends every other session (#480); the caller gets a fresh pair.
     const tokens = issueTokens(username, bumpTokenVersion(username), reply);
     let scheduleCleared = false;
@@ -2821,6 +2856,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const { codes, hashes } = generateRecoveryCodes();
     const newTokenVersion = enableTotp(username, hashes);
+    logAdminAction(username, 'account.totp_enabled', username);
     return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion, reply) };
   });
 
@@ -2848,6 +2884,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
     }
     disableTotp(username);
+    logAdminAction(username, 'account.totp_disabled', username);
     const updated = getUser(username);
     return { ok: true, ...issueTokens(username, updated?.token_version ?? 0, reply) };
   });
@@ -2869,6 +2906,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const { codes, hashes } = generateRecoveryCodes();
     setRecoveryCodes(username, hashes);
+    logAdminAction(username, 'account.recovery_codes_regenerated', username);
     return { recoveryCodes: codes };
   });
 
@@ -3263,9 +3301,10 @@ export async function runReportSchedules(at: Date = new Date()): Promise<void> {
       const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser), unsubscribe?.pageUrl);
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
       markScheduleSent(reportUser, at.getTime());
-      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
+      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${maskEmail(cfg.toEmail)}`);
     } catch (e: unknown) {
-      console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
+      // The recipient is often a third party: no full address in the log (#481).
+      console.error(`[reports] Failed to send scheduled report for "${reportUser}": ${mailErrorText(e)}`);
     }
   }
 }
