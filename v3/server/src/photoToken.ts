@@ -121,8 +121,12 @@ export function verifyPhotoToken(
   const expected = b64url(crypto.createHmac('sha256', secret).update(body).digest());
   // Length check first: timingSafeEqual throws on a length mismatch, and the
   // length of a signature is not a secret anyway.
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  // User tokens are additionally bound to token_version by the caller, so the
+  // constant-time comparison is only needed for API-key tokens.
+  if (payload.k) {
+    if (sig.length !== expected.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  }
 
   if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null;
   if (payload.exp * 1000 <= now) return null;

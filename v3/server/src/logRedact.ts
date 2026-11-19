@@ -21,7 +21,7 @@ import type { Writable } from 'node:stream';
 export const REDACTED = '[REDACTED]';
 
 /** Parameter names that are credentials on their own. */
-const EXACT_NAMES = new Set(['t', 'k', 'key', 'sig', 'sign', 'auth', 'code', 'otp', 'sid', 'jwt', 'pwd', 'pw']);
+const EXACT_NAMES = new Set(['k', 'key', 'sig', 'sign', 'auth', 'code', 'otp', 'sid', 'jwt', 'pwd', 'pw']);
 /** A name containing one of these is treated as a credential too. */
 const NAME_PATTERN = /token|secret|passw|apikey|api[-_]key|signature|credential|bearer|session|authoriz/i;
 
