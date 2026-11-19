@@ -11,7 +11,7 @@ export const DEFAULT_COLLECTION_VIEW: CollectionView = 'cards';
 
 /** Anything that is not exactly a known view (unset, hand-edited, from a newer build) means the default. */
 export function parseCollectionView(raw: string | null | undefined): CollectionView {
-  return raw === 'grid' || raw === 'cards' ? raw : DEFAULT_COLLECTION_VIEW;
+  return (raw as CollectionView | null | undefined) ?? DEFAULT_COLLECTION_VIEW;
 }
 
 export function loadCollectionView(): CollectionView {
