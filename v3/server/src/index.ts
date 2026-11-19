@@ -133,7 +133,7 @@ const API_KEY_FILE = path.join(DATA_DIR, '.api_key');
 // Age after which startup nags about rotating (#108). Not enforced: the key is
 // the only way in for admin endpoints, so expiring it automatically would lock
 // the operator out of a self-hosted box with no recovery path.
-const API_KEY_MAX_AGE_DAYS = 180;
+const API_KEY_MAX_AGE_DAYS = 90;
 
 let API_KEY: string;
 let API_KEY_IS_NEW = false;
