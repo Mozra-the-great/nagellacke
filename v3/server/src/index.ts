@@ -19,7 +19,7 @@ import {
   getScheduleConfig, setScheduleConfig, deleteScheduleConfig, getAllScheduleConfigs, markScheduleSent,
   migrateScheduleToPerUser, migrateScheduleRecipients,
   getAiConfig, setAiConfig, addAiJob, getAiJob, PHOTOS_DIR, DATA_DIR,
-  setTotpPending, enableTotp, disableTotp, updateTotpCounter, consumeRecoveryCode, setRecoveryCodes,
+  setTotpPending, enableTotp, disableTotp, setRecoveryCodes,
   recordTotpFailure, clearTotpFailures, totpLockedUntil,
   recordLoginFailure, clearLoginFailures, loginLockedUntil,
   isAdmin, setUserRole, listUsers, countAdmins, canAccessPhoto, recordPhotoOwner,
@@ -30,7 +30,7 @@ import {
   canonicalUsername, sameUsername, migrateUsernamesToCanonical,
 } from './db';
 import { resolveBranding, resolvePreset, parseBrandingInput, NAILVAULT_WORDMARK_SVG } from './branding';
-import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings } from './db';
+import type { ScheduleConfig, AiConfig, AiJob, UserRole, ServerSettings, User } from './db';
 import { processAiJobQueue, isAiConfigured, testAiConnection } from './ai';
 import type { SearchBackend } from './websearch';
 import { assertPublicOutboundUrl, OutboundBlockedError } from './outbound';
@@ -49,18 +49,19 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail, passkeyChangedMail, passwordChangedMail, maskEmail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
+import { checkReauth, verifySecondFactor, type ReauthOptions } from './reauth';
 import {
   AddressThrottle, adHocTargets, applyConfirmation, checkChangeLimit, checkMailLimit, decideAdHocTarget, isRecipientConfirmed, issueConfirmation,
-  LIMIT_MESSAGES, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
+  LIMIT_MESSAGES, MAX_EMAIL_CHANGES_PER_DAY, MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY, normalizeEmail, recent, recipientStatus, verifyRecipientToken, type LimitReason,
 } from './reportRecipient';
 import {
   applyUnsubscribe, BLOCKED_MESSAGE, isAddressBlocked, unsubscribeLinks, verifyUnsubscribeToken, type UnsubscribeLinks,
 } from './reportUnsubscribe';
-import { buildLoggerOptions } from './logRedact';
+import { buildLoggerOptions, mailErrorText } from './logRedact';
 import { stripImageMetadata, InvalidImageError } from './imageMeta';
 import { stripStoredPhotos } from './photoMigration';
 import { adminDeleteAccount, runRetentionJobs } from './retention';
@@ -361,6 +362,20 @@ function verifyPassword(password: string, stored: string): boolean {
   if (!salt || !hash) return false;
   const candidate = crypto.scryptSync(password, salt, 64).toString('hex');
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
+}
+
+/**
+ * The shared re-auth check for account-security changes (#479, reauth.ts): password on the
+ * login lockout counter, plus a TOTP or recovery code when 2FA is on. On refusal it sends the
+ * answer (403, or 429 with Retry-After while the account is locked) and returns false.
+ */
+function reauthOk(reply: FastifyReply, user: User, body: unknown, options?: ReauthOptions): boolean {
+  const { password, code } = (body ?? {}) as { password?: unknown; code?: unknown };
+  const refusal = checkReauth(user, { password, code }, verifyPassword, options);
+  if (!refusal) return true;
+  if (refusal.body.retryAfter) void reply.header('Retry-After', String(refusal.body.retryAfter));
+  void reply.code(refusal.status).send(refusal.body);
+  return false;
 }
 
 // Fixed hash used to run a same-cost dummy verification when a login targets
@@ -807,9 +822,14 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const { password } = (request.body ?? {}) as { password?: string };
     const user = getUser(username);
-    if (!password || !user || !verifyPassword(password, user.password_hash)) {
-      return reply.code(401).send({ error: 'Passwort-Bestätigung erforderlich' });
+    if (!user) return reply.code(401).send({ error: 'Passwort-Bestätigung erforderlich' });
+    // Same per-account lockout as every other password check (#479); no TOTP step here, the
+    // admin panel's update flow only asks for the password.
+    const refusal = checkReauth(user, { password }, verifyPassword, { stepUp: false });
+    if (refusal?.status === 429) {
+      return reply.code(429).header('Retry-After', String(refusal.body.retryAfter ?? 900)).send(refusal.body);
     }
+    if (refusal) return reply.code(401).send({ error: 'Passwort-Bestätigung erforderlich' });
   }
 
   // ── Photo endpoints ────────────────────────────────────────────────────────────
@@ -1439,23 +1459,61 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     };
   });
 
-  // PATCH /api/auth/me
+  // PATCH /api/auth/me — changes the account e-mail. The address is the recovery channel (password
+  // reset goes to it), so changing it needs the current password, like removing it
+  // (POST /api/auth/email/remove) and deleting the account: a stolen access token alone must not
+  // be able to point the recovery at a mailbox the thief controls (#475). Same check, same limit
+  // (5 per 15 minutes) and same answer (403 "Passwort falsch") as the other two. A save that
+  // changes nothing needs no password and does nothing. The new address is unverified until its
+  // link is opened, every link mailed earlier (reset, verification) stops working, and the old
+  // address, if it was verified, is told.
   app.patch('/api/auth/me', {
     preHandler: requireJwt,
-    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { email } = request.body as { email?: string };
-    if (!email || !isValidEmail(email)) {
+    const { email } = (request.body ?? {}) as { email?: unknown };
+    if (typeof email !== 'string' || !email || !isValidEmail(email)) {
       return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
     }
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
     const address = email.trim().toLowerCase();
-    const changed = getUser(username)?.email !== address;
+    if (user.email === address) return { ok: true, verificationSent: false };
+    if (!reauthOk(reply, user, request.body)) return reply;
+    // At most MAX_EMAIL_CHANGES_PER_DAY changes per account and 24 h (#483): each one mails a
+    // verification link to whatever address was typed, so A→B→A must not become a mail cannon.
+    const now = Date.now();
+    const changes = recent(user.email_changes_at, now);
+    if (changes.length >= MAX_EMAIL_CHANGES_PER_DAY) {
+      return reply.code(429).send({ error: 'Du hast die Adresse in den letzten 24 Stunden schon zu oft geändert. Bitte versuche es später noch einmal.' });
+    }
+    const previous = user.email_verified && user.email ? user.email : null;
     updateUserEmail(username, address);
-    // A new address gets a verification mail right away (#324 S19); saving the same
-    // one again does not, "erneut senden" is for that.
-    const verificationSent = changed ? await sendVerificationMail(username) : false;
-    return { ok: true, verificationSent };
+    patchUser(username, { email_changes_at: [...changes, now] });
+    // Audit trail without the address (#482).
+    logAdminAction(username, 'account.email_changed', username);
+    // Every other session ends (#480): whoever changed the recovery address should be the only
+    // one still signed in. The caller gets a fresh pair, like after turning 2FA off.
+    const tokens = issueTokens(username, bumpTokenVersion(username), reply);
+    // A failed mail must not fail the change, which is already saved.
+    if (previous && accountMailAvailable()) {
+      const mail = emailChangedMail(appName(), username, address);
+      try {
+        await sendHtmlEmail(previous, mail.subject, mail.html);
+      } catch (e) {
+        logAccountMailError('e-mail change notice', e);
+      }
+    }
+    // A new address gets a verification mail right away (#324 S19), unless that address already
+    // got too many today (#483).
+    const verification = await sendVerificationMail(username);
+    return {
+      ok: true,
+      verificationSent: verification === 'sent',
+      ...(verification === 'throttled' ? { verificationThrottled: true } : {}),
+      ...tokens,
+    };
   });
 
   // ── Passkeys (#228) ─────────────────────────────────────────────────────────────
@@ -1534,6 +1592,10 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (!rp) return reply;
     const user = getUser(username);
     if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    // Re-auth before a challenge is handed out (#478): a passkey signs in without password or
+    // TOTP and survives a password reset, so a stolen access token must not be able to add one.
+    // register/verify needs a challenge from here, so it is covered too.
+    if (!reauthOk(reply, user, request.body)) return reply;
     let userId = user.webauthn_user_id;
     if (!userId) {
       userId = toBase64Url(crypto.randomBytes(16));
@@ -1597,6 +1659,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       createdAt: Date.now(),
     };
     patchUser(username, { webauthn_credentials: [...existing, stored] });
+    logAdminAction(username, 'account.passkey_added', username);
+    await sendPasskeyNotice(username, 'added', stored.name);
     return { ok: true, id: stored.id, name: stored.name };
   });
 
@@ -1606,12 +1670,34 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
     const { id } = request.params as { id: string };
-    const list = getUser(username)?.webauthn_credentials ?? [];
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    // Re-auth (#478): removing the owner's passkeys is part of taking an account over.
+    if (!reauthOk(reply, user, request.body)) return reply;
+    const list = user.webauthn_credentials ?? [];
+    const removed = list.find((c) => c.id === id);
+    if (!removed) return reply.code(404).send({ error: 'Passkey nicht gefunden' });
     const keep = list.filter((c) => c.id !== id);
-    if (keep.length === list.length) return reply.code(404).send({ error: 'Passkey nicht gefunden' });
     patchUser(username, { webauthn_credentials: keep.length ? keep : undefined });
+    logAdminAction(username, 'account.passkey_removed', username);
+    await sendPasskeyNotice(username, 'removed', removed.name);
     return { ok: true };
   });
+
+  /**
+   * Tells the account's verified address that a passkey was added or removed (#478). No link, like
+   * the e-mail change notice. A failed mail is logged and does not fail the change.
+   */
+  async function sendPasskeyNotice(username: string, kind: 'added' | 'removed', name: string): Promise<void> {
+    const user = getUser(username);
+    if (!user?.email || !user.email_verified || !isEmailConfigured()) return;
+    const mail = passkeyChangedMail(appName(), username, kind, name);
+    try {
+      await sendHtmlEmail(user.email, mail.subject, mail.html);
+    } catch (e) {
+      logAccountMailError('passkey notice', e);
+    }
+  }
 
   // POST /api/auth/passkeys/login/options — public. No username: the passkeys are
   // discoverable, so the authenticator offers the accounts it holds, and nothing here
@@ -1706,12 +1792,9 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { password } = (request.body ?? {}) as { password?: unknown };
     const user = getUser(username);
     if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
-    if (typeof password !== 'string' || !verifyPassword(password, user.password_hash)) {
-      return reply.code(403).send({ error: 'Passwort falsch' });
-    }
+    if (!reauthOk(reply, user, request.body)) return reply;
     // Same rule as the admin route: never leave accounts behind with nobody able to
     // administer them. The sole account of a server may go; the next registration then
     // bootstraps a new admin.
@@ -1736,25 +1819,37 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     return resolveBranding(getBranding()).title;
   }
 
-  /** Issues a fresh verification token and mails it. False when nothing could be sent. */
-  async function sendVerificationMail(username: string): Promise<boolean> {
+  // Verification mails per target address and 24 h, across accounts (#483): the report
+  // confirmation has had this since #449. In memory, like that one.
+  const verificationAddressThrottle = new AddressThrottle(MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY);
+
+  /**
+   * Issues a fresh verification token and mails it: 'sent', 'throttled' (that address already got
+   * MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY today), 'failed' (delivery), or 'none' (nothing to send:
+   * no address, already verified, no mail delivery).
+   */
+  async function sendVerificationMail(username: string): Promise<'sent' | 'throttled' | 'failed' | 'none'> {
     const user = getUser(username);
-    if (!user?.email || user.email_verified || !accountMailAvailable()) return false;
-    const { token, hash } = newAccountToken();
+    if (!user?.email || user.email_verified || !accountMailAvailable()) return 'none';
     const now = Date.now();
+    if (!verificationAddressThrottle.allowed(user.email, now)) return 'throttled';
+    verificationAddressThrottle.record(user.email, now);
+    const { token, hash } = newAccountToken();
     patchUser(username, { verify_hash: hash, verify_expires: now + VERIFY_TTL_MS, verify_sent_at: now });
     const mail = verifyMail(appName(), appBaseUrl(), username, token);
     try {
       await sendHtmlEmail(user.email, mail.subject, mail.html);
-      return true;
+      return 'sent';
     } catch (e) {
       logAccountMailError('verification mail', e);
-      return false;
+      return 'failed';
     }
   }
 
+  // SMTP rejections usually quote the recipient; mailErrorText() keeps the error code and masks
+  // every address (#481). The logs are readable by admins (GET /api/logs).
   function logAccountMailError(what: string, e: unknown): void {
-    app.log.error(`[account] ${what} failed: ${e instanceof Error ? e.message : String(e)}`);
+    app.log.error(`[account] ${what} failed: ${mailErrorText(e)}`);
   }
 
   // POST /api/auth/password/forgot — always answers the same way whether or not the
@@ -1796,7 +1891,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
   app.post('/api/auth/password/reset', {
     config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
-    const { token, password } = (request.body ?? {}) as { token?: unknown; password?: unknown };
+    const { token, password, removePasskeys } = (request.body ?? {}) as { token?: unknown; password?: unknown; removePasskeys?: unknown };
     if (typeof password !== 'string' || password.length < 8) {
       return reply.code(400).send({ error: 'Das Passwort braucht mindestens 8 Zeichen' });
     }
@@ -1806,8 +1901,46 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     const now = Date.now();
     const user = findUsers((u) => u.reset_hash === hash)[0];
     if (!user || !user.reset_expires || user.reset_expires <= now) return invalid();
-    resetPassword(user.username, hashPassword(password));
-    return { ok: true };
+    // Optionally drops every passkey too (#478), for an owner who suspects an intruder added one.
+    resetPassword(user.username, hashPassword(password), { removePasskeys: removePasskeys === true });
+    logAdminAction(user.username, 'account.password_reset', user.username, { passkeysRemoved: removePasskeys === true });
+    return { ok: true, passkeysRemoved: removePasskeys === true };
+  });
+
+  // POST /api/auth/password/change (#480) — the signed-in account replaces its password. Before
+  // this only the mailed reset could, which an account without a (verified) address cannot use.
+  // Re-auth through the shared helper (current password, plus the 2FA code when 2FA is on, with
+  // the login lockout). resetPassword() bumps token_version, so every other session and photo link
+  // ends and an outstanding reset link dies; the caller gets a fresh pair. A verified address is
+  // told, without a link.
+  app.post('/api/auth/password/change', {
+    preHandler: requireJwt,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const { username } = request.user as { username: string };
+    const { newPassword } = (request.body ?? {}) as { newPassword?: unknown };
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return reply.code(400).send({ error: 'Das neue Passwort braucht mindestens 8 Zeichen' });
+    }
+    if (newPassword.length > 1024) return reply.code(400).send({ error: 'Das neue Passwort ist zu lang' });
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    if (!reauthOk(reply, user, request.body)) return reply;
+    if (verifyPassword(newPassword, user.password_hash)) {
+      return reply.code(400).send({ error: 'Das neue Passwort muss sich vom bisherigen unterscheiden' });
+    }
+    resetPassword(username, hashPassword(newPassword));
+    logAdminAction(username, 'account.password_changed', username);
+    const tokens = issueTokens(username, getUser(username)?.token_version ?? 0, reply);
+    if (user.email && user.email_verified && isEmailConfigured()) {
+      const mail = passwordChangedMail(appName(), username);
+      try {
+        await sendHtmlEmail(user.email, mail.subject, mail.html);
+      } catch (e) {
+        logAccountMailError('password change notice', e);
+      }
+    }
+    return { ok: true, ...tokens };
   });
 
   // POST /api/auth/email/verify — public, since the link may be opened on a device with
@@ -1840,9 +1973,11 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     if (user.verify_sent_at && Date.now() - user.verify_sent_at < VERIFY_RESEND_MS) {
       return reply.code(429).send({ error: 'Bitte warte eine Stunde, bevor du die Mail erneut anforderst' });
     }
-    if (!(await sendVerificationMail(username))) {
-      return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
+    const sent = await sendVerificationMail(username);
+    if (sent === 'throttled') {
+      return reply.code(429).send({ error: 'An diese Adresse gingen in den letzten 24 Stunden schon zu viele Bestätigungsmails. Bitte versuche es morgen noch einmal.' });
     }
+    if (sent !== 'sent') return reply.code(502).send({ error: 'Die Mail konnte nicht gesendet werden' });
     return { ok: true };
   });
 
@@ -2138,14 +2273,14 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { password } = (request.body ?? {}) as { password?: unknown };
     const user = getUser(username);
     if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
-    if (typeof password !== 'string' || !verifyPassword(password, user.password_hash)) {
-      return reply.code(403).send({ error: 'Passwort falsch' });
-    }
+    if (!reauthOk(reply, user, request.body)) return reply;
     if (!user.email) return reply.code(400).send({ error: 'Keine E-Mail-Adresse hinterlegt' });
     const removed = removeUserEmail(username);
+    logAdminAction(username, 'account.email_removed', username);
+    // Ends every other session (#480); the caller gets a fresh pair.
+    const tokens = issueTokens(username, bumpTokenVersion(username), reply);
     let scheduleCleared = false;
     const schedule = getScheduleConfig(username);
     if (removed && schedule?.toEmail && normalizeEmail(schedule.toEmail) === normalizeEmail(removed)) {
@@ -2162,7 +2297,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       });
       scheduleCleared = true;
     }
-    return { ok: true, scheduleCleared, schedule: scheduleView(username, getScheduleConfig(username)) };
+    return { ok: true, scheduleCleared, schedule: scheduleView(username, getScheduleConfig(username)), ...tokens };
   });
 
   // ── Unsubscribe from report mails (#457, RFC 8058) ────────────────────────────────
@@ -2642,21 +2777,8 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(401).send({ error: 'Konto vorübergehend gesperrt — zu viele Fehlversuche' });
     }
 
-    const trimmedCode = code.trim();
-    let ok = false;
-    if (/^\d{6}$/.test(trimmedCode) && user.totp_secret) {
-      const counter = verifyTotpCode(user.totp_secret, trimmedCode, user.username);
-      // Reject a code whose step has already been accepted — stops a
-      // shoulder-surfed code from being replayed inside its own validity window.
-      if (counter !== null && counter > (user.totp_last_counter ?? -1)) {
-        updateTotpCounter(user.username, counter);
-        ok = true;
-      }
-    } else {
-      ok = consumeRecoveryCode(user.username, trimmedCode);
-    }
-
-    if (!ok) {
+    // TOTP code (with replay guard) or recovery code; shared with the re-auth step-up (#479).
+    if (!verifySecondFactor(user, code)) {
       recordTotpFailure(user.username);
       return reply.code(401).send({ error: 'Ungültiger Code' });
     }
@@ -2718,14 +2840,14 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { code, password } = request.body as { code?: string; password?: string };
+    const { code, password } = (request.body ?? {}) as { code?: string; password?: unknown };
     const user = getUser(username);
     if (user?.totp_enabled) {
       return reply.code(400).send({ error: '2FA ist bereits aktiviert' });
     }
-    if (!user || !password || !verifyPassword(password, user.password_hash)) {
-      return reply.code(401).send({ error: 'Passwort erforderlich' });
-    }
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    // Password only: 2FA is still off here, and `code` belongs to the new secret (#479).
+    if (!reauthOk(reply, user, { password }, { stepUp: false })) return reply;
     if (!user.totp_secret) {
       return reply.code(400).send({ error: 'Kein 2FA-Setup gestartet — zuerst /totp/setup aufrufen' });
     }
@@ -2734,6 +2856,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     }
     const { codes, hashes } = generateRecoveryCodes();
     const newTokenVersion = enableTotp(username, hashes);
+    logAdminAction(username, 'account.totp_enabled', username);
     return { ok: true, recoveryCodes: codes, ...issueTokens(username, newTokenVersion, reply) };
   });
 
@@ -2747,11 +2870,10 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { password } = request.body as { password?: string };
     const user = getUser(username);
-    if (!user || !password || !verifyPassword(password, user.password_hash)) {
-      return reply.code(401).send({ error: 'Passwort erforderlich' });
-    }
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    // Password plus a TOTP or recovery code (#479): otherwise 2FA never acted as a second step.
+    if (!reauthOk(reply, user, request.body)) return reply;
     // Guard mirrors /recovery-codes/regenerate, and deliberately sits *after* the
     // password check so it can't be used to probe whether an account has 2FA.
     // Without it, disableTotp() ran unconditionally - and it bumps token_version
@@ -2762,6 +2884,7 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
       return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
     }
     disableTotp(username);
+    logAdminAction(username, 'account.totp_disabled', username);
     const updated = getUser(username);
     return { ok: true, ...issueTokens(username, updated?.token_version ?? 0, reply) };
   });
@@ -2774,16 +2897,16 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { password } = request.body as { password?: string };
     const user = getUser(username);
-    if (!user || !password || !verifyPassword(password, user.password_hash)) {
-      return reply.code(401).send({ error: 'Passwort erforderlich' });
-    }
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
+    // Password plus a TOTP or recovery code (#479): otherwise 2FA never acted as a second step.
+    if (!reauthOk(reply, user, request.body)) return reply;
     if (!user.totp_enabled) {
       return reply.code(400).send({ error: '2FA ist nicht aktiviert' });
     }
     const { codes, hashes } = generateRecoveryCodes();
     setRecoveryCodes(username, hashes);
+    logAdminAction(username, 'account.recovery_codes_regenerated', username);
     return { recoveryCodes: codes };
   });
 
@@ -3178,9 +3301,10 @@ export async function runReportSchedules(at: Date = new Date()): Promise<void> {
       const html = generateReportHtml(getData(reportUser), cfg.frequency === 'monthly' ? 'month' : 'week', refDate, baseUrl, reportPhotoSigner(reportUser), unsubscribe?.pageUrl);
       await sendHtmlEmail(cfg.toEmail, `💅 Nagellacke ${periodLabel}bericht · ${label}`, html, unsubscribe?.headers);
       markScheduleSent(reportUser, at.getTime());
-      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${cfg.toEmail}`);
+      console.log(`[reports] Scheduled ${cfg.frequency} report for "${reportUser}" sent to ${maskEmail(cfg.toEmail)}`);
     } catch (e: unknown) {
-      console.error(`[reports] Failed to send scheduled report for "${reportUser}":`, e instanceof Error ? e.message : e);
+      // The recipient is often a third party: no full address in the log (#481).
+      console.error(`[reports] Failed to send scheduled report for "${reportUser}": ${mailErrorText(e)}`);
     }
   }
 }

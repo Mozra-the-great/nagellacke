@@ -391,9 +391,9 @@ describe('POST /api/auth/totp/disable', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: { password: 'definitely-wrong' },
     });
-    // 401 (password), not 400 ("2FA ist nicht aktiviert") - the guard must not
-    // turn this endpoint into a 2FA-status oracle for a stolen token.
-    expect(res.statusCode).toBe(401);
+    // 403 (password, shared re-auth helper #479), not 400 ("2FA ist nicht aktiviert") - the
+    // guard must not turn this endpoint into a 2FA-status oracle for a stolen token.
+    expect(res.statusCode).toBe(403);
   });
 
   it('rejects without the correct password', async () => {
@@ -412,7 +412,7 @@ describe('POST /api/auth/totp/disable', () => {
       headers: { authorization: `Bearer ${token}` },
       payload: { password: 'definitely-wrong' },
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(403);
 
     const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
     expect(meRes.json().totpEnabled).toBe(true); // unchanged
@@ -420,7 +420,7 @@ describe('POST /api/auth/totp/disable', () => {
 
   it('disables 2FA with the correct password and returns a fresh usable token pair', async () => {
     const username = freshUsername();
-    const { secret } = await registerWithTotpEnabled(username);
+    const { secret, recoveryCodes } = await registerWithTotpEnabled(username);
     const loginRes = await login(username);
     const { challengeToken } = loginRes.json() as { challengeToken: string };
     const verifyRes = await app.inject({
@@ -429,10 +429,11 @@ describe('POST /api/auth/totp/disable', () => {
     });
     const { token } = verifyRes.json() as { token: string };
 
+    // The login above spent this step's TOTP code, so the step-up (#479) uses a recovery code.
     const disableRes = await app.inject({
       method: 'POST', url: '/api/auth/totp/disable',
       headers: { authorization: `Bearer ${token}` },
-      payload: { password: 'correct-horse-battery' },
+      payload: { password: 'correct-horse-battery', code: recoveryCodes[0] },
     });
     expect(disableRes.statusCode).toBe(200);
     const disableBody = disableRes.json() as { ok: boolean; token: string; refreshToken: string };
@@ -508,7 +509,7 @@ describe('BLOCKER 2: POST /api/auth/totp/enable requires password confirmation',
       headers: { authorization: `Bearer ${token}` },
       payload: { code: codeFor(secret) },
     });
-    expect(enableRes.statusCode).toBe(401);
+    expect(enableRes.statusCode).toBe(403);
 
     const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
     expect(meRes.json().totpEnabled).toBe(false);
@@ -528,7 +529,7 @@ describe('BLOCKER 2: POST /api/auth/totp/enable requires password confirmation',
       headers: { authorization: `Bearer ${token}` },
       payload: { code: codeFor(secret), password: 'definitely-wrong' },
     });
-    expect(enableRes.statusCode).toBe(401);
+    expect(enableRes.statusCode).toBe(403);
 
     const meRes = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` } });
     expect(meRes.json().totpEnabled).toBe(false);

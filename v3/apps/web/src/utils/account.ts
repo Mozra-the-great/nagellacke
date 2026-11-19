@@ -1,5 +1,6 @@
 import { serverBase, serverSession } from './serverBase';
 import type { RecipientState, SendTarget } from './reportRecipient';
+import { apiError, type ReauthPayload } from './reauth';
 
 /**
  * Password reset, e-mail verification (#324 S18, S19) and report-recipient confirmation (#449). The server mails links to
@@ -35,9 +36,8 @@ async function post(path: string, body: unknown, base = serverBase(), headers: R
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) {
-    throw new Error(typeof data.error === 'string' ? data.error : `Fehler ${res.status}`);
-  }
+  // 403/429 from a re-auth route carry totpRequired/locked (#479); ApiError keeps them.
+  if (!res.ok) throw apiError(res.status, data);
   return { ok: true, data };
 }
 
@@ -45,8 +45,9 @@ export async function requestPasswordReset(identifier: string, base = serverBase
   await post('/api/auth/password/forgot', { identifier }, base);
 }
 
-export async function resetPassword(token: string, password: string): Promise<void> {
-  await post('/api/auth/password/reset', { token, password });
+/** `removePasskeys` drops every passkey of the account too (#478), for someone who suspects an intruder added one. */
+export async function resetPassword(token: string, password: string, removePasskeys = false): Promise<void> {
+  await post('/api/auth/password/reset', { token, password, ...(removePasskeys ? { removePasskeys: true } : {}) });
 }
 
 export async function verifyEmail(token: string): Promise<void> {
@@ -64,17 +65,58 @@ export async function resendVerification(): Promise<void> {
   await post('/api/auth/email/resend', {}, base, headers);
 }
 
-/** Saves the account's address; true when a verification mail went out for it. */
-export async function saveAccountEmail(email: string): Promise<boolean> {
+/**
+ * A fresh token pair from a change that ended every other session (#480): e-mail change and
+ * removal, password change. The caller must switch to it, or its next request is a 401.
+ */
+export interface FreshTokens {
+  token: string;
+  refreshToken?: string;
+}
+
+export function freshTokens(data: Record<string, unknown>): FreshTokens | null {
+  if (typeof data.token !== 'string' || !data.token) return null;
+  return { token: data.token, ...(typeof data.refreshToken === 'string' ? { refreshToken: data.refreshToken } : {}) };
+}
+
+/** Whether saving `typed` would change the account address, which then needs the password (#475). */
+export function emailChangeNeedsPassword(typed: string, saved: string | null): boolean {
+  const next = typed.trim().toLowerCase();
+  return next !== '' && next !== (saved ?? '').trim().toLowerCase();
+}
+
+/**
+ * Saves the account's address: whether a verification mail went out for it, and the fresh tokens
+ * when the address changed (#480, every other session ended). A new address needs the current
+ * password (#475): the address is where a password reset goes, so a stolen session alone must not
+ * be able to change it.
+ */
+export interface SaveEmailResult {
+  verificationSent: boolean;
+  /** The address already got too many verification mails today (#483); the save itself worked. */
+  verificationThrottled: boolean;
+  tokens: FreshTokens | null;
+}
+
+/** The message after saving the address. */
+export function emailSavedMessage(result: Pick<SaveEmailResult, 'verificationSent' | 'verificationThrottled'>): string {
+  if (result.verificationSent) return 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.';
+  if (result.verificationThrottled) {
+    return 'Gespeichert. An diese Adresse gingen heute schon zu viele Bestätigungsmails; fordere die Mail morgen über „Bestätigungsmail erneut senden“ an.';
+  }
+  return 'Gespeichert.';
+}
+
+export async function saveAccountEmail(email: string, reauth: ReauthPayload): Promise<SaveEmailResult> {
   const { base, headers } = bearer();
   const res = await fetch(`${base}/api/auth/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, ...reauth }),
   });
-  const data = await res.json().catch(() => ({})) as { error?: string; verificationSent?: boolean };
-  if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
-  return data.verificationSent === true;
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) throw apiError(res.status, data);
+  return { verificationSent: data.verificationSent === true, verificationThrottled: data.verificationThrottled === true, tokens: freshTokens(data) };
 }
 
 /** GET /api/me/export as a file download (#324 S20). */
@@ -95,14 +137,16 @@ export async function downloadAccountExport(): Promise<void> {
 }
 
 /** POST /api/me/delete (#324 S21). The caller ends the local session afterwards. */
-export async function deleteOwnAccount(password: string): Promise<void> {
+export async function deleteOwnAccount(reauth: ReauthPayload): Promise<void> {
   const { base, headers } = bearer();
-  await post('/api/me/delete', { password }, base, headers);
+  await post('/api/me/delete', reauth, base, headers);
 }
 
 /** What POST /api/auth/email/remove answers (#471): whether the report schedule lost its recipient, and its new view. */
 export interface RemoveEmailResult {
   scheduleCleared: boolean;
+  /** Every other session ended (#480); the caller continues with these. */
+  tokens?: FreshTokens | null;
   schedule?: {
     config: { enabled: boolean; frequency: 'weekly' | 'monthly'; toEmail: string } | null;
     recipient?: RecipientState;
@@ -110,14 +154,33 @@ export interface RemoveEmailResult {
   };
 }
 
-/** Removes the account's e-mail address (#471); needs the password. */
-export async function removeAccountEmail(password: string): Promise<RemoveEmailResult> {
+/** Removes the account's e-mail address (#471); needs the password (and the 2FA code when 2FA is on, #479). */
+export async function removeAccountEmail(reauth: ReauthPayload): Promise<RemoveEmailResult> {
   const { base, headers } = bearer();
-  const { data } = await post('/api/auth/email/remove', { password }, base, headers);
+  const { data } = await post('/api/auth/email/remove', reauth, base, headers);
   return {
     scheduleCleared: data.scheduleCleared === true,
+    tokens: freshTokens(data),
     ...(data.schedule && typeof data.schedule === 'object' ? { schedule: data.schedule as RemoveEmailResult['schedule'] } : {}),
   };
+}
+
+/** What is wrong with a new password before it is sent, or null (#480). Same minimum as the reset. */
+export function newPasswordProblem(newPassword: string, repeat: string, current: string): string | null {
+  if (newPassword.length < 8) return 'Das neue Passwort braucht mindestens 8 Zeichen.';
+  if (newPassword !== repeat) return 'Die beiden neuen Passwörter stimmen nicht überein.';
+  if (newPassword === current) return 'Das neue Passwort muss sich vom bisherigen unterscheiden.';
+  return null;
+}
+
+/**
+ * POST /api/auth/password/change (#480): the current password (plus the 2FA code when 2FA is on)
+ * and the new one. Every other session ends; the fresh pair for this one comes back.
+ */
+export async function changePassword(reauth: ReauthPayload, newPassword: string): Promise<FreshTokens | null> {
+  const { base, headers } = bearer();
+  const { data } = await post('/api/auth/password/change', { ...reauth, newPassword }, base, headers);
+  return freshTokens(data);
 }
 
 /**

@@ -64,14 +64,18 @@ describe('POST /api/auth/email/remove (#471)', () => {
     for (const k of ['email', 'email_verified', 'verify_hash', 'verify_expires', 'verify_sent_at', 'reset_hash', 'reset_expires', 'reset_sent_at']) {
       expect(user).not.toHaveProperty(k);
     }
-    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) });
+    // Every other session ended (#480); the caller carries on with the fresh pair.
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) })).statusCode).toBe(401);
+    const fresh = (res.json() as { token: string }).token;
+    expect(String(res.headers['set-cookie'])).toContain('nl_refresh=');
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(fresh) });
     expect(me.json()).toMatchObject({ email: null, emailVerified: false });
 
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'anna', password: 'password123' } });
     expect(login.statusCode).toBe(200);
 
     // Nothing left to remove.
-    const again = await app.inject({ method: 'POST', url: '/api/auth/email/remove', headers: auth(token), payload: { password: 'password123' } });
+    const again = await app.inject({ method: 'POST', url: '/api/auth/email/remove', headers: auth(fresh), payload: { password: 'password123' } });
     expect(again.statusCode).toBe(400);
   });
 
@@ -105,10 +109,11 @@ describe('POST /api/auth/email/remove (#471)', () => {
     const token = await register(app, 'anna');
     db.updateUserEmail('anna', 'anna@example.org');
     db.patchUser('anna', { email_verified: true });
-    await app.inject({ method: 'POST', url: '/api/auth/email/remove', headers: auth(token), payload: { password: 'password123' } });
-    const add = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: 'anna@example.org' } });
+    const removed = await app.inject({ method: 'POST', url: '/api/auth/email/remove', headers: auth(token), payload: { password: 'password123' } });
+    const afterRemove = (removed.json() as { token: string }).token;
+    const add = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(afterRemove), payload: { email: 'anna@example.org', password: 'password123' } });
     expect(add.statusCode).toBe(200);
-    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) });
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth((add.json() as { token: string }).token) });
     expect(me.json()).toMatchObject({ email: 'anna@example.org', emailVerified: false });
   });
 });

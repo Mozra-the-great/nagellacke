@@ -74,14 +74,15 @@ function linkTokenFrom(mail: { html: string }): string {
   return m![1]!;
 }
 
-/** Verifies the account's own address through the real mail link. */
-async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<void> {
-  const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email } });
+/** Verifies the account's own address through the real mail link; returns the fresh token (#480). */
+async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<string> {
+  const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
   expect(res.json()).toMatchObject({ ok: true, verificationSent: true });
   const mail = sent.pop()!;
   const link = /#\/email-bestaetigen\?token=([0-9a-f]{64})/.exec(mail.html)![1];
   const verify = await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: link } });
   expect(verify.statusCode).toBe(200);
+  return (res.json() as { token: string }).token;
 }
 
 const FRIEND = 'friend@example.org';
@@ -207,8 +208,8 @@ describe('a new recipient needs confirmation (#449)', () => {
 describe('the account\'s own address (#449 decision for existing and new schedules)', () => {
   it('is confirmed at once when it is verified, with no mail', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, 'anna@example.org');
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, 'anna@example.org');
     sent.length = 0;
 
     const res = await save(app, token, { enabled: true, frequency: 'weekly', toEmail: 'Anna@Example.org' });
@@ -218,8 +219,9 @@ describe('the account\'s own address (#449 decision for existing and new schedul
 
   it('still needs confirmation while the account address is unverified', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: 'anna@example.org' } });
+    const first = await register(app, 'anna');
+    // A new address ends the other sessions and returns a fresh token (#480).
+    const token = (await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(first), payload: { email: 'anna@example.org', password: 'password123' } })).json().token as string;
     sent.length = 0;
     const res = await save(app, token, { enabled: true, frequency: 'weekly', toEmail: 'anna@example.org' });
     expect(res.json()).toMatchObject({ confirmation: 'sent', recipient: { status: 'pending' } });
@@ -437,8 +439,8 @@ describe('migrateScheduleRecipients (existing schedules, #449)', () => {
 
   it('keeps a schedule to the account\'s own verified address running and pauses every other one', async () => {
     const { app, db } = await createTestApp();
-    const anna = await register(app, 'anna');
-    await verifyOwnAddress(app, anna, 'anna@example.org');
+    let anna = await register(app, 'anna');
+    anna = await verifyOwnAddress(app, anna, 'anna@example.org');
     await register(app, 'ben');
     await register(app, 'cleo');
     legacy(db, 'anna', 'Anna@Example.org');
@@ -470,8 +472,8 @@ describe('migrateScheduleRecipients (existing schedules, #449)', () => {
 
   it('is idempotent: a second run changes nothing in the file', async () => {
     const { app, db, dir } = await createTestApp();
-    const anna = await register(app, 'anna');
-    await verifyOwnAddress(app, anna, 'anna@example.org');
+    let anna = await register(app, 'anna');
+    anna = await verifyOwnAddress(app, anna, 'anna@example.org');
     await register(app, 'ben');
     legacy(db, 'anna', 'anna@example.org');
     legacy(db, 'ben', 'x@example.org');
@@ -487,15 +489,15 @@ describe('migrateScheduleRecipients (existing schedules, #449)', () => {
   it('does not confirm the own address while it is unverified', async () => {
     const { app, db } = await createTestApp();
     const anna = await register(app, 'anna');
-    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(anna), payload: { email: 'anna@example.org' } });
+    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(anna), payload: { email: 'anna@example.org', password: 'password123' } });
     legacy(db, 'anna', 'anna@example.org');
     expect(db.migrateScheduleRecipients()).toEqual({ confirmed: 0, pending: 1 });
   });
 
   it('runs at startup: a legacy schedule written before buildApp() is migrated by it', async () => {
     const { app, db, dir } = await createTestApp();
-    const anna = await register(app, 'anna');
-    await verifyOwnAddress(app, anna, 'anna@example.org');
+    let anna = await register(app, 'anna');
+    anna = await verifyOwnAddress(app, anna, 'anna@example.org');
     legacy(db, 'anna', 'anna@example.org');
     expect(db.getScheduleConfig('anna')!.confirmedEmail).toBeUndefined();
 

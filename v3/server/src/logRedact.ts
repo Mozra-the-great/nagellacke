@@ -50,11 +50,34 @@ export function redactText(text: string): string {
     isSensitiveName(name) ? `${sep}${name}=${REDACTED}` : match);
 }
 
+/**
+ * Every e-mail address in `text`, masked like maskEmail() in accountMail.ts: first character of the
+ * local part and the domain stay ("j***@example.org"), so a log line still says roughly whom it
+ * was about without holding the address (#481). SMTP rejections (550, EENVELOPE) quote the
+ * recipient, and logs are readable by admins via GET /api/logs.
+ */
+const EMAIL = /([A-Za-z0-9!#$%&'*+/=?^_`{|}~-])[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]*@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+)/g;
+
+export function maskEmails(text: string): string {
+  return text.includes('@') ? text.replace(EMAIL, '$1***@$2') : text;
+}
+
+/**
+ * The log text for a failed mail (#481): nodemailer's `code` and SMTP `responseCode` (what an
+ * operator needs) and the message with every address masked.
+ */
+export function mailErrorText(e: unknown): string {
+  if (!(e instanceof Error)) return maskEmails(String(e));
+  const { code, responseCode } = e as Error & { code?: unknown; responseCode?: unknown };
+  const tags = [typeof code === 'string' ? code : null, typeof responseCode === 'number' ? String(responseCode) : null].filter(Boolean);
+  return `${tags.length ? `[${tags.join(' ')}] ` : ''}${maskEmails(e.message)}`;
+}
+
 /** Alias that reads better where the input is known to be a request URL. */
 export const redactUrl = redactText;
 
 function redactValue(value: unknown): unknown {
-  return typeof value === 'string' ? redactText(value) : value;
+  return typeof value === 'string' ? maskEmails(redactText(value)) : value;
 }
 
 interface RequestLike {
@@ -91,8 +114,8 @@ export function serializeError(err: Error): SerializedError {
   if (!(err instanceof Error)) return err as unknown as SerializedError;
   const out: SerializedError = {
     type: err.constructor?.name ?? err.name,
-    message: redactText(err.message),
-    stack: redactText(err.stack ?? ''),
+    message: maskEmails(redactText(err.message)),
+    stack: maskEmails(redactText(err.stack ?? '')),
   };
   for (const key of Object.keys(err)) {
     if (key in out) continue;

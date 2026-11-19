@@ -59,7 +59,7 @@ function tokenFrom(mail: { html: string }, route: string): string {
 const flush = () => new Promise((r) => setImmediate(r));
 
 async function setEmail(app: FastifyInstance, token: string, email: string) {
-  return app.inject({ method: 'PATCH', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` }, payload: { email } });
+  return app.inject({ method: 'PATCH', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` }, payload: { email, password: 'password123' } });
 }
 
 async function verifiedUser(app: FastifyInstance, username: string, email: string): Promise<string> {
@@ -70,14 +70,16 @@ async function verifiedUser(app: FastifyInstance, username: string, email: strin
   expect(mail.to).toBe(email);
   const verify = await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: tokenFrom(mail, 'email-bestaetigen') } });
   expect(verify.statusCode).toBe(200);
-  return token;
+  // Setting the address ended the registration session and returned a fresh one (#480).
+  expect(token).not.toBe(res.json().token);
+  return (res.json() as { token: string }).token;
 }
 
 describe('e-mail verification (#324 S19)', () => {
   it('mails a link when an address is set, and the link marks it verified', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await setEmail(app, token, 'Anna@Example.org');
+    const first = await register(app, 'anna');
+    const token = (await setEmail(app, first, 'Anna@Example.org')).json().token as string;
     const mail = sent.pop()!;
     expect(mail.to).toBe('anna@example.org');
     expect(mail.html).toContain('https://app.example/#/email-bestaetigen?token=');
@@ -102,8 +104,8 @@ describe('e-mail verification (#324 S19)', () => {
 
   it('refuses a resend within the hour', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await setEmail(app, token, 'anna@example.org');
+    const first = await register(app, 'anna');
+    const token = (await setEmail(app, first, 'anna@example.org')).json().token as string;
     const res = await app.inject({ method: 'POST', url: '/api/auth/email/resend', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(429);
   });

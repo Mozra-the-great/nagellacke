@@ -97,3 +97,77 @@ export function verifyMail(appName: string, baseUrl: string, username: string, t
     ),
   };
 }
+
+/** "j***@example.org": enough for the owner of the old address to recognise the new one, not enough to use it. */
+export function maskEmail(address: string): string {
+  const at = address.lastIndexOf('@');
+  if (at <= 0) return '***';
+  return `${address.slice(0, 1)}***${address.slice(at)}`;
+}
+
+/**
+ * What to do when a notice describes a change the owner did not make (#475, #478). Someone then
+ * had the password and a session, so the advice covers every way back in: restore the address,
+ * replace the password (a reset ends every session), end all sessions, and remove passkeys the
+ * owner does not recognise, since a passkey signs in without password and outlives a reset.
+ */
+export const TAKEOVER_ADVICE = 'Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle unter Einstellungen → Sync deine Adresse wieder ein und bestätige sie, '
+  + 'ändere dann unter Einstellungen → Sicherheit dein Passwort (oder setze es über „Passwort vergessen?“ zurück), melde dich über „Von allen Geräten abmelden…“ überall ab, '
+  + 'prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.';
+
+function noticeHtml(title: string, text: string, advice: string): string {
+  return `<!doctype html><html lang="de"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#222">
+<h2 style="font-weight:600">${escapeHtml(title)}</h2>
+<p>${escapeHtml(text)}</p>
+<p style="font-size:13px;color:#555">${escapeHtml(advice)}</p>
+</body></html>`;
+}
+
+/**
+ * Goes to the *old*, verified address when the account's address is changed (#475). It carries no
+ * link: a link in a mail about a possible takeover is exactly what a phisher would copy.
+ */
+export function emailChangedMail(appName: string, username: string, newAddress: string): { subject: string; html: string } {
+  return {
+    subject: `${appName}: E-Mail-Adresse deines Kontos geändert`,
+    html: noticeHtml(
+      'E-Mail-Adresse geändert',
+      `Die E-Mail-Adresse des Kontos „${username}“ wurde auf ${maskEmail(newAddress)} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.`,
+      TAKEOVER_ADVICE,
+    ),
+  };
+}
+
+/**
+ * Goes to the verified account address when the password was changed in the app (#480). The change
+ * already ended every other session; if it was not the owner, the reset link is the way back.
+ */
+export function passwordChangedMail(appName: string, username: string): { subject: string; html: string } {
+  return {
+    subject: `${appName}: Passwort geändert`,
+    html: noticeHtml(
+      'Passwort geändert',
+      `Das Passwort des Kontos „${username}“ wurde in der App geändert. Alle anderen Sitzungen dieses Kontos sind damit beendet.`,
+      'Warst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück, prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys '
+      + 'und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.',
+    ),
+  };
+}
+
+/**
+ * Goes to the verified account address when a passkey is added or removed (#478). A passkey signs
+ * in without password or 2FA, so an unexpected one is a takeover the owner must hear about. No link.
+ */
+export function passkeyChangedMail(appName: string, username: string, kind: 'added' | 'removed', passkeyName: string): { subject: string; html: string } {
+  const added = kind === 'added';
+  return {
+    subject: `${appName}: Passkey ${added ? 'hinzugefügt' : 'entfernt'}`,
+    html: noticeHtml(
+      added ? 'Neuer Passkey' : 'Passkey entfernt',
+      added
+        ? `Zum Konto „${username}“ wurde der Passkey „${passkeyName}“ hinzugefügt. Mit ihm kann man sich ohne Passwort und ohne 2FA-Code anmelden.`
+        : `Vom Konto „${username}“ wurde der Passkey „${passkeyName}“ entfernt. Mit ihm ist keine Anmeldung mehr möglich.`,
+      TAKEOVER_ADVICE,
+    ),
+  };
+}

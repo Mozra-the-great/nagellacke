@@ -462,6 +462,9 @@ export interface User {
   verify_hash?: string;
   verify_expires?: number;
   verify_sent_at?: number;
+  // Timestamps of address changes in the last 24 h (#483), for the daily limit. Kept when the
+  // address is removed, so remove + add cannot reset it.
+  email_changes_at?: number[];
   // Passkeys (#228). The user handle is random rather than the username, so an
   // authenticator's stored account list does not carry the name into other contexts.
   webauthn_user_id?: string;     // base64url, 16 random bytes, fixed per account
@@ -558,9 +561,11 @@ export function updateUserEmail(username: string, email: string): void {
     const unchanged = users[idx].email === email;
     users[idx] = { ...users[idx], email };
     if (!unchanged) {
-      delete users[idx].email_verified;
-      delete users[idx].verify_hash;
-      delete users[idx].verify_expires;
+      // A new address starts unverified, and no link mailed earlier may work any more (#475):
+      // a password-reset link sitting in the old inbox would otherwise outlive the change.
+      for (const k of ['email_verified', 'verify_hash', 'verify_expires', 'verify_sent_at', 'reset_hash', 'reset_expires', 'reset_sent_at'] as const) {
+        delete users[idx][k];
+      }
     }
     writeUsers(users);
   }
@@ -608,8 +613,10 @@ export function findUsers(predicate: (u: User) => boolean): User[] {
  * Replaces the password after a reset (#324 S17): clears the reset token so the link
  * works once, clears the login lockout the forgotten password may have caused, and
  * bumps token_version so every session and photo link issued before is dead.
+ * `removePasskeys` also drops every passkey (#478): a passkey an intruder added signs in
+ * without the password and would otherwise survive the reset.
  */
-export function resetPassword(username: string, passwordHash: string): void {
+export function resetPassword(username: string, passwordHash: string, options: { removePasskeys?: boolean } = {}): void {
   const users = readUsers();
   const idx = users.findIndex((u) => sameUsername(u.username, username));
   if (idx < 0) return;
@@ -622,6 +629,7 @@ export function resetPassword(username: string, passwordHash: string): void {
   delete next.reset_expires;
   delete next.login_fail_count;
   delete next.login_locked_until;
+  if (options.removePasskeys) delete next.webauthn_credentials;
   users[idx] = next;
   writeUsers(users);
 }

@@ -76,15 +76,13 @@ describe('purgeUnconfirmedRecipients (#470)', () => {
     expect(db.getScheduleConfig('alice')).toMatchObject({ toEmail: '', enabled: false, frequency: 'monthly' });
   });
 
-  it('leaves confirmed recipients, the own address and opted-out addresses alone', async () => {
+  it('leaves confirmed recipients, the verified own address and opted-out addresses alone', async () => {
     const { db, ret } = await fresh();
-    for (const u of ['linked', 'ownverified', 'ownunverified', 'optedout']) db.createUser(u, 'hash');
+    for (const u of ['linked', 'ownverified', 'optedout']) db.createUser(u, 'hash');
     db.updateUserEmail('ownverified', 'me@example.org');
     db.patchUser('ownverified', { email_verified: true });
-    db.updateUserEmail('ownunverified', 'self@example.org');
     db.setScheduleConfig('linked', pendingCfg({ confirmedEmail: 'friend@example.org', confirmedAt: T0 }));
     db.setScheduleConfig('ownverified', pendingCfg({ toEmail: 'me@example.org' }));
-    db.setScheduleConfig('ownunverified', pendingCfg({ toEmail: 'SELF@example.org' }));
     db.setScheduleConfig('optedout', pendingCfg({
       enabled: false, unsubscribedEmails: ['friend@example.org'], lastUnsubscribe: { email: 'friend@example.org', at: T0 },
     }));
@@ -92,8 +90,22 @@ describe('purgeUnconfirmedRecipients (#470)', () => {
     expect(r).toEqual({ removed: 0, waiting: 0, skipped: false });
     expect(db.getScheduleConfig('linked')?.toEmail).toBe('friend@example.org');
     expect(db.getScheduleConfig('ownverified')?.toEmail).toBe('me@example.org');
-    expect(db.getScheduleConfig('ownunverified')?.toEmail).toBe('SELF@example.org');
     expect(db.getScheduleConfig('optedout')?.toEmail).toBe('friend@example.org');
+  });
+
+  it('judges the own address like any other recipient while it is unverified (#483)', async () => {
+    const { db, ret } = await fresh();
+    db.createUser('ownunverified', 'hash');
+    db.updateUserEmail('ownunverified', 'self@example.org');
+    db.setScheduleConfig('ownunverified', pendingCfg({ toEmail: 'SELF@example.org' }));
+    // Inside the link's lifetime it waits ...
+    expect(ret.purgeUnconfirmedRecipients(T0 + 47 * HOUR, silent)).toEqual({ removed: 0, waiting: 1, skipped: false });
+    expect(db.getScheduleConfig('ownunverified')?.toEmail).toBe('SELF@example.org');
+    // ... after it, the unconfirmed address goes, like a third party's.
+    expect(ret.purgeUnconfirmedRecipients(T0 + 49 * HOUR, silent).removed).toBe(1);
+    expect(db.getScheduleConfig('ownunverified')).toMatchObject({ enabled: false, toEmail: '', recipientExpiredAt: T0 + 49 * HOUR });
+    // The account address itself is the account's, not the schedule's: it stays.
+    expect(db.getUser('ownunverified')?.email).toBe('self@example.org');
   });
 
   it('treats the schedule of a vanished account like any other (no user: not the own address)', async () => {

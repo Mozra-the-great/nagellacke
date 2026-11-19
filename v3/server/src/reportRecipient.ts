@@ -41,6 +41,10 @@ export const MAX_RECIPIENT_CHANGES_PER_DAY = 5;
 export const MAX_CONFIRM_MAILS_PER_DAY = 5;
 export const MIN_CONFIRM_INTERVAL_MS = 2 * 60 * 1000;
 export const MAX_CONFIRM_MAILS_PER_ADDRESS_PER_DAY = 3;
+/** Account verification mails to one address per 24 h, across accounts (#483). */
+export const MAX_VERIFY_MAILS_PER_ADDRESS_PER_DAY = 3;
+/** Changes of the account's own address per account and 24 h (#483). */
+export const MAX_EMAIL_CHANGES_PER_DAY = 5;
 
 /** Separates this token from the photo token and every other HMAC derived from JWT_SECRET. */
 const TOKEN_CONTEXT = 'nagellacke:report-recipient:v1';
