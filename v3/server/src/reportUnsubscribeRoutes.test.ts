@@ -76,10 +76,12 @@ async function confirmRecipient(app: FastifyInstance, token: string, email: stri
   const res = await app.inject({ method: 'POST', url: '/api/reports/schedule/confirm', payload: { token: confirmationToken(sent.pop()!) } });
   expect(res.statusCode).toBe(200);
 }
-async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<void> {
-  await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
+/** Changing the address ends every other session (#480); the fresh token comes back. */
+async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<string> {
+  const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
   const link = /#\/email-bestaetigen\?token=([0-9a-f]{64})/.exec(sent.pop()!.html)![1];
   expect((await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: link } })).statusCode).toBe(200);
+  return (res.json() as { token: string }).token;
 }
 
 /** The unsubscribe token as the recipient's mail client would find it in the List-Unsubscribe header. */
@@ -136,8 +138,8 @@ describe('every report mail carries the link and the headers (#457)', () => {
 
   it('the own address gets them as well', async () => {
     const ctx = await createTestApp();
-    const token = await register(ctx.app, 'anna');
-    await verifyOwnAddress(ctx.app, token, OWN);
+    let token = await register(ctx.app, 'anna');
+    token = await verifyOwnAddress(ctx.app, token, OWN);
     await ctx.app.inject({ method: 'POST', url: '/api/reports/send', headers: auth(token), payload: { period: 'week', toEmail: OWN } });
     expect(verifyUnsubscribeToken(headerToken(sent[0]!), SECRET)).toEqual({ u: 'anna', e: OWN });
   });
@@ -351,8 +353,8 @@ describe('what an unsubscribed address can no longer do', () => {
 describe('unsubscribing the account\'s own address', () => {
   it('pauses the schedule and tells the owner, but the owner can switch it back on', async () => {
     const ctx = await createTestApp();
-    const token = await register(ctx.app, 'anna');
-    await verifyOwnAddress(ctx.app, token, OWN);
+    let token = await register(ctx.app, 'anna');
+    token = await verifyOwnAddress(ctx.app, token, OWN);
     expect((await save(ctx.app, token, { enabled: true, frequency: 'weekly', toEmail: OWN })).statusCode).toBe(200);
     await ctx.mod.runReportSchedules(MONDAY_8_UTC);
     expect(sent).toHaveLength(1);
@@ -379,7 +381,7 @@ describe('unsubscribing the account\'s own address', () => {
 describe('the hourly job and a missing App-URL (#457)', () => {
   it('does not mail a third party without a way to unsubscribe, but still mails the owner\'s own address', async () => {
     const ctx = await createTestApp();
-    const token = await register(ctx.app, 'anna');
+    let token = await register(ctx.app, 'anna');
     await confirmRecipient(ctx.app, token, FRIEND);
     // The App-URL is removed after the confirmation.
     delete process.env.APP_URL;
@@ -389,7 +391,7 @@ describe('the hourly job and a missing App-URL (#457)', () => {
 
     // Own verified address: sent, without a link (there is nothing to point it at).
     process.env.APP_URL = 'https://app.example';
-    await verifyOwnAddress(ctx.app, token, OWN);
+    token = await verifyOwnAddress(ctx.app, token, OWN);
     delete process.env.APP_URL;
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 3 * 60 * 1000);

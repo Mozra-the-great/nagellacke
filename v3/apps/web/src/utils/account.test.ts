@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { accountRouteForHash, removeEmailWarning, removeEmailMessage, emailChangeNeedsPassword, saveAccountEmail, removeAccountEmail, deleteOwnAccount, resetPassword } from './account';
+import { accountRouteForHash, removeEmailWarning, removeEmailMessage, emailChangeNeedsPassword, saveAccountEmail, removeAccountEmail, deleteOwnAccount, resetPassword, changePassword, newPasswordProblem, freshTokens } from './account';
 import { ApiError } from './reauth';
 import { serverSession } from './serverBase';
 
@@ -60,9 +60,12 @@ describe('saveAccountEmail (#475)', () => {
 
   it('sends the password with the address and reports whether a mail went out', async () => {
     vi.mocked(serverSession).mockReturnValue({ base: 'https://server.example', token: 'jwt' });
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, verificationSent: true }), { status: 200 }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, verificationSent: true, token: 'new-jwt', refreshToken: 'new-refresh' }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    expect(await saveAccountEmail('new@example.org', { password: 'secret-pw' })).toBe(true);
+    // The change ended every other session; the fresh pair comes back for this one (#480).
+    expect(await saveAccountEmail('new@example.org', { password: 'secret-pw' })).toEqual({
+      verificationSent: true, tokens: { token: 'new-jwt', refreshToken: 'new-refresh' },
+    });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://server.example/api/auth/me');
     expect(init.method).toBe('PATCH');
@@ -109,6 +112,51 @@ describe('re-auth bodies of the other account routes (#479)', () => {
       ['https://server.example/api/auth/email/remove', { password: 'pw', code: 'ABCDE-12345' }],
       ['https://server.example/api/me/delete', { password: 'pw' }],
     ]);
+  });
+});
+
+describe('fresh tokens after a sensitive change (#480)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.mocked(serverSession).mockReset(); });
+
+  it('freshTokens reads the pair, and null when the answer carries none (an unchanged address)', () => {
+    expect(freshTokens({ token: 'a', refreshToken: 'b' })).toEqual({ token: 'a', refreshToken: 'b' });
+    expect(freshTokens({ token: 'a' })).toEqual({ token: 'a' });
+    expect(freshTokens({ ok: true, verificationSent: false })).toBeNull();
+    expect(freshTokens({ token: '' })).toBeNull();
+  });
+
+  it('removeAccountEmail hands back the fresh pair', async () => {
+    vi.mocked(serverSession).mockReturnValue({ base: 'https://server.example', token: 'jwt' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, scheduleCleared: false, token: 't2', refreshToken: 'r2' }), { status: 200 })));
+    expect((await removeAccountEmail({ password: 'pw' })).tokens).toEqual({ token: 't2', refreshToken: 'r2' });
+  });
+
+  it('changePassword sends current password, code and new password, and returns the fresh pair', async () => {
+    vi.mocked(serverSession).mockReturnValue({ base: 'https://server.example', token: 'jwt' });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, token: 't3', refreshToken: 'r3' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await changePassword({ password: 'old-password', code: '123456' }, 'new-password')).toEqual({ token: 't3', refreshToken: 'r3' });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://server.example/api/auth/password/change');
+    expect(JSON.parse(init.body as string)).toEqual({ password: 'old-password', code: '123456', newPassword: 'new-password' });
+  });
+
+  it('changePassword surfaces 403 and 429 as the server words them', async () => {
+    vi.mocked(serverSession).mockReturnValue({ base: 'https://server.example', token: 'jwt' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Passwort falsch' }), { status: 403 })));
+    await expect(changePassword({ password: 'x' }, 'new-password')).rejects.toThrow('Passwort falsch');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Zu viele Fehlversuche. Bitte versuche es in 15 Minuten erneut.', locked: true }), { status: 429 })));
+    const err = await changePassword({ password: 'x' }, 'new-password').catch((e: unknown) => e) as ApiError;
+    expect(err.locked).toBe(true);
+  });
+});
+
+describe('newPasswordProblem (#480)', () => {
+  it('checks length, the repeat and that it differs from the current one', () => {
+    expect(newPasswordProblem('short', 'short', 'old-password')).toMatch(/8 Zeichen/);
+    expect(newPasswordProblem('new-password', 'new-passw0rd', 'old-password')).toMatch(/nicht überein/);
+    expect(newPasswordProblem('old-password', 'old-password', 'old-password')).toMatch(/unterscheiden/);
+    expect(newPasswordProblem('new-password', 'new-password', 'old-password')).toBeNull();
   });
 });
 

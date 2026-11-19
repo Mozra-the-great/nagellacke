@@ -70,12 +70,15 @@ function linkToken(mail: { html: string }, route: string): string {
 /** An account whose address is set and verified through the real mail link. */
 async function verifiedAccount(app: FastifyInstance, username: string, email: string): Promise<string> {
   const token = await register(app, username);
-  expect((await change(app, token, { email, password: PASSWORD })).json()).toMatchObject({ ok: true, verificationSent: true });
+  const set = await change(app, token, { email, password: PASSWORD });
+  expect(set.json()).toMatchObject({ ok: true, verificationSent: true });
+  // Changing the address ends the other sessions; the fresh token comes back (#480).
+  const fresh = (set.json() as { token: string }).token;
   const mail = sent.pop()!;
   const verify = await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: linkToken(mail, 'email-bestaetigen') } });
   expect(verify.statusCode).toBe(200);
   sent.length = 0;
-  return token;
+  return fresh;
 }
 
 describe('PATCH /api/auth/me needs the password to change the address (#475)', () => {
@@ -129,7 +132,7 @@ describe('PATCH /api/auth/me needs the password to change the address (#475)', (
     const token = await register(app, 'anna');
     const res = await change(app, token, { email: 'Anna@Example.org', password: PASSWORD });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, verificationSent: true });
+    expect(res.json()).toMatchObject({ ok: true, verificationSent: true });
     expect(db.getUser('anna')).toMatchObject({ email: 'anna@example.org' });
     expect(db.getUser('anna')?.email_verified).toBeUndefined();
     expect(sent).toHaveLength(1);
@@ -147,15 +150,33 @@ describe('PATCH /api/auth/me needs the password to change the address (#475)', (
     expect(sent).toHaveLength(0);
   });
 
-  it('a changed address does not touch the password or the session', async () => {
+  it('a changed address keeps the password, ends every other session and hands the caller a fresh pair (#480)', async () => {
     const { app, db } = await createTestApp();
     const token = await verifiedAccount(app, 'anna', 'anna@example.org');
+    const other = (await app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: 'anna', password: PASSWORD } })).json().token as string;
     const before = db.getUser('anna')!;
-    expect((await change(app, token, { email: 'new@example.org', password: PASSWORD })).statusCode).toBe(200);
+    const res = await change(app, token, { email: 'new@example.org', password: PASSWORD });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { token: string; refreshToken: string };
+    expect(typeof body.refreshToken).toBe('string');
+    expect(String(res.headers['set-cookie'])).toContain('nl_refresh=');
     const after = db.getUser('anna')!;
     expect(after.password_hash).toBe(before.password_hash);
-    expect(after.token_version).toBe(before.token_version);
-    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) })).json()).toMatchObject({ email: 'new@example.org', emailVerified: false });
+    expect(after.token_version).toBe((before.token_version ?? 0) + 1);
+    for (const old of [token, other]) {
+      expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(old) })).statusCode).toBe(401);
+    }
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(body.token) })).json()).toMatchObject({ email: 'new@example.org', emailVerified: false });
+  });
+
+  it('a save that changes nothing leaves the sessions alone', async () => {
+    const { app, db } = await createTestApp();
+    const token = await verifiedAccount(app, 'anna', 'anna@example.org');
+    const version = db.getUser('anna')!.token_version;
+    const res = await change(app, token, { email: 'anna@example.org' });
+    expect((res.json() as { token?: string }).token).toBeUndefined();
+    expect(db.getUser('anna')!.token_version).toBe(version);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) })).statusCode).toBe(200);
   });
 });
 
@@ -222,8 +243,8 @@ describe('the old address is told (#475)', () => {
 
   it('does not mail an unverified old address, nor when the account had none', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await change(app, token, { email: 'first@example.org', password: PASSWORD });
+    const first = await register(app, 'anna');
+    const token = (await change(app, first, { email: 'first@example.org', password: PASSWORD })).json().token as string;
     expect(sent.map((m) => m.to)).toEqual(['first@example.org']);
     sent.length = 0;
     await change(app, token, { email: 'second@example.org', password: PASSWORD });
@@ -236,7 +257,7 @@ describe('the old address is told (#475)', () => {
     smtp.failFor.add('anna@example.org');
     const res = await change(app, token, { email: 'new@example.org', password: PASSWORD });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, verificationSent: true });
+    expect(res.json()).toMatchObject({ ok: true, verificationSent: true });
     expect(db.getUser('anna')?.email).toBe('new@example.org');
   });
 
@@ -245,7 +266,7 @@ describe('the old address is told (#475)', () => {
     const token = await verifiedAccount(app, 'anna', 'anna@example.org');
     smtp.configured = false;
     const res = await change(app, token, { email: 'new@example.org', password: PASSWORD });
-    expect(res.json()).toEqual({ ok: true, verificationSent: false });
+    expect(res.json()).toMatchObject({ ok: true, verificationSent: false });
     expect(db.getUser('anna')?.email).toBe('new@example.org');
     expect(sent).toHaveLength(0);
   });

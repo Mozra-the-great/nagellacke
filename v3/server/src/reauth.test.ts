@@ -218,9 +218,12 @@ describe('TOTP step-up (#479)', () => {
     // regenerate replaced the recovery codes; set a known one again.
     const { codes, hashes } = generateRecoveryCodes();
     db.patchUser('anna', { recovery_codes: hashes });
-    expect((await ROUTES['PATCH /api/auth/me'](app, token, { password: PASSWORD, code: codes[0] })).statusCode).toBe(200);
+    const used = await ROUTES['PATCH /api/auth/me'](app, token, { password: PASSWORD, code: codes[0] });
+    expect(used.statusCode).toBe(200);
+    // The change ended the old session (#480); carry on with the fresh token.
+    const fresh = (used.json() as { token: string }).token;
     expect(db.getUser('anna')?.recovery_codes).toHaveLength(codes.length - 1);
-    const again = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: 'drei@example.org', password: PASSWORD, code: codes[0] } });
+    const again = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(fresh), payload: { email: 'drei@example.org', password: PASSWORD, code: codes[0] } });
     expect(again.statusCode).toBe(403);
   });
 

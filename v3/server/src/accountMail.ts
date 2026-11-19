@@ -112,7 +112,7 @@ export function maskEmail(address: string): string {
  * owner does not recognise, since a passkey signs in without password and outlives a reset.
  */
 export const TAKEOVER_ADVICE = 'Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle unter Einstellungen → Sync deine Adresse wieder ein und bestätige sie, '
-  + 'setze dann das Passwort über „Passwort vergessen?“ zurück, melde dich über „Von allen Geräten abmelden…“ überall ab, '
+  + 'ändere dann unter Einstellungen → Sicherheit dein Passwort (oder setze es über „Passwort vergessen?“ zurück), melde dich über „Von allen Geräten abmelden…“ überall ab, '
   + 'prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.';
 
 function noticeHtml(title: string, text: string, advice: string): string {
@@ -134,6 +134,22 @@ export function emailChangedMail(appName: string, username: string, newAddress: 
       'E-Mail-Adresse geändert',
       `Die E-Mail-Adresse des Kontos „${username}“ wurde auf ${maskEmail(newAddress)} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.`,
       TAKEOVER_ADVICE,
+    ),
+  };
+}
+
+/**
+ * Goes to the verified account address when the password was changed in the app (#480). The change
+ * already ended every other session; if it was not the owner, the reset link is the way back.
+ */
+export function passwordChangedMail(appName: string, username: string): { subject: string; html: string } {
+  return {
+    subject: `${appName}: Passwort geändert`,
+    html: noticeHtml(
+      'Passwort geändert',
+      `Das Passwort des Kontos „${username}“ wurde in der App geändert. Alle anderen Sitzungen dieses Kontos sind damit beendet.`,
+      'Warst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück, prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys '
+      + 'und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.',
     ),
   };
 }

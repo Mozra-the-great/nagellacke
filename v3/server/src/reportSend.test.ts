@@ -58,12 +58,14 @@ function send(app: FastifyInstance, token: string, toEmail: unknown) {
 function save(app: FastifyInstance, token: string, body: Record<string, unknown>) {
   return app.inject({ method: 'POST', url: '/api/reports/schedule', headers: auth(token), payload: body });
 }
-async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<void> {
+/** Changing the address ends every other session (#480); the fresh token comes back. */
+async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<string> {
   const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
   expect(res.json()).toMatchObject({ ok: true, verificationSent: true });
   const mail = sent.pop()!;
   const link = /#\/email-bestaetigen\?token=([0-9a-f]{64})/.exec(mail.html)![1];
   expect((await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: link } })).statusCode).toBe(200);
+  return (res.json() as { token: string }).token;
 }
 function confirmationToken(mail: { html: string }): string {
   return /#\/bericht-bestaetigen\?token=([A-Za-z0-9_.-]+)/.exec(mail.html)![1]!;
@@ -104,8 +106,8 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
 
   it('sends to the own verified address, whatever its case', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, OWN);
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, OWN);
     const res = await send(app, token, 'Anna@Example.org');
     expect(res.statusCode).toBe(200);
     expect(sent).toHaveLength(1);
@@ -114,8 +116,8 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
 
   it('refuses the own address while it is unverified, and says to verify it', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: OWN, password: 'password123' } });
+    const first = await register(app, 'anna');
+    const token = (await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(first), payload: { email: OWN, password: 'password123' } })).json().token as string;
     sent.length = 0;
     const res = await send(app, token, OWN);
     expect(res.statusCode).toBe(403);
@@ -174,8 +176,8 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
 
   it('lists the allowed targets in the 403 and in the schedule view', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, OWN);
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, OWN);
     await confirmRecipient(app, token, FRIEND);
     const denied = await send(app, token, STRANGER);
     expect((denied.json() as Denied).allowed).toEqual([OWN, FRIEND]);
@@ -185,8 +187,8 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
 
   it('lists the own verified address even before any schedule exists', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, OWN);
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, OWN);
     const view = (await app.inject({ method: 'GET', url: '/api/reports/schedule', headers: auth(token) })).json() as { config: unknown; sendTargets: { email: string }[] };
     expect(view.config).toBeNull();
     expect(view.sendTargets.map((t) => t.email)).toEqual([OWN]);
@@ -205,16 +207,16 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
 
   it('cannot smuggle a second recipient past the check', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, OWN);
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, OWN);
     expect((await send(app, token, `${OWN},${STRANGER}`)).statusCode).toBe(400);
     expect(sent).toHaveLength(0);
   });
 
   it('keeps the rate limit: the 11th call within the hour is a 429', async () => {
     const { app } = await createTestApp();
-    const token = await register(app, 'anna');
-    await verifyOwnAddress(app, token, OWN);
+    let token = await register(app, 'anna');
+    token = await verifyOwnAddress(app, token, OWN);
     for (let i = 0; i < 10; i++) expect((await send(app, token, OWN)).statusCode).toBe(200);
     expect((await send(app, token, OWN)).statusCode).toBe(429);
     expect(sent).toHaveLength(10);
