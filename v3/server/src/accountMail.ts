@@ -97,3 +97,27 @@ export function verifyMail(appName: string, baseUrl: string, username: string, t
     ),
   };
 }
+
+/** "j***@example.org": enough for the owner of the old address to recognise the new one, not enough to use it. */
+export function maskEmail(address: string): string {
+  const at = address.lastIndexOf('@');
+  if (at <= 0) return '***';
+  return `${address.slice(0, 1)}***${address.slice(at)}`;
+}
+
+/**
+ * Goes to the *old*, verified address when the account's address is changed (#475). It carries no
+ * link: a link in a mail about a possible takeover is exactly what a phisher would copy. The
+ * advice is to change the password, which also ends every session.
+ */
+export function emailChangedMail(appName: string, username: string, newAddress: string): { subject: string; html: string } {
+  const title = 'E-Mail-Adresse geändert';
+  return {
+    subject: `${appName}: E-Mail-Adresse deines Kontos geändert`,
+    html: `<!doctype html><html lang="de"><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#222">
+<h2 style="font-weight:600">${escapeHtml(title)}</h2>
+<p>Die E-Mail-Adresse des Kontos „${escapeHtml(username)}“ wurde auf ${escapeHtml(maskEmail(newAddress))} geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.</p>
+<p style="font-size:13px;color:#555">Warst du das nicht, melde dich an und ändere sofort dein Passwort („Überall abmelden“ beendet alle Sitzungen), und sage dem Betreiber Bescheid.</p>
+</body></html>`,
+  };
+}

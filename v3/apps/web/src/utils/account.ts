@@ -64,13 +64,23 @@ export async function resendVerification(): Promise<void> {
   await post('/api/auth/email/resend', {}, base, headers);
 }
 
-/** Saves the account's address; true when a verification mail went out for it. */
-export async function saveAccountEmail(email: string): Promise<boolean> {
+/** Whether saving `typed` would change the account address, which then needs the password (#475). */
+export function emailChangeNeedsPassword(typed: string, saved: string | null): boolean {
+  const next = typed.trim().toLowerCase();
+  return next !== '' && next !== (saved ?? '').trim().toLowerCase();
+}
+
+/**
+ * Saves the account's address; true when a verification mail went out for it. A new address needs
+ * the current password (#475): the address is where a password reset goes, so a stolen session
+ * alone must not be able to change it.
+ */
+export async function saveAccountEmail(email: string, password: string): Promise<boolean> {
   const { base, headers } = bearer();
   const res = await fetch(`${base}/api/auth/me`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, password }),
   });
   const data = await res.json().catch(() => ({})) as { error?: string; verificationSent?: boolean };
   if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
