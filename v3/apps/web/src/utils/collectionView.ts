@@ -9,9 +9,11 @@ export const COLLECTION_VIEW_KEY = 'nagellacke_v3_collection_view';
 
 export const DEFAULT_COLLECTION_VIEW: CollectionView = 'cards';
 
+const COLLECTION_VIEWS: readonly CollectionView[] = ['cards', 'grid'];
+
 /** Anything that is not exactly a known view (unset, hand-edited, from a newer build) means the default. */
 export function parseCollectionView(raw: string | null | undefined): CollectionView {
-  return raw === 'grid' || raw === 'cards' ? raw : DEFAULT_COLLECTION_VIEW;
+  return COLLECTION_VIEWS.find((view) => view === raw) ?? DEFAULT_COLLECTION_VIEW;
 }
 
 export function loadCollectionView(): CollectionView {
