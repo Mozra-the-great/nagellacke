@@ -7,6 +7,14 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Geändert
+
+- CI: `claude-review` ist jetzt ein gestaffelter Claude-Review. Agenten mit festem
+  Modell in `.claude/agents/review-*.md`: Haiku-Triage, Sonnet für CLAUDE.md- und
+  Doku-Prüfung, zwei Opus-Bugsucher, ein Opus-Security-Reviewer nach Anthropics
+  `/security-review` und ein Opus-Gegenprüfer je Befund; Sonnet orchestriert nur
+  und postet. Ersetzt den Lauf des code-review-Plugins.
+
 ## [3.7.0] – 2026-11-19
 
 ### Hinzugefügt
