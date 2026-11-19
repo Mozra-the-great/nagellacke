@@ -7,6 +7,9 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Behoben
+- **Die Konto-E-Mail ließ sich ohne Passwort ändern (#475, Sicherheit).** `PATCH /api/auth/me` nahm eine neue Adresse von jeder angemeldeten Sitzung an; wer ein Access-Token hatte (XSS, geteiltes Gerät, geleaktes Token), konnte die Adresse auf eine eigene setzen, sie bestätigen und das Passwort zurücksetzen, also das Konto dauerhaft übernehmen. Jetzt braucht eine **geänderte** Adresse das aktuelle Passwort im Body (`password`): Prüfung, Limit (5 je 15 Minuten) und Antwort (`403 {"error":"Passwort falsch"}`) wie bei `POST /api/auth/email/remove` und `POST /api/me/delete`. Wer dieselbe Adresse noch einmal speichert, braucht kein Passwort, es passiert nichts. Eine neue Adresse bleibt unbestätigt, bis ihr Link geöffnet wird; **alle offenen Links** (Passwort-Zurücksetzen, Bestätigung, samt `reset_sent_at`/`verify_sent_at`) werden mit der Änderung ungültig (`updateUserEmail()` in `db.ts`); eine **bestätigte alte Adresse bekommt eine Info-Mail** ohne Link und mit maskierter neuer Adresse (`emailChangedMail()`, `accountMail.ts`), die der Änderung nicht im Weg steht, wenn der Versand scheitert. Web: Wer eine andere Adresse eintippt, sieht darunter „Aktuelles Passwort“; „Adresse speichern“ bleibt ohne Passwort aus (`emailChangeNeedsPassword()`, `saveAccountEmail(email, password)` in `utils/account.ts`, keine neuen Komponenten, #468). **Verhaltensänderung für API-Clients:** `PATCH /api/auth/me` ohne `password` antwortet bei geänderter Adresse mit 403. Android ist eingefroren und setzt keine Adresse.
+
 ## [3.6.0] – 2026-11-18
 
 ### Hinzugefügt

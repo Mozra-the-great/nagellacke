@@ -49,7 +49,7 @@ import {
   toBase64Url, fromBase64Url, type RelyingParty, type StoredPasskey,
 } from './passkeys';
 import {
-  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail,
+  newAccountToken, hashAccountToken, isWellFormedToken, resetMail, verifyMail, reportRecipientMail, emailChangedMail,
   RESET_TTL_MS, VERIFY_TTL_MS, RESET_RESEND_MS, VERIFY_RESEND_MS,
 } from './accountMail';
 import { parseTrustProxy } from './trustProxy';
@@ -1439,22 +1439,44 @@ export async function buildApp(options: { logStream?: Writable } = {}): Promise<
     };
   });
 
-  // PATCH /api/auth/me
+  // PATCH /api/auth/me — changes the account e-mail. The address is the recovery channel (password
+  // reset goes to it), so changing it needs the current password, like removing it
+  // (POST /api/auth/email/remove) and deleting the account: a stolen access token alone must not
+  // be able to point the recovery at a mailbox the thief controls (#475). Same check, same limit
+  // (5 per 15 minutes) and same answer (403 "Passwort falsch") as the other two. A save that
+  // changes nothing needs no password and does nothing. The new address is unverified until its
+  // link is opened, every link mailed earlier (reset, verification) stops working, and the old
+  // address, if it was verified, is told.
   app.patch('/api/auth/me', {
     preHandler: requireJwt,
-    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const { username } = request.user as { username: string };
-    const { email } = request.body as { email?: string };
-    if (!email || !isValidEmail(email)) {
+    const { email, password } = (request.body ?? {}) as { email?: unknown; password?: unknown };
+    if (typeof email !== 'string' || !email || !isValidEmail(email)) {
       return reply.code(400).send({ error: 'Ungültige E-Mail-Adresse' });
     }
+    const user = getUser(username);
+    if (!user) return reply.code(404).send({ error: 'Konto nicht gefunden' });
     const address = email.trim().toLowerCase();
-    const changed = getUser(username)?.email !== address;
+    if (user.email === address) return { ok: true, verificationSent: false };
+    if (typeof password !== 'string' || !verifyPassword(password, user.password_hash)) {
+      return reply.code(403).send({ error: 'Passwort falsch' });
+    }
+    const previous = user.email_verified && user.email ? user.email : null;
     updateUserEmail(username, address);
-    // A new address gets a verification mail right away (#324 S19); saving the same
-    // one again does not, "erneut senden" is for that.
-    const verificationSent = changed ? await sendVerificationMail(username) : false;
+    // A failed mail must not fail the change, which is already saved; the account log says
+    // that one failed, never to whom.
+    if (previous && accountMailAvailable()) {
+      const mail = emailChangedMail(appName(), username, address);
+      try {
+        await sendHtmlEmail(previous, mail.subject, mail.html);
+      } catch (e) {
+        logAccountMailError('e-mail change notice', e);
+      }
+    }
+    // A new address gets a verification mail right away (#324 S19).
+    const verificationSent = await sendVerificationMail(username);
     return { ok: true, verificationSent };
   });
 

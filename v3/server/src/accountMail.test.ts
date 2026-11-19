@@ -59,7 +59,7 @@ function tokenFrom(mail: { html: string }, route: string): string {
 const flush = () => new Promise((r) => setImmediate(r));
 
 async function setEmail(app: FastifyInstance, token: string, email: string) {
-  return app.inject({ method: 'PATCH', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` }, payload: { email } });
+  return app.inject({ method: 'PATCH', url: '/api/auth/me', headers: { authorization: `Bearer ${token}` }, payload: { email, password: 'password123' } });
 }
 
 async function verifiedUser(app: FastifyInstance, username: string, email: string): Promise<string> {

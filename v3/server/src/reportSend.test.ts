@@ -59,7 +59,7 @@ function save(app: FastifyInstance, token: string, body: Record<string, unknown>
   return app.inject({ method: 'POST', url: '/api/reports/schedule', headers: auth(token), payload: body });
 }
 async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<void> {
-  const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email } });
+  const res = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
   expect(res.json()).toMatchObject({ ok: true, verificationSent: true });
   const mail = sent.pop()!;
   const link = /#\/email-bestaetigen\?token=([0-9a-f]{64})/.exec(mail.html)![1];
@@ -115,7 +115,7 @@ describe('POST /api/reports/send only mails addresses that agreed (#456)', () =>
   it('refuses the own address while it is unverified, and says to verify it', async () => {
     const { app } = await createTestApp();
     const token = await register(app, 'anna');
-    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: OWN } });
+    await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: OWN, password: 'password123' } });
     sent.length = 0;
     const res = await send(app, token, OWN);
     expect(res.statusCode).toBe(403);

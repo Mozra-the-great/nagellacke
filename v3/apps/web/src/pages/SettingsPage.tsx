@@ -19,7 +19,7 @@ import type { Role } from '../utils/auth';
 import styles from './SettingsPage.module.css';
 import ServerAuthForm from '../components/ServerAuthForm';
 import PasskeySection from '../components/PasskeySection';
-import { saveAccountEmail, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
+import { saveAccountEmail, emailChangeNeedsPassword, resendVerification, downloadAccountExport, deleteOwnAccount, removeAccountEmail, removeEmailWarning, removeEmailMessage } from '../utils/account';
 import { recipientNotice, confirmationMessage, resendRecipientConfirmation, unsubscribeNotice, expiredRecipientNotice, sendTargetLabel, sendTargetsNotice, pickSendTarget } from '../utils/reportRecipient';
 import type { RecipientState, ConfirmationOutcome, SendTarget } from '../utils/reportRecipient';
 import { isStoredApiKeyRejected, setStoredApiKey, storedApiKey } from '../utils/apiKey';
@@ -130,11 +130,12 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
     setAccountEmailStatus('saving');
     setAccountEmailMessage('');
     try {
-      const sent = await saveAccountEmail(accountEmail.trim());
+      const sent = await saveAccountEmail(accountEmail.trim(), accountEmailPassword);
       const normalized = accountEmail.trim().toLowerCase();
       if (normalized !== savedAccountEmail) setEmailVerified((v) => (v === null ? null : false));
       setSavedAccountEmail(normalized);
       setAccountEmail(normalized);
+      setAccountEmailPassword('');
       setAccountEmailStatus('idle');
       setAccountEmailMessage(sent ? 'Gespeichert. Bitte bestätige die Adresse über den Link in der Mail.' : 'Gespeichert.');
     } catch (e) {
@@ -488,6 +489,8 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
   const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   const [accountEmailStatus, setAccountEmailStatus] = useState<'idle' | 'saving' | 'resending' | 'error'>('idle');
   const [accountEmailMessage, setAccountEmailMessage] = useState('');
+  // A new address needs the current password (#475).
+  const [accountEmailPassword, setAccountEmailPassword] = useState('');
   // Removing the address (#471): an inline confirmation with the password, like deleting the account.
   const [removeEmailStep, setRemoveEmailStep] = useState<'idle' | 'confirm' | 'loading'>('idle');
   const [removeEmailPassword, setRemoveEmailPassword] = useState('');
@@ -992,6 +995,15 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                   An diese Adresse geht der Link, wenn du dein Passwort vergessen hast, aber erst, nachdem du sie bestätigt hast.
                 </p>
               </label>
+              {emailChangeNeedsPassword(accountEmail, savedAccountEmail) && (
+                <label className={styles.field}>
+                  <span>Aktuelles Passwort</span>
+                  <input type="password" autoComplete="current-password" value={accountEmailPassword} onChange={(e) => setAccountEmailPassword(e.target.value)} />
+                  <p className={styles.fieldHelpText}>
+                    Zum Ändern der Adresse nötig, weil darüber das Passwort zurückgesetzt wird. Eine bestätigte alte Adresse bekommt eine Info-Mail.
+                  </p>
+                </label>
+              )}
               <div role="status" aria-live="polite" aria-atomic="true">
                 {accountEmailMessage && (
                   <div className={accountEmailStatus === 'error' ? styles.errorBanner : styles.successBanner}>{accountEmailMessage}</div>
@@ -1001,7 +1013,7 @@ export default function SettingsPage({ appData, role, onAuthChange }: SettingsPa
                 <button
                   type="button"
                   className={styles.syncBtn}
-                  disabled={!accountEmail.trim() || accountEmail.trim().toLowerCase() === savedAccountEmail || accountEmailStatus === 'saving'}
+                  disabled={!emailChangeNeedsPassword(accountEmail, savedAccountEmail) || !accountEmailPassword || accountEmailStatus === 'saving'}
                   onClick={() => void doSaveAccountEmail()}
                 >
                   {accountEmailStatus === 'saving' ? 'Speichere…' : 'Adresse speichern'}

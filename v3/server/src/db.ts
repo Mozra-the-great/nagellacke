@@ -558,9 +558,11 @@ export function updateUserEmail(username: string, email: string): void {
     const unchanged = users[idx].email === email;
     users[idx] = { ...users[idx], email };
     if (!unchanged) {
-      delete users[idx].email_verified;
-      delete users[idx].verify_hash;
-      delete users[idx].verify_expires;
+      // A new address starts unverified, and no link mailed earlier may work any more (#475):
+      // a password-reset link sitting in the old inbox would otherwise outlive the change.
+      for (const k of ['email_verified', 'verify_hash', 'verify_expires', 'verify_sent_at', 'reset_hash', 'reset_expires', 'reset_sent_at'] as const) {
+        delete users[idx][k];
+      }
     }
     writeUsers(users);
   }

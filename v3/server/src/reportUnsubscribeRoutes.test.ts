@@ -77,7 +77,7 @@ async function confirmRecipient(app: FastifyInstance, token: string, email: stri
   expect(res.statusCode).toBe(200);
 }
 async function verifyOwnAddress(app: FastifyInstance, token: string, email: string): Promise<void> {
-  await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email } });
+  await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email, password: 'password123' } });
   const link = /#\/email-bestaetigen\?token=([0-9a-f]{64})/.exec(sent.pop()!.html)![1];
   expect((await app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token: link } })).statusCode).toBe(200);
 }

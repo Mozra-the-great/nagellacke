@@ -106,7 +106,7 @@ describe('POST /api/auth/email/remove (#471)', () => {
     db.updateUserEmail('anna', 'anna@example.org');
     db.patchUser('anna', { email_verified: true });
     await app.inject({ method: 'POST', url: '/api/auth/email/remove', headers: auth(token), payload: { password: 'password123' } });
-    const add = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: 'anna@example.org' } });
+    const add = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: auth(token), payload: { email: 'anna@example.org', password: 'password123' } });
     expect(add.statusCode).toBe(200);
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: auth(token) });
     expect(me.json()).toMatchObject({ email: 'anna@example.org', emailVerified: false });
