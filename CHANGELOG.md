@@ -7,6 +7,8 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+## [3.7.0] – 2026-11-19
+
 ### Hinzugefügt
 - **Passwort ändern in der App (#480).** Bisher ließ sich das Passwort nur über „Passwort vergessen?“ ersetzen, und das braucht eine bestätigte E-Mail-Adresse; ein Konto ohne Adresse konnte ein bekannt gewordenes Passwort gar nicht wechseln. Einstellungen → Sicherheit hat jetzt „Passwort ändern“ (aktuelles Passwort, bei 2FA zusätzlich der Code, dann das neue zweimal). Danach sind alle anderen Sitzungen beendet, ein offener Reset-Link gilt nicht mehr, und eine bestätigte Adresse bekommt eine Info-Mail.
 
