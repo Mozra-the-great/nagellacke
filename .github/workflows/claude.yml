@@ -69,7 +69,7 @@ jobs:
       - name: Run Claude Code
         id: claude
         if: steps.gate.outputs.enabled == 'true'
-        uses: anthropics/claude-code-action@8a29bc6f0ae11a363721054b6739feba6adabe57 # v1.0.273
+        uses: anthropics/claude-code-action@c84e279f859e2591391e95bd309286eb111c345f # v1.0.284
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 

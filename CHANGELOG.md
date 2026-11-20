@@ -14,6 +14,7 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
   Doku-Prüfung, zwei Opus-Bugsucher, ein Opus-Security-Reviewer nach Anthropics
   `/security-review` und ein Opus-Gegenprüfer je Befund; Sonnet orchestriert nur
   und postet. Ersetzt den Lauf des code-review-Plugins.
+- CI: `claude-code-action` in `claude.yml` und `claude-code-review.yml` auf v1.0.284 gepinnt (Dependabot hatte den Review-Workflow still auf v1.0.273 zurückgestuft).
 
 ## [3.7.0] – 2026-11-19
 
