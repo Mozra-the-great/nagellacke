@@ -411,3 +411,146 @@ describe('corrupt data file logging (CodeQL js/tainted-format-string)', () => {
     }
   });
 });
+
+describe('photo access, record by record (#352, #498)', () => {
+  type AppDataT = import('@nagellacke/core').AppData;
+  const base = { polishes: [], customCats: [], manicures: [], stickers: [] };
+  const polish = (photo: string, extra: Record<string, unknown> = {}) => ({
+    id: `p-${photo}`, name: 'n', brand: 'b', num: '1', color: '#fff', finish: ['Classic'], status: 'ok',
+    photo, createdAt: 1, updatedAt: 1, ...extra,
+  });
+  const sticker = (photo: string) => ({
+    id: `s-${photo}`, name: 'n', type: 'accent', status: 'ok', photo, createdAt: 1, updatedAt: 1,
+  });
+  const manicure = (extra: Record<string, unknown>) => ({
+    id: 'm1', date: '2026-01-01', createdAt: 1, updatedAt: 1, ...extra,
+  });
+  const asData = (d: Record<string, unknown>) => ({ ...base, ...d }) as unknown as AppDataT;
+
+  it.each<[string, Record<string, unknown>]>([
+    ['a polish photo', { polishes: [polish('ref.png')] }],
+    ['a soft-deleted polish photo (the undo flow syncs the delete before DELETE /api/photos)', { polishes: [polish('ref.png', { deletedAt: 5 })] }],
+    ['a sticker photo', { stickers: [sticker('ref.png')] }],
+    ['a manicure photo', { manicures: [manicure({ photo: 'ref.png' })] }],
+    ['a manicure photo slot', { manicures: [manicure({ photos: { left: 'other.png', right: 'ref.png' } })] }],
+  ])('lets an account read an unowned photo that its own records reference: %s', async (_name, records) => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.createUser('bob', 'hash');
+    db.setData('alice', asData(records));
+    expect(db.photoOwner('ref.png')).toBeUndefined();
+    expect(db.canAccessPhoto('alice', 'ref.png')).toBe(true);
+    expect(db.canAccessPhoto('bob', 'ref.png')).toBe(false);
+    expect(db.canAccessPhoto('alice', 'unreferenced.png')).toBe(false);
+  });
+
+  it('does not let a manicure without photos, or with other photos, reach a file', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.setData('alice', asData({ manicures: [manicure({}), manicure({ id: 'm2', photo: 'x.png', photos: { a: 'y.png' } })] }));
+    expect(db.canAccessPhoto('alice', 'ref.png')).toBe(false);
+    expect(db.userOwnsPhoto('alice', 'x.png')).toBe(true);
+    expect(db.userOwnsPhoto('alice', 'y.png')).toBe(true);
+    expect(db.userOwnsPhoto('alice', 'z.png')).toBe(false);
+  });
+
+  it('lets an admin read any photo, and a plain account only its own', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('root', 'hash', 'admin');
+    db.createUser('alice', 'hash', 'user');
+    db.recordPhotoOwner('a.png', 'alice');
+    expect(db.canAccessPhoto('root', 'a.png')).toBe(true);
+    expect(db.canAccessPhoto('root', 'never-uploaded.png')).toBe(true);
+    expect(db.canAccessPhoto('alice', 'a.png')).toBe(true);
+    expect(db.canAccessPhoto('alice', 'never-uploaded.png')).toBe(false);
+  });
+
+  it('lets the recorded uploader in under any spelling of the name, and nobody else, references or not', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.createUser('alice', 'hash');
+    db.createUser('bob', 'hash');
+    db.recordPhotoOwner('a.png', 'Alice');
+    expect(db.photoOwner('a.png')).toBe('alice'); // stored canonical
+    expect(db.canAccessPhoto('ALICE', 'a.png')).toBe(true);
+    expect(db.canAccessPhoto('ａlice', 'a.png')).toBe(true); // full-width a, NFKC folds it
+    db.setData('bob', asData({ polishes: [polish('a.png')] })); // bob only references it
+    expect(db.canAccessPhoto('bob', 'a.png')).toBe(false);
+  });
+
+  it('lists the photos an account uploaded, matched by canonical name', async () => {
+    const { db, dir } = await freshDb();
+    tmpDirs.push(dir);
+    db.recordPhotoOwner('a.png', 'alice');
+    db.recordPhotoOwner('b.png', 'BOB');
+    db.recordPhotoOwner('c.png', 'Alice');
+    expect(db.photosOwnedBy('ALICE').sort()).toEqual(['a.png', 'c.png']);
+    expect(db.photosOwnedBy('bob')).toEqual(['b.png']);
+    expect(db.photosOwnedBy('carol')).toEqual([]);
+  });
+
+  describe('photo_owners.json on disk', () => {
+    const ownersFile = (dir: string) => path.join(dir, 'photo_owners.json');
+    const load = async (content: string) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-db-test-'));
+      tmpDirs.push(dir);
+      fs.writeFileSync(ownersFile(dir), content);
+      process.env.DATA_DIR = dir;
+      vi.resetModules();
+      return { db: await import('./db'), dir };
+    };
+
+    it('falls back to record references, and says so, when the file is corrupt', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const { db } = await load('{not json');
+        db.createUser('alice', 'hash');
+        db.setData('alice', asData({ polishes: [polish('ref.png')] }));
+        expect(db.photoOwner('ref.png')).toBeUndefined();
+        expect(db.canAccessPhoto('alice', 'ref.png')).toBe(true);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(String(spy.mock.calls[0][0])).toContain('photo_owners.json');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it.each(['null', '"abc"', '123', 'true', '[]'])(
+      'reads %s as "no owners" without complaining and without inventing any',
+      async (content) => {
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+          const { db } = await load(content);
+          expect(db.photoOwner('0')).toBeUndefined(); // "abc" must not turn into {0: 'a', ...}
+          expect(db.photosOwnedBy('a')).toEqual([]);
+          expect(spy).not.toHaveBeenCalled();
+        } finally {
+          spy.mockRestore();
+        }
+      },
+    );
+
+    it('ignores entries whose owner is not a string', async () => {
+      const { db } = await load(JSON.stringify({ 'bad.png': 5, 'null.png': null, 'ok.png': 'alice' }));
+      expect(db.photoOwner('bad.png')).toBeUndefined();
+      expect(db.photoOwner('null.png')).toBeUndefined();
+      expect(db.photoOwner('ok.png')).toBe('alice');
+      expect(db.canAccessPhoto('alice', 'bad.png')).toBe(false); // would throw if the number were kept
+    });
+
+    it('does not touch the file when forgetting a photo that has no owner', async () => {
+      const { db, dir } = await freshDb();
+      tmpDirs.push(dir);
+      db.forgetPhotoOwner('nobody.png');
+      expect(fs.existsSync(ownersFile(dir))).toBe(false);
+      db.recordPhotoOwner('a.png', 'alice');
+      const before = fs.statSync(ownersFile(dir)).mtimeMs;
+      db.forgetPhotoOwner('nobody.png');
+      expect(fs.statSync(ownersFile(dir)).mtimeMs).toBe(before);
+      expect(db.photoOwner('a.png')).toBe('alice');
+    });
+  });
+});

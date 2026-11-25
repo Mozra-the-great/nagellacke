@@ -274,3 +274,179 @@ describe('removing the account address (#471)', () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe('account mails, piece by piece (#498)', () => {
+  // The mail module is pure; no app, no mail transport.
+  const load = () => import('./accountMail');
+  const TOKEN = 'ab'.repeat(32);
+
+  /** Pulls the visible parts out of mailHtml()'s fixed template. */
+  function parts(html: string) {
+    const decode = (s: string) => s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+    const title = /<h2[^>]*>(.*?)<\/h2>/s.exec(html)?.[1] ?? '';
+    const paragraphs = [...html.matchAll(/<p[^>]*>(.*?)<\/p>/gs)].map((m) => m[1]);
+    const href = /<a href="([^"]*)"/.exec(html)?.[1] ?? '';
+    const button = /<a href="[^"]*"[^>]*>(.*?)<\/a>/s.exec(html)?.[1] ?? '';
+    return { title: decode(title), paragraphs: paragraphs.map(decode), href: decode(href), button: decode(button) };
+  }
+
+  describe('tokens', () => {
+    it('hands out 64 hex characters, stores only their sha256, and never repeats', async () => {
+      const m = await load();
+      const a = m.newAccountToken();
+      const b = m.newAccountToken();
+      expect(a.token).toMatch(/^[0-9a-f]{64}$/);
+      expect(a.token).not.toBe(b.token);
+      expect(a.hash).toBe(m.hashAccountToken(a.token));
+      expect(a.hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(a.hash).not.toBe(a.token);
+      // sha256("abc"), so the hash really is sha256 hex
+      expect(m.hashAccountToken('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    });
+
+    it('recognises a well-formed token by shape alone', async () => {
+      const m = await load();
+      expect(m.isWellFormedToken(TOKEN)).toBe(true);
+      for (const bad of [undefined, null, 5, {}, [TOKEN], '', TOKEN.slice(1), `${TOKEN}0`, TOKEN.toUpperCase(),
+        `${TOKEN.slice(1)}g`, ` ${TOKEN}`, `${TOKEN}\n`, `x${TOKEN}`]) {
+        expect(m.isWellFormedToken(bad)).toBe(false);
+      }
+    });
+
+    it('keeps the documented lifetimes', async () => {
+      const m = await load();
+      expect(m.RESET_TTL_MS).toBe(3_600_000);
+      expect(m.VERIFY_TTL_MS).toBe(86_400_000);
+      expect(m.RESET_RESEND_MS).toBe(60_000);
+      expect(m.VERIFY_RESEND_MS).toBe(3_600_000);
+    });
+  });
+
+  describe('maskEmail', () => {
+    it('keeps the first letter and the domain, and shows nothing for something that is no address', async () => {
+      const m = await load();
+      expect(m.maskEmail('jane@example.org')).toBe('j***@example.org');
+      expect(m.maskEmail('a@b.de')).toBe('a***@b.de');
+      expect(m.maskEmail('x@y@z.de')).toBe('x***@z.de'); // the last @ is the separator
+      expect(m.maskEmail('@example.org')).toBe('***'); // nothing before the @
+      expect(m.maskEmail('no-at-sign')).toBe('***');
+      expect(m.maskEmail('')).toBe('***');
+    });
+  });
+
+  describe('reset mail', () => {
+    it('carries a one-use hash link to the reset page, and says so', async () => {
+      const m = await load();
+      const mail = m.resetMail('NailVault', 'https://app.example', 'jane', TOKEN);
+      const p = parts(mail.html);
+      expect(mail.subject).toBe('NailVault: Passwort zurücksetzen');
+      expect(p.title).toBe('Passwort zurücksetzen');
+      expect(p.paragraphs[0]).toBe('Für das Konto „jane“ wurde ein neues Passwort angefordert. Der Link gilt eine Stunde und nur einmal.');
+      expect(p.href).toBe(`https://app.example/#/passwort-neu?token=${TOKEN}`);
+      expect(p.button).toBe('Neues Passwort festlegen');
+      expect(p.paragraphs.at(-1)).toBe('Wenn du das nicht angefordert hast, kannst du diese Mail ignorieren; dein Passwort bleibt unverändert.');
+      // the fallback paragraph repeats the link as text
+      expect(p.paragraphs[2]).toContain(p.href);
+    });
+
+    it('escapes everything it interpolates', async () => {
+      const m = await load();
+      const mail = m.resetMail('A&B', 'https://app.example', '<b>"x"&</b>', TOKEN);
+      expect(mail.html).not.toContain('<b>');
+      expect(mail.html).toContain('&lt;b&gt;&quot;x&quot;&amp;&lt;/b&gt;');
+      // a quote in the link cannot break out of the href attribute
+      const evil = m.resetMail('A', 'https://app.example/"onmouseover="x', 'u', TOKEN);
+      expect(evil.html).toContain('href="https://app.example/&quot;onmouseover=&quot;x/#/passwort-neu');
+      expect(evil.html).not.toContain('href="https://app.example/"');
+    });
+  });
+
+  describe('verification mail', () => {
+    it('links to the verification page and states the 24 hours', async () => {
+      const m = await load();
+      const mail = m.verifyMail('NailVault', 'https://app.example', 'jane', TOKEN);
+      const p = parts(mail.html);
+      expect(mail.subject).toBe('NailVault: E-Mail-Adresse bestätigen');
+      expect(p.title).toBe('E-Mail-Adresse bestätigen');
+      expect(p.paragraphs[0]).toBe('Bitte bestätige, dass diese Adresse zum Konto „jane“ gehört. Erst dann kann über sie ein vergessenes Passwort zurückgesetzt werden. Der Link gilt 24 Stunden.');
+      expect(p.href).toBe(`https://app.example/#/email-bestaetigen?token=${TOKEN}`);
+      expect(p.button).toBe('Adresse bestätigen');
+      expect(p.paragraphs.at(-1)).toBe('Wenn du kein Konto angelegt hast, kannst du diese Mail ignorieren.');
+    });
+  });
+
+  describe('report recipient mail (#449)', () => {
+    it.each<['weekly' | 'monthly', string]>([['weekly', 'wöchentlich'], ['monthly', 'monatlich']])(
+      'names the sender, the %s rhythm, what is stored and how to ignore it', async (frequency, word) => {
+        const m = await load();
+        const mail = m.reportRecipientMail('NailVault', 'https://app.example', 'jane', frequency, TOKEN);
+        const p = parts(mail.html);
+        expect(mail.subject).toBe('NailVault: Bericht an diese Adresse erlauben?');
+        expect(p.title).toBe('Bericht an diese Adresse erlauben?');
+        expect(p.paragraphs[0]).toBe(
+          `Das Konto „jane“ auf NailVault möchte ${word} eine E-Mail mit einem Bericht über die eigene Nagellack-Sammlung (Lacke, Sticker, Maniküren, Fotos) an diese Adresse senden. Der Link gilt 48 Stunden.`,
+        );
+        expect(p.href).toBe(`https://app.example/#/bericht-bestaetigen?token=${TOKEN}`);
+        expect(p.button).toBe('Ja, Berichte an diese Adresse senden');
+        expect(p.paragraphs.at(-1)).toBe(
+          'Ohne deine Bestätigung wird nichts an diese Adresse gesendet; wenn du die Mail nicht erwartet hast, ignoriere sie einfach. '
+          + 'Jeder Bericht enthält unten einen Link zum Abbestellen. '
+          + 'Gespeichert wird nur deine E-Mail-Adresse, und nur zum Versand dieser Berichte. '
+          + 'Verantwortlich ist der Betreiber von NailVault; Angaben zum Datenschutz stehen unter https://app.example/#/datenschutz.',
+        );
+      });
+  });
+
+  describe('notices without a link', () => {
+    it('tells the old address that the address changed, shows only a masked new one, and carries the takeover advice', async () => {
+      const m = await load();
+      const mail = m.emailChangedMail('NailVault', 'jane', 'jane.doe@example.org');
+      const p = parts(mail.html);
+      expect(mail.subject).toBe('NailVault: E-Mail-Adresse deines Kontos geändert');
+      expect(p.title).toBe('E-Mail-Adresse geändert');
+      expect(p.paragraphs[0]).toBe('Die E-Mail-Adresse des Kontos „jane“ wurde auf j***@example.org geändert. Alle bis jetzt verschickten Links zum Zurücksetzen des Passworts und zum Bestätigen einer Adresse sind ungültig.');
+      expect(p.paragraphs[1]).toBe(m.TAKEOVER_ADVICE);
+      expect(mail.html).not.toContain('jane.doe');
+      expect(mail.html).not.toContain('<a ');
+    });
+
+    it('tells the account address that the password changed', async () => {
+      const m = await load();
+      const mail = m.passwordChangedMail('NailVault', 'jane');
+      const p = parts(mail.html);
+      expect(mail.subject).toBe('NailVault: Passwort geändert');
+      expect(p.title).toBe('Passwort geändert');
+      expect(p.paragraphs[0]).toBe('Das Passwort des Kontos „jane“ wurde in der App geändert. Alle anderen Sitzungen dieses Kontos sind damit beendet.');
+      expect(p.paragraphs[1]).toBe(
+        'Warst du das nicht, setze das Passwort sofort über „Passwort vergessen?“ zurück, prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys '
+        + 'und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.',
+      );
+      expect(mail.html).not.toContain('<a ');
+    });
+
+    it.each<['added' | 'removed', string, string, string]>([
+      ['added', 'hinzugefügt', 'Neuer Passkey',
+        'Zum Konto „jane“ wurde der Passkey „Phone“ hinzugefügt. Mit ihm kann man sich ohne Passwort und ohne 2FA-Code anmelden.'],
+      ['removed', 'entfernt', 'Passkey entfernt',
+        'Vom Konto „jane“ wurde der Passkey „Phone“ entfernt. Mit ihm ist keine Anmeldung mehr möglich.'],
+    ])('describes a passkey that was %s', async (kind, word, title, text) => {
+      const m = await load();
+      const mail = m.passkeyChangedMail('NailVault', 'jane', kind, 'Phone');
+      const p = parts(mail.html);
+      expect(mail.subject).toBe(`NailVault: Passkey ${word}`);
+      expect(p.title).toBe(title);
+      expect(p.paragraphs[0]).toBe(text);
+      expect(p.paragraphs[1]).toBe(m.TAKEOVER_ADVICE);
+      expect(mail.html).not.toContain('<a ');
+    });
+
+    it('gives advice that covers every way back in', async () => {
+      const m = await load();
+      expect(m.TAKEOVER_ADVICE).toBe(
+        'Warst du das nicht, kennt jemand dein Passwort: Melde dich an, stelle unter Einstellungen → Sync deine Adresse wieder ein und bestätige sie, '
+        + 'ändere dann unter Einstellungen → Sicherheit dein Passwort (oder setze es über „Passwort vergessen?“ zurück), melde dich über „Von allen Geräten abmelden…“ überall ab, '
+        + 'prüfe unter Einstellungen → Sicherheit die Liste deiner Passkeys und entferne jeden, den du nicht kennst, und sage dem Betreiber Bescheid.',
+      );
+    });
+  });
+});

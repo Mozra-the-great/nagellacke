@@ -5,6 +5,7 @@ import {
   AddressThrottle, DAY_MS, MAX_CONFIRM_MAILS_PER_ADDRESS_PER_DAY, MAX_CONFIRM_MAILS_PER_DAY, MAX_RECIPIENT_CHANGES_PER_DAY,
   MIN_CONFIRM_INTERVAL_MS, RECIPIENT_CONFIRM_TTL_MS, applyConfirmation, checkChangeLimit, checkMailLimit, isRecipientConfirmed,
   issueConfirmation, normalizeEmail, recent, recipientStatus, signRecipientToken, verifyRecipientToken,
+  adHocTargets, decideAdHocTarget,
 } from './reportRecipient';
 
 /**
@@ -194,5 +195,185 @@ describe('rate limits', () => {
 describe('normalizeEmail', () => {
   it('trims and lowercases', () => {
     expect(normalizeEmail('  Anna@Example.ORG ')).toBe('anna@example.org');
+  });
+});
+
+describe('recipient token, refusals under a valid signature (#498)', () => {
+  const forge = (rawJson: string, secret = SECRET): string => {
+    const key = crypto.createHmac('sha256', secret).update('nagellacke:report-recipient:v1').digest();
+    const body = Buffer.from(rawJson, 'utf-8').toString('base64url');
+    return `${body}.${crypto.createHmac('sha256', key).update(body).digest('base64url')}`;
+  };
+  const exp = Math.floor((NOW + RECIPIENT_CONFIRM_TTL_MS) / 1000);
+  const good = { exp, u: 'anna', e: 'friend@example.org', c: 3 };
+
+  it('signs under the documented context', () => {
+    expect(signRecipientToken(good, SECRET)).toBe(forge(JSON.stringify(good)));
+  });
+
+  it('accepts the forged well-formed payload, so every refusal below is down to its one change', () => {
+    expect(verifyRecipientToken(forge(JSON.stringify(good)), SECRET, NOW)).toEqual(good);
+    expect(verifyRecipientToken(forge(JSON.stringify({ ...good, c: 0 })), SECRET, NOW)).toEqual({ ...good, c: 0 });
+  });
+
+  it('copies only the four known fields out of the payload', () => {
+    expect(verifyRecipientToken(forge(JSON.stringify({ ...good, admin: true })), SECRET, NOW)).toEqual(good);
+  });
+
+  it.each<[string, string]>([
+    ['not JSON', 'not json'],
+    ['null', 'null'],
+    ['a number', '123'],
+    ['a string', '"text"'],
+    ['an exp that is a string', JSON.stringify({ ...good, exp: String(exp) })],
+    ['an exp that is infinite', `{"exp":1e999,"u":"anna","e":"friend@example.org","c":3}`],
+    ['no exp', JSON.stringify({ u: 'anna', e: 'friend@example.org', c: 3 })],
+    ['an exp in the past', JSON.stringify({ ...good, exp: Math.floor(NOW / 1000) - 1 })],
+    ['an exp that is exactly now', JSON.stringify({ ...good, exp: NOW / 1000 })],
+    ['a numeric user', JSON.stringify({ ...good, u: 5 })],
+    ['no user', JSON.stringify({ exp, e: good.e, c: 3 })],
+    ['a numeric address', JSON.stringify({ ...good, e: 5 })],
+    ['no address', JSON.stringify({ exp, u: 'anna', c: 3 })],
+    ['a sequence that is a string', JSON.stringify({ ...good, c: '3' })],
+    ['a sequence with a fraction', JSON.stringify({ ...good, c: 1.5 })],
+    ['no sequence', JSON.stringify({ exp, u: 'anna', e: good.e })],
+  ])('refuses a validly signed payload with %s', (_name, raw) => {
+    expect(verifyRecipientToken(forge(raw), SECRET, NOW)).toBeNull();
+  });
+
+  it('reads the clock when no time is given', () => {
+    const future = Math.floor(Date.now() / 1000) + 600;
+    expect(verifyRecipientToken(forge(JSON.stringify({ ...good, exp: future })), SECRET)).not.toBeNull();
+    expect(verifyRecipientToken(forge(JSON.stringify({ ...good, exp: Math.floor(Date.now() / 1000) - 600 })), SECRET)).toBeNull();
+  });
+
+  it('refuses a token that is not a string, without throwing', () => {
+    for (const t of [undefined, null, 42, {}, ['a.b']]) expect(verifyRecipientToken(t, SECRET, NOW)).toBeNull();
+  });
+
+  it('accepts a token of exactly 2048 characters and refuses 2049', () => {
+    const build = (len: number): string => signRecipientToken({ ...good, u: 'u'.repeat(len), exp: exp + 60 }, SECRET);
+    let len = 1100;
+    while (build(len).length < 2048) len++;
+    expect(build(len).length).toBe(2048);
+    expect(verifyRecipientToken(build(len), SECRET, NOW)).not.toBeNull();
+    expect(build(len + 1).length).toBeGreaterThan(2048);
+    expect(verifyRecipientToken(build(len + 1), SECRET, NOW)).toBeNull();
+  });
+
+  it('refuses anything without a body and a signature around one dot, or with a signature of the wrong length', () => {
+    const [body, sig] = signRecipientToken(good, SECRET).split('.');
+    for (const t of ['', 'nodot', `.${sig}`, `${body}.`, '.', `${body}.${sig.slice(1)}`, `${body}.${sig}A`]) {
+      expect(verifyRecipientToken(t, SECRET, NOW)).toBeNull();
+    }
+  });
+});
+
+describe('limits, edge cases (#498)', () => {
+  it('has the documented numbers', () => {
+    expect(MIN_CONFIRM_INTERVAL_MS).toBe(120_000);
+    expect(RECIPIENT_CONFIRM_TTL_MS).toBe(48 * 3_600_000);
+    expect(DAY_MS).toBe(86_400_000);
+  });
+
+  it('treats a missing schedule as having sent nothing', () => {
+    expect(checkMailLimit(null, NOW)).toBeNull();
+    expect(checkChangeLimit(null, NOW)).toBeNull();
+    expect(checkMailLimit(schedule(), NOW)).toBeNull();
+  });
+
+  it('measures the spacing from the newest mail, not the oldest', () => {
+    const older = NOW - 3 * 3_600_000;
+    expect(checkMailLimit(schedule({ confirmMailsAt: [older, NOW - 10_000] }), NOW)).toBe('too-soon');
+    expect(checkMailLimit(schedule({ confirmMailsAt: [NOW - 10_000, older] }), NOW)).toBe('too-soon');
+    expect(checkMailLimit(schedule({ confirmMailsAt: [older, NOW - MIN_CONFIRM_INTERVAL_MS] }), NOW)).toBeNull();
+    expect(checkMailLimit(schedule({ confirmMailsAt: [older, NOW - MIN_CONFIRM_INTERVAL_MS + 1] }), NOW)).toBe('too-soon');
+  });
+
+  it('blocks at the daily cap and not one mail before it', () => {
+    const stamps = (n: number) => Array.from({ length: n }, (_, i) => NOW - 3_600_000 - i * 1000);
+    expect(checkMailLimit(schedule({ confirmMailsAt: stamps(MAX_CONFIRM_MAILS_PER_DAY - 1) }), NOW)).toBeNull();
+    expect(checkMailLimit(schedule({ confirmMailsAt: stamps(MAX_CONFIRM_MAILS_PER_DAY) }), NOW)).toBe('daily');
+    expect(checkChangeLimit(schedule({ recipientChangesAt: stamps(MAX_RECIPIENT_CHANGES_PER_DAY - 1) }), NOW)).toBeNull();
+    expect(checkChangeLimit(schedule({ recipientChangesAt: stamps(MAX_RECIPIENT_CHANGES_PER_DAY) }), NOW)).toBe('changes');
+  });
+
+  describe('AddressThrottle eviction', () => {
+    it('keeps exactly as many addresses as it was told to, and drops the least recently used one beyond that', () => {
+      const t = new AddressThrottle(1, 2);
+      t.record('a@x.org', NOW);
+      t.record('b@x.org', NOW);
+      expect(t.allowed('a@x.org', NOW)).toBe(false); // two addresses fit, nothing evicted yet
+      expect(t.allowed('b@x.org', NOW)).toBe(false);
+      t.record('c@x.org', NOW);
+      expect(t.allowed('a@x.org', NOW)).toBe(true); // a was the oldest
+      expect(t.allowed('b@x.org', NOW)).toBe(false);
+      expect(t.allowed('c@x.org', NOW)).toBe(false);
+    });
+
+    it('counts a repeat mail as a use: the address it concerns moves to the back of the queue', () => {
+      const strict = new AddressThrottle(1, 2);
+      strict.record('a@x.org', NOW);
+      strict.record('b@x.org', NOW);
+      strict.record('a@x.org', NOW + 1);
+      strict.record('c@x.org', NOW + 2);
+      expect(strict.allowed('a@x.org', NOW + 3)).toBe(false); // a stayed on record
+      expect(strict.allowed('b@x.org', NOW + 3)).toBe(true); // b was evicted
+    });
+
+    it('does not count stamps older than a day when it records a new one', () => {
+      const t = new AddressThrottle(2, 10);
+      t.record('a@x.org', NOW);
+      t.record('a@x.org', NOW + DAY_MS + 1);
+      expect(t.allowed('a@x.org', NOW + DAY_MS + 2)).toBe(true); // only one stamp is still inside the window
+    });
+  });
+});
+
+describe('who may get an ad-hoc report, in words (#456, #498)', () => {
+  const own = { email: 'anna@example.org', email_verified: true };
+  const unverified = { email: 'anna@example.org', email_verified: false };
+
+  it('names the target for the own verified address and for a confirmed recipient', () => {
+    expect(decideAdHocTarget(null, own, 'ANNA@example.org')).toEqual({ allowed: true, target: { email: 'anna@example.org', kind: 'account' } });
+    const cfg = schedule({ toEmail: 'Friend@Example.org', confirmedEmail: 'friend@example.org' });
+    expect(decideAdHocTarget(cfg, own, ' friend@example.org ')).toEqual({ allowed: true, target: { email: 'Friend@Example.org', kind: 'recipient' } });
+    expect(adHocTargets(cfg, own).map((t) => t.kind)).toEqual(['account', 'recipient']);
+    expect(adHocTargets(cfg, null).map((t) => t.kind)).toEqual(['recipient']);
+    expect(adHocTargets(null, unverified)).toEqual([]);
+  });
+
+  it('lists the own address once when it is also the recipient', () => {
+    expect(adHocTargets(schedule({ toEmail: 'ANNA@example.org' }), own)).toEqual([{ email: 'anna@example.org', kind: 'account' }]);
+  });
+
+  it('says a pending recipient still has to confirm', () => {
+    const d = decideAdHocTarget(schedule({ toEmail: 'friend@example.org' }), own, 'friend@example.org');
+    expect(d).toEqual({
+      allowed: false, reason: 'recipient-pending',
+      message: 'Diese Adresse ist als Berichtsempfänger noch nicht bestätigt. Der Empfänger muss zuerst den Link in der Bestätigungsmail öffnen (Einstellungen → Berichte → Automatischer Zeitplan).',
+    });
+  });
+
+  it('says the own address still has to be verified, also when a different recipient is set', () => {
+    const expected = {
+      allowed: false, reason: 'own-unverified',
+      message: 'Die Adresse deines Kontos ist noch nicht verifiziert. Bestätige sie über den Link in der Verifizierungsmail (Einstellungen → Konto).',
+    };
+    expect(decideAdHocTarget(null, unverified, 'anna@example.org')).toEqual(expected);
+    expect(decideAdHocTarget(schedule({ toEmail: 'friend@example.org' }), unverified, 'ANNA@example.org')).toEqual(expected);
+  });
+
+  it('refuses every other address, with the way to get it allowed', () => {
+    const expected = {
+      allowed: false, reason: 'not-allowed',
+      message: 'Berichte können nur an die verifizierte Adresse deines Kontos oder an den bestätigten Empfänger deines Zeitplans gesendet werden. '
+        + 'Soll der Bericht an eine andere Adresse gehen, trage sie im automatischen Zeitplan ein: Der Besitzer bekommt dann eine Bestätigungsmail.',
+    };
+    expect(decideAdHocTarget(null, null, 'stranger@example.org')).toEqual(expected);
+    expect(decideAdHocTarget(null, undefined, 'stranger@example.org')).toEqual(expected);
+    expect(decideAdHocTarget(schedule({ toEmail: 'friend@example.org' }), unverified, 'stranger@example.org')).toEqual(expected);
+    expect(decideAdHocTarget(schedule({ toEmail: '' }), own, 'stranger@example.org')).toEqual(expected);
+    expect(decideAdHocTarget(schedule({ toEmail: 'friend@example.org' }), { email: '', email_verified: false }, 'stranger@example.org')).toEqual(expected);
   });
 });

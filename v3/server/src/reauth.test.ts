@@ -364,3 +364,164 @@ describe('notice texts (#475, #478)', () => {
     expect(mail.html).toContain('Von allen Geräten abmelden');
   });
 });
+
+describe('verifySecondFactor / checkReauth, without the routes (#498)', () => {
+  async function freshModules() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nagellacke-reauth-unit-'));
+    tmpDirs.push(dir);
+    process.env.DATA_DIR = dir;
+    vi.resetModules();
+    const db = await import('./db');
+    const reauth = await import('./reauth');
+    const totp = await import('./totp');
+    return { db, reauth, totp };
+  }
+  type Mods = Awaited<ReturnType<typeof freshModules>>;
+
+  /** An account with 2FA on; `recovery` are plain recovery codes, stored hashed like the real thing. */
+  function totpUser(m: Mods, recovery: string[] = [], extra: Record<string, unknown> = {}) {
+    m.db.createUser('alice', 'pw-hash');
+    m.db.patchUser('alice', {
+      totp_enabled: true, totp_secret: SECRET, recovery_codes: recovery.map((c) => m.totp.hashRecoveryCode(c)), ...extra,
+    });
+    const user = m.db.getUser('alice');
+    if (!user) throw new Error('user missing');
+    return user;
+  }
+
+  afterEach(() => vi.useRealTimers());
+
+  describe('verifySecondFactor', () => {
+    it('accepts a current code, also with whitespace around it, once per time step', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      expect(m.reauth.verifySecondFactor(user, `  ${freshCode()}\n`)).toBe(true);
+      // the replay guard: the same step is spent now
+      expect(m.reauth.verifySecondFactor(m.db.getUser('alice')!, freshCode())).toBe(false);
+    });
+
+    it('refuses a six-digit code that is wrong, stale, or not exactly six digits', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      expect(m.reauth.verifySecondFactor(user, staleCode())).toBe(false);
+      expect(m.reauth.verifySecondFactor(user, '000000')).toBe(false);
+      expect(m.reauth.verifySecondFactor(user, `${freshCode()}1`)).toBe(false);
+      expect(m.reauth.verifySecondFactor(user, '')).toBe(false);
+    });
+
+    it('treats anything that is not a bare six-digit code as a recovery code, even if it ends or starts with six digits', async () => {
+      const m = await freshModules();
+      const user = totpUser(m, ['ab123456', '654321cd', 'PLAIN-CODE']);
+      // These would be misread as TOTP codes by an unanchored pattern and then be refused.
+      expect(m.reauth.verifySecondFactor(user, 'ab123456')).toBe(true);
+      expect(m.reauth.verifySecondFactor(m.db.getUser('alice')!, '654321cd')).toBe(true);
+      expect(m.reauth.verifySecondFactor(m.db.getUser('alice')!, ' plain-code ')).toBe(true);
+      // spent once
+      expect(m.reauth.verifySecondFactor(m.db.getUser('alice')!, 'PLAIN-CODE')).toBe(false);
+    });
+
+    it('does not run the TOTP check for an account without a secret', async () => {
+      const m = await freshModules();
+      m.db.createUser('alice', 'pw-hash');
+      const user = m.db.getUser('alice')!;
+      expect(m.reauth.verifySecondFactor({ ...user, totp_secret: undefined }, freshCode())).toBe(false);
+    });
+
+    it('accepts the very first time step (counter 0) for an account that never used a code', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const code = new TOTP({ secret: Secret.fromBase32(SECRET), digits: 6, period: 30 }).generate({ timestamp: 0 });
+      expect(user.totp_last_counter).toBeUndefined();
+      expect(m.reauth.verifySecondFactor(user, code)).toBe(true);
+    });
+
+    it('refuses a code whose step is not newer than the last accepted one', async () => {
+      const m = await freshModules();
+      const step = Math.floor(Date.now() / 30_000);
+      const user = totpUser(m, [], { totp_last_counter: step });
+      expect(m.reauth.verifySecondFactor(user, freshCode())).toBe(false);
+    });
+  });
+
+  describe('checkReauth', () => {
+    const passwordOk = () => true;
+    const NOW = 1_800_000_000_000;
+
+    it('asks for the code when 2FA is on and none came, counting whitespace as none', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      for (const code of [undefined, '', '   ', 42]) {
+        const refusal = m.reauth.checkReauth(user, { password: 'x', code }, passwordOk, { now: NOW });
+        expect(refusal?.status).toBe(403);
+        expect(refusal?.body.totpRequired).toBe(true);
+        expect(refusal?.body.error).toBe(m.reauth.CODE_REQUIRED);
+      }
+      expect(m.reauth.CODE_REQUIRED).toMatch(/Authenticator/);
+      expect(m.reauth.WRONG_CODE).toBe('Ungültiger Code');
+      expect(m.reauth.WRONG_PASSWORD).toBe('Passwort falsch');
+    });
+
+    it('answers a wrong code with its own message, and passes a right one', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      const wrong = m.reauth.checkReauth(user, { password: 'x', code: '000000' }, passwordOk, { now: NOW });
+      expect(wrong).toEqual({ status: 403, body: { error: m.reauth.WRONG_CODE, totpRequired: true } });
+      expect(m.reauth.checkReauth(m.db.getUser('alice')!, { password: 'x', code: freshCode() }, passwordOk, { now: NOW })).toBeNull();
+    });
+
+    it('skips the second factor when the caller turns step-up off', async () => {
+      const m = await freshModules();
+      const user = totpUser(m);
+      expect(m.reauth.checkReauth(user, { password: 'x' }, passwordOk, { stepUp: false, now: NOW })).toBeNull();
+    });
+
+    it('does not ask an account without 2FA for a code', async () => {
+      const m = await freshModules();
+      m.db.createUser('bob', 'pw-hash');
+      expect(m.reauth.checkReauth(m.db.getUser('bob')!, { password: 'x' }, passwordOk, { now: NOW })).toBeNull();
+    });
+
+    it('answers a missing or non-string password as wrong, without spending a guess', async () => {
+      const m = await freshModules();
+      m.db.createUser('bob', 'pw-hash');
+      const bob = m.db.getUser('bob')!;
+      const verify = vi.fn(() => true);
+      for (const password of [undefined, '', 5, null]) {
+        expect(m.reauth.checkReauth(bob, { password }, verify, { now: NOW })).toEqual({
+          status: 403, body: { error: m.reauth.WRONG_PASSWORD },
+        });
+      }
+      expect(verify).not.toHaveBeenCalled();
+      expect(m.db.getUser('bob')?.login_fail_count ?? 0).toBe(0);
+    });
+
+    it('reports a lock as 429 with minutes rounded up, singular for one, and a retryAfter of at least one second', async () => {
+      const m = await freshModules();
+      m.db.createUser('bob', 'pw-hash');
+      const bob = m.db.getUser('bob')!;
+      const lockFor = (ms: number) => {
+        m.db.patchUser('bob', { login_locked_until: NOW + ms });
+        return m.reauth.checkReauth(m.db.getUser('bob')!, { password: 'x' }, passwordOk, { now: NOW });
+      };
+      expect(bob).toBeDefined();
+      expect(lockFor(60_000)).toMatchObject({ status: 429, body: { locked: true, retryAfter: 60 } });
+      expect(lockFor(60_000)?.body.error).toContain('1 Minute erneut');
+      expect(lockFor(61_000)).toMatchObject({ body: { retryAfter: 61 } });
+      expect(lockFor(61_000)?.body.error).toContain('2 Minuten erneut');
+      expect(lockFor(1)).toMatchObject({ body: { retryAfter: 1 } });
+      expect(lockFor(1)?.body.error).toContain('1 Minute erneut');
+      expect(lockFor(10 * 60_000)?.body.error).toContain('10 Minuten erneut');
+    });
+
+    it('is locked by the 2FA counter only while 2FA step-up applies', async () => {
+      const m = await freshModules();
+      const user = totpUser(m, [], { totp_locked_until: NOW + 120_000 });
+      expect(m.reauth.checkReauth(user, { password: 'x', code: freshCode() }, passwordOk, { now: NOW }))
+        .toMatchObject({ status: 429, body: { locked: true, retryAfter: 120 } });
+      // Turned off (2FA is being set up): the stale TOTP lock does not block the password check.
+      expect(m.reauth.checkReauth(user, { password: 'x' }, passwordOk, { stepUp: false, now: NOW })).toBeNull();
+    });
+  });
+});

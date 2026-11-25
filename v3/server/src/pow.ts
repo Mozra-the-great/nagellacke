@@ -64,6 +64,7 @@ export function hasLeadingZeroBits(hash: Uint8Array, bits: number): boolean {
   const fullBytes = Math.floor(bits / 8);
   for (let i = 0; i < fullBytes; i++) if (hash[i] !== 0) return false;
   const rest = bits % 8;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - for bits % 8 === 0 the shift below is by 8, and a byte shifted right by 8 is 0 anyway, so the early return only saves work
   if (rest === 0) return true;
   return (hash[fullBytes] >> (8 - rest)) === 0;
 }
@@ -81,12 +82,16 @@ export class PowVerifier {
 
   /** null on success, otherwise why the solution was refused. A successful check spends the salt. */
   verify(input: unknown, now = Date.now()): PowFailure | null {
+    // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - a primitive has no string `salt` property, so the next check refuses it with the same result
     if (!input || typeof input !== 'object') return 'malformed';
     const s = input as Partial<PowSolution>;
     if (typeof s.salt !== 'string' || !/^[0-9a-f]{32}$/.test(s.salt)) return 'malformed';
+    // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Number.isInteger() does not coerce, so it already refuses every non-number; the typeof only narrows the type
     if (typeof s.difficulty !== 'number' || !Number.isInteger(s.difficulty)) return 'malformed';
+    // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Number.isFinite() does not coerce, so it already refuses every non-number; the typeof only narrows the type
     if (typeof s.expires !== 'number' || !Number.isFinite(s.expires)) return 'malformed';
     if (typeof s.sig !== 'string' || s.sig.length > 128) return 'malformed';
+    // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Number.isSafeInteger() does not coerce, so it already refuses every non-number; the typeof only narrows the type
     if (typeof s.n !== 'number' || !Number.isSafeInteger(s.n) || s.n < 0) return 'malformed';
 
     const expected = sign(powKey(this.jwtSecret), s.salt, s.difficulty, s.expires);

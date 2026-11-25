@@ -74,6 +74,34 @@ describe('deletion marker purge (#464)', () => {
     expect(purgeExpiredTombstones(once, NOW)).toBe(once);
   });
 
+  it.each(['polishes', 'customCats', 'manicures', 'stickers'] as const)(
+    'purges when only %s holds an expired marker, and leaves the other collections alone',
+    (key) => {
+      const old = NOW - 100 * DAY;
+      const base: AppData = {
+        polishes: [polish({ id: 'p-live' })],
+        customCats: [cat('c-live')],
+        manicures: [{ id: 'm-live', date: '2026-01-01', createdAt: 1, updatedAt: 1 }],
+        stickers: [{ id: 's-live', name: 'S', type: 'accent', status: 'ok', createdAt: 1, updatedAt: 1 }],
+      };
+      const expiredEntry = {
+        polishes: polish({ id: 'p-old', deletedAt: old }),
+        customCats: cat('c-old', old),
+        manicures: { id: 'm-old', date: '2026-01-01', createdAt: 1, updatedAt: 1, deletedAt: old },
+        stickers: { id: 's-old', name: 'S', type: 'accent', status: 'ok', createdAt: 1, updatedAt: 1, deletedAt: old },
+      }[key];
+      const data = { ...base, [key]: [...base[key], expiredEntry] } as AppData;
+
+      const out = purgeExpiredTombstones(data, NOW);
+
+      expect(out).not.toBe(data);
+      expect(out[key]).toEqual(base[key]);
+      for (const other of (['polishes', 'customCats', 'manicures', 'stickers'] as const).filter((k) => k !== key)) {
+        expect(out[other]).toBe(data[other]); // untouched collections are passed through by reference
+      }
+    },
+  );
+
   it('tolerates missing collections and keeps unknown fields', () => {
     const raw = { polishes: [polish({ deletedAt: NOW - 91 * DAY })], extra: 'kept' } as unknown as AppData;
     const out = purgeExpiredTombstones(raw, NOW) as AppData & { extra: string };

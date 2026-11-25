@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mergeData } from './logic';
@@ -9,7 +9,17 @@ import type { AppData } from './types';
 // android/app/src/test/java/de/nagellacke/domain/MergeFixturesTest.kt, which feeds the
 // same files to the Kotlin port of mergeData. Neither implementation owns the fixtures;
 // see fixtures/merge/README.md for the format and for why `expected` is a projection.
-const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../../../fixtures/merge');
+// Found by walking up instead of a fixed `../../../../`: Stryker (stryker.config.json) runs
+// the tests from a sandbox copy two directories deeper, where the fixed path misses.
+function findFixtureDir(): string {
+  const start = dirname(fileURLToPath(import.meta.url));
+  for (let dir = start; ; dir = dirname(dir)) {
+    const candidate = join(dir, 'fixtures', 'merge');
+    if (existsSync(candidate)) return candidate;
+    if (dirname(dir) === dir) throw new Error(`fixtures/merge not found above ${start}`);
+  }
+}
+const FIXTURE_DIR = findFixtureDir();
 
 interface Fixture {
   name: string;

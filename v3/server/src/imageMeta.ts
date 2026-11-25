@@ -45,8 +45,11 @@ export type ImageKind = 'jpeg' | 'png' | 'webp';
 
 /** The container the file's own magic bytes claim, or null. */
 export function sniffImageKind(buf: Buffer): ImageKind | null {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (length check) - a byte past the end of a Buffer reads as undefined, which never equals the expected magic byte
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (length check) - a byte past the end of a Buffer reads as undefined, which never equals the expected magic byte
   if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (length check) - a Buffer shorter than 4 bytes decodes to fewer than 4 characters, which never equal RIFF
   if (buf.length >= 4 && buf.toString('latin1', 0, 4) === 'RIFF') return 'webp';
   return null;
 }
@@ -74,6 +77,7 @@ const ORIENTATION_TAG = 0x0112;
  * input. Anything unexpected yields 1, "as stored".
  */
 export function readExifOrientation(tiff: Buffer): number {
+  // Stryker disable next-line EqualityOperator: equivalent mutant - a structure of exactly 8 bytes has no room for an IFD (ifd >= 8 and the entry count needs 2 bytes), so the check below answers 1 as well
   if (tiff.length < 8) return 1;
   const order = tiff.toString('latin1', 0, 2);
   if (order !== 'II' && order !== 'MM') return 1;
@@ -82,6 +86,7 @@ export function readExifOrientation(tiff: Buffer): number {
   const u32 = (o: number): number => (le ? tiff.readUInt32LE(o) : tiff.readUInt32BE(o));
   if (u16(2) !== 42) return 1;
   const ifd = u32(4);
+  // Stryker disable next-line EqualityOperator: equivalent mutant - an IFD that ends exactly at the end of the structure has either no entries (answer 1) or an entry that does not fit (answer 1)
   if (ifd < 8 || ifd + 2 > tiff.length) return 1;
   const count = u16(ifd);
   for (let i = 0; i < count; i += 1) {
@@ -111,13 +116,16 @@ export function orientationTiff(orientation: number): Buffer {
 
 const SOI = Buffer.from([0xff, 0xd8]);
 const EOI = Buffer.from([0xff, 0xd9]);
+// Stryker disable next-line StringLiteral: equivalent mutant for the encoding name - an empty one falls back to utf-8, which encodes this ASCII text to the same bytes (the header text itself is pinned by the tests)
 const EXIF_PREFIX = Buffer.from('Exif\0\0', 'latin1');
 
 function hasPrefix(seg: Buffer, offset: number, text: string): boolean {
+  // Stryker disable next-line ConditionalExpression,ArithmeticOperator: equivalent mutants - a segment shorter than the prefix decodes to something shorter than it, which never equals it
   return seg.length >= offset + text.length && seg.toString('latin1', offset, offset + text.length) === text;
 }
 
 function stripJpeg(buf: Buffer): Buffer {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant for the two magic bytes - stripImageMetadata() only calls this after sniffImageKind() saw them; the length check is pinned by a test
   if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) throw new InvalidImageError('not a JPEG');
 
   const out: Buffer[] = [SOI];
@@ -141,6 +149,7 @@ function stripJpeg(buf: Buffer): Buffer {
   while (pos < buf.length) {
     if (buf[pos] !== 0xff) throw new InvalidImageError('JPEG: expected a marker');
     // Any number of 0xFF fill bytes may precede a marker.
+    // Stryker disable next-line ConditionalExpression,EqualityOperator,ArithmeticOperator: equivalent mutants - a byte past the end of a Buffer reads as undefined, which is not 0xFF, so the loop stops there either way
     while (pos + 1 < buf.length && buf[pos + 1] === 0xff) pos += 1;
     if (pos + 1 >= buf.length) break;
     const marker = buf[pos + 1]!;
@@ -179,6 +188,7 @@ function stripJpeg(buf: Buffer): Buffer {
     }
     const keepApp = (marker === 0xe2 && hasPrefix(segment, 4, 'ICC_PROFILE\0'))
       || (marker === 0xee && hasPrefix(segment, 4, 'Adobe'));
+    // Stryker disable next-line EqualityOperator: equivalent mutant - APP0 (0xE0) was handled above and never reaches this line
     if ((marker >= 0xe0 && marker <= 0xef && !keepApp) || marker === 0xfe) continue; // APPn, COM
 
     writeOrientationOnce();
@@ -189,6 +199,7 @@ function stripJpeg(buf: Buffer): Buffer {
       let end = pos;
       for (;;) {
         const ff = buf.indexOf(0xff, end);
+        // Stryker disable next-line EqualityOperator: equivalent mutant - the scan data starts after the SOS header, so an 0xFF can never be found at index 0
         if (ff < 0 || ff + 1 >= buf.length) { end = buf.length; break; }
         const next = buf[ff + 1]!;
         if (next === 0x00 || (next >= 0xd0 && next <= 0xd7)) { end = ff + 2; continue; } // stuffed byte, restart marker
@@ -220,8 +231,10 @@ const PNG_KEEP = new Set([
 
 let crcTable: Uint32Array | undefined;
 function crc32(...parts: Buffer[]): number {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - rebuilding the CRC table on every call gives the same table, only slower
   if (!crcTable) {
     crcTable = new Uint32Array(256);
+    // Stryker disable next-line EqualityOperator: equivalent mutant - a write at index 256 of a 256-entry typed array is ignored
     for (let n = 0; n < 256; n += 1) {
       let c = n;
       for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -239,6 +252,7 @@ function crc32(...parts: Buffer[]): number {
 export function pngChunk(type: string, data: Buffer): Buffer {
   const head = Buffer.alloc(8);
   head.writeUInt32BE(data.length, 0);
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name falls back to utf-8, which is the same for the ASCII chunk types
   head.write(type, 4, 'latin1');
   const tail = Buffer.alloc(4);
   tail.writeUInt32BE(crc32(head.subarray(4), data), 0);
@@ -246,6 +260,7 @@ export function pngChunk(type: string, data: Buffer): Buffer {
 }
 
 function stripPng(buf: Buffer): Buffer {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (length check) - a Buffer shorter than 8 bytes never equals the 8 byte signature
   if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) throw new InvalidImageError('not a PNG');
 
   const out: Buffer[] = [PNG_SIGNATURE];
@@ -265,6 +280,7 @@ function stripPng(buf: Buffer): Buffer {
     pos += 12 + length;
 
     if (!sawHeader && type !== 'IHDR') throw new InvalidImageError('PNG: IHDR must come first');
+    // Stryker disable next-line ConditionalExpression: equivalent mutant - the check above already refused every first chunk that is not IHDR, so "saw the header" is true after any chunk
     if (type === 'IHDR') sawHeader = true;
     if (type === 'eXIf') {
       orientation = readExifOrientation(chunk.subarray(8, 8 + length));
@@ -297,12 +313,14 @@ const VP8X_FLAG_XMP = 0x04;
 /** A RIFF chunk (fourcc, little-endian size, payload, pad byte for an odd size). Exported for the tests. */
 export function webpChunk(fourcc: string, payload: Buffer): Buffer {
   const head = Buffer.alloc(8);
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name falls back to utf-8, which is the same for ASCII chunk names
   head.write(fourcc, 0, 'latin1');
   head.writeUInt32LE(payload.length, 4);
   return payload.length % 2 ? Buffer.concat([head, payload, Buffer.alloc(1)]) : Buffer.concat([head, payload]);
 }
 
 function stripWebp(buf: Buffer): Buffer {
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: equivalent mutants - a Buffer shorter than 12 bytes decodes to something that is not RIFF or not WEBP, so each check also catches what the others would; each is pinned by a test
   if (buf.length < 12 || buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WEBP') {
     throw new InvalidImageError('not a WebP');
   }
@@ -323,6 +341,7 @@ function stripWebp(buf: Buffer): Buffer {
     pos += 8 + size + (size % 2);
 
     if (fourcc === 'EXIF') {
+      // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutants - a payload no longer than the header cannot start with it, or is only the header, and both read as an empty TIFF
       const tiff = payload.length >= EXIF_PREFIX.length && payload.subarray(0, EXIF_PREFIX.length).equals(EXIF_PREFIX)
         ? payload.subarray(EXIF_PREFIX.length) : payload;
       orientation = readExifOrientation(tiff);
@@ -352,8 +371,10 @@ function stripWebp(buf: Buffer): Buffer {
 
   const body = Buffer.concat(kept);
   const head = Buffer.alloc(12);
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name falls back to utf-8, which is the same for ASCII
   head.write('RIFF', 0, 'latin1');
   head.writeUInt32LE(4 + body.length, 4);
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name falls back to utf-8, which is the same for ASCII
   head.write('WEBP', 8, 'latin1');
   return Buffer.concat([head, body]);
 }
