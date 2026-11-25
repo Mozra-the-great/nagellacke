@@ -1,0 +1,34 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stryker-mutator/stryker/master/packages/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/logic.ts"
+  ],
+  "reporters": [
+    "clear-text",
+    "progress",
+    "html",
+    "json"
+  ],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "concurrency": 4,
+  "timeoutMS": 15000,
+  "timeoutFactor": 2,
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "ignorePatterns": [
+    "reports",
+    ".stryker-tmp"
+  ],
+  "thresholds": {
+    "high": 100,
+    "low": 99,
+    "break": 100
+  }
+}

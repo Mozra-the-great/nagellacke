@@ -83,6 +83,82 @@ jobs:
         working-directory: .
         run: python3 -m unittest discover -s scripts/ci -p "test_*.py"
 
+  mutation:
+    # Mutation testing of the modules that decide who may see what and which side
+    # of a sync wins (#498, scope: `mutate` in v3/packages/core/stryker.config.json
+    # and v3/server/stryker.config.json). Only the scoped files this PR changes are
+    # mutated, and only on pull requests; the whole scope runs weekly in
+    # mutation.yml, one job per file.
+    #
+    # NOT a required check (yet): the runtime is not known well enough - a PR that
+    # touches one scoped file takes minutes, one that touches all of them hours. It must
+    # still never be skipped through a workflow-level `paths` filter - a PR that
+    # touches no scoped file runs the job and passes in seconds, see the note on
+    # `pull_request` above. The `if:` is job-level, so push/dispatch runs report
+    # it as skipped.
+    #
+    # A surviving mutant fails the job (`thresholds.break`). Kill it with a test
+    # that asserts the behaviour, or - for a truly equivalent mutant - add
+    # `// Stryker disable next-line <mutator>: <reason>`.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      # Through env, never `${{ }}` inside run: (see CLAUDE.md).
+      BASE_REF: ${{ github.base_ref }}
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The diff against the merge base needs history, not the shallow default.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build core
+        # The server tests import @nagellacke/core through its built dist/.
+        run: npm run build:core
+
+      - name: Mutate changed scoped files (core)
+        working-directory: v3/packages/core
+        run: |
+          files="$(node ../../scripts/mutation-changed.mjs . "origin/$BASE_REF")"
+          if [ -z "$files" ]; then
+            echo "No scoped @nagellacke/core file changed - nothing to mutate."
+            exit 0
+          fi
+          echo "Mutating: $files"
+          npx stryker run --mutate "$files"
+
+      - name: Mutate changed scoped files (server)
+        working-directory: v3/server
+        run: |
+          files="$(node ../scripts/mutation-changed.mjs . "origin/$BASE_REF")"
+          if [ -z "$files" ]; then
+            echo "No scoped server file changed - nothing to mutate."
+            exit 0
+          fi
+          echo "Mutating: $files"
+          npx stryker run --mutate "$files"
+
+      - name: Upload mutation report
+        # The HTML report names every surviving mutant with the line and the change.
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-report-pr
+          path: |
+            v3/packages/core/reports/mutation/
+            v3/server/reports/mutation/
+          if-no-files-found: ignore
+
   build-android:
     # FROZEN since #372 (Android EOL, tag `android-final`): the job is kept, not
     # deleted, and only runs when the repository variable ANDROID_ENABLED is
