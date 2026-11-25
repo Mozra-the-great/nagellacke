@@ -1,6 +1,9 @@
 import type { Polish, Sticker, Manicure, Category, FilterState, AppData } from './types';
 import { hexToHue, normalizeFinish } from './utils';
 
+// Stryker disable all: mutation testing (#498, stryker.config.json) covers mergeData() and the
+// tombstone purge only; the filter/sort helpers up to the next restore are out of its scope.
+
 /**
  * Case-folds a field for substring matching, tolerating a missing value.
  *
@@ -74,6 +77,8 @@ export function activeCategories(cats: Category[]): Category[] {
   return cats.filter((c) => !c.deletedAt);
 }
 
+// Stryker restore all
+
 // Merge two AppData objects: last updatedAt wins per item.
 // Items with deletedAt are kept (soft-delete) so other devices can remove them.
 //
@@ -129,6 +134,7 @@ export function isExpiredTombstone(
   now: number = Date.now(),
 ): boolean {
   const at = item?.deletedAt;
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: equivalent mutants - Number.isFinite() does not coerce, so it is already false for every non-number; the typeof check only narrows the type for the subtraction
   return typeof at === 'number' && Number.isFinite(at) && at > 0 && now - at >= TOMBSTONE_RETENTION_MS;
 }
 

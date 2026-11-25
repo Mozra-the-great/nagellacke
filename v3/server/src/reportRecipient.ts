@@ -69,6 +69,7 @@ function secretFor(jwtSecret: string): Buffer {
 }
 
 export function signRecipientToken(payload: RecipientTokenPayload, jwtSecret: string): string {
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name makes Buffer.from() fall back to utf-8 anyway
   const body = Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url');
   const sig = crypto.createHmac('sha256', secretFor(jwtSecret)).update(body).digest('base64url');
   return `${body}.${sig}`;
@@ -82,6 +83,7 @@ export function signRecipientToken(payload: RecipientTokenPayload, jwtSecret: st
 export function verifyRecipientToken(token: unknown, jwtSecret: string, now: number = Date.now()): RecipientTokenPayload | null {
   if (typeof token !== 'string' || token.length > 2048) return null;
   const dot = token.indexOf('.');
+  // Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,ArithmeticOperator: equivalent mutants - a fast path only; a token without a usable dot ends in an unparsable body, an empty signature or a length mismatch, all of which return null below
   if (dot <= 0 || dot === token.length - 1) return null;
   const body = token.slice(0, dot);
   const sig = token.slice(dot + 1);
@@ -92,14 +94,19 @@ export function verifyRecipientToken(token: unknown, jwtSecret: string, now: num
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
 
   let payload: unknown;
+  // Stryker disable BlockStatement: equivalent mutant - an empty catch leaves `payload` undefined, which the check after the try refuses
   try {
     payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
   } catch {
     return null;
   }
+  // Stryker restore BlockStatement
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - a primitive payload has no `exp`, so the check below refuses it with the same result
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as Partial<RecipientTokenPayload>;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Number.isFinite() does not coerce, so it already refuses every non-number; the typeof only narrows the type
   if (typeof p.exp !== 'number' || !Number.isFinite(p.exp) || p.exp * 1000 <= now) return null;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check on `c`) - Number.isInteger() does not coerce, so it already refuses every non-number
   if (typeof p.u !== 'string' || typeof p.e !== 'string' || typeof p.c !== 'number' || !Number.isInteger(p.c)) return null;
   return { exp: p.exp, u: p.u, e: p.e, c: p.c };
 }
@@ -126,6 +133,7 @@ export function isRecipientConfirmed(cfg: ScheduleConfig | null, user: Pick<User
 
 /** Timestamps still inside the 24 h window. */
 export function recent(stamps: number[] | undefined, now: number): number[] {
+  // Stryker disable next-line ArrayDeclaration: equivalent mutant - a stand-in entry that is not a number fails both comparisons below and is filtered out like nothing
   return (stamps ?? []).filter((t) => t > now - DAY_MS && t <= now);
 }
 
@@ -147,6 +155,7 @@ export function checkChangeLimit(cfg: ScheduleConfig | null, now: number): Limit
 export function checkMailLimit(cfg: ScheduleConfig | null, now: number): LimitReason | null {
   const sent = recent(cfg?.confirmMailsAt, now);
   if (sent.length >= MAX_CONFIRM_MAILS_PER_DAY) return 'daily';
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutants - with no mail sent Math.max() is -Infinity, so the spacing check is false either way
   if (sent.length > 0 && now - Math.max(...sent) < MIN_CONFIRM_INTERVAL_MS) return 'too-soon';
   return null;
 }
@@ -173,6 +182,7 @@ export class AddressThrottle {
     this.hits.set(key, stamps);
     while (this.hits.size > this.maxKeys) {
       const oldest = this.hits.keys().next().value;
+      // Stryker disable next-line ConditionalExpression: equivalent mutant - the map is not empty inside this loop, so keys().next() always has a value; the guard only satisfies the type checker
       if (oldest === undefined) break;
       this.hits.delete(oldest);
     }

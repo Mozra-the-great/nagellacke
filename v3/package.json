@@ -14,7 +14,8 @@
     "build:sync": "npm run build --workspace=packages/sync",
     "build:server": "npm run build --workspace=server",
     "build:web": "npm run build --workspace=apps/web",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:mutation": "npm run test:mutation --workspaces --if-present"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -23,5 +24,9 @@
     "esbuild": "^0.28.1",
     "glob": "^14.0.2",
     "minimatch": "^11.0.2"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1"
   }
 }

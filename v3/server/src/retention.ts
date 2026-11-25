@@ -50,6 +50,7 @@ interface Logger {
 }
 
 function errCode(e: unknown): string {
+  // Stryker disable next-line OptionalChaining: equivalent mutant - errCode() is only called with something that was thrown, which is never null or undefined here
   const code = (e as { code?: unknown } | null)?.code;
   return typeof code === 'string' ? code : 'error';
 }
@@ -57,12 +58,15 @@ function errCode(e: unknown): string {
 // ── pending_deletions.json ───────────────────────────────────────────────────
 
 function isEntry(v: unknown): v is PendingDeletion {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - a primitive has no id, so the field checks below refuse it with the same result
   if (!v || typeof v !== 'object') return false;
   const e = v as Record<string, unknown>;
   const strings = (x: unknown): boolean => Array.isArray(x) && x.every((s) => typeof s === 'string');
+  // Stryker disable ConditionalExpression: equivalent mutant in the typeof check of deletedAt - Number.isFinite() does not coerce, so it already refuses every non-number (every other check in this statement is pinned by the tests)
   return typeof e.id === 'string' && typeof e.dir === 'string' && e.dir !== '' &&
     typeof e.deletedAt === 'number' && Number.isFinite(e.deletedAt) &&
     strings(e.files) && strings(e.photos);
+  // Stryker restore ConditionalExpression
 }
 
 /**
@@ -139,13 +143,16 @@ export interface PurgeSummary {
 function removeInside(root: string, ...segments: string[]): 'removed' | 'absent' | 'unsafe' {
   const base = path.resolve(root);
   const target = path.resolve(base, ...segments);
+  // Stryker disable next-line StringLiteral: equivalent mutant - the caller only compares the result with the string removed, so any other value reads the same
   if (!target.startsWith(base + path.sep)) return 'unsafe';
   try {
     fs.lstatSync(target);
   } catch (e) {
+    // Stryker disable next-line StringLiteral: equivalent mutant - the caller only compares the result with the string removed, so any other value reads the same
     if ((e as { code?: unknown }).code === 'ENOENT') return 'absent';
     throw e;
   }
+  // Stryker disable next-line ObjectLiteral,BooleanLiteral: equivalent mutants - force only matters when the file vanishes between the lstat above and this call, and a directory fails either way
   fs.rmSync(target, { force: true });
   return 'removed';
 }
@@ -171,6 +178,7 @@ function userDirs(): string[] {
 function scanReferences(includeDeletedCollections: boolean): { refs: Set<string>; collections: number } | null {
   const refs = new Set<string>();
   let collections = 0;
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: equivalent mutants - a non-string or empty value added to the set can never equal a photo file name
   const add = (v: unknown): void => { if (typeof v === 'string' && v) refs.add(v); };
   for (const dir of userDirs()) {
     const names: string[] = [];
@@ -185,19 +193,23 @@ function scanReferences(includeDeletedCollections: boolean): { refs: Set<string>
     for (const name of names) {
       let data: Record<string, unknown>;
       try {
+        // Stryker disable next-line StringLiteral: equivalent mutant - without an encoding readFileSync returns a Buffer, which JSON.parse() stringifies to the same text
         const raw: unknown = JSON.parse(fs.readFileSync(path.join(USER_DATA_DIR, dir, name), 'utf-8'));
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
         data = raw as Record<string, unknown>;
       } catch {
         return null;
       }
+      // Stryker disable next-line UpdateOperator: equivalent mutant - the caller only asks whether the count is zero, and a count that only ever moves one way from zero is non-zero either way
       collections++;
+      // Stryker disable next-line ArrayDeclaration: equivalent mutant - a stand-in string entry has no photo field, so it contributes nothing
       const list = (k: string): Record<string, unknown>[] => (Array.isArray(data[k]) ? data[k] as Record<string, unknown>[] : []);
       for (const p of list('polishes')) add(p?.photo);
       for (const s of list('stickers')) add(s?.photo);
       for (const m of list('manicures')) {
         add(m?.photo);
         const slots = m?.photos;
+        // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Object.values() of a non-object primitive gives characters or nothing, none of which is a photo file name
         if (slots && typeof slots === 'object') for (const f of Object.values(slots)) add(f);
       }
     }
@@ -234,6 +246,7 @@ export function purgePendingDeletions(now: number = Date.now(), logger: Logger =
   const summary: PurgeSummary = { entriesPurged: 0, entriesFailed: 0, collectionsRemoved: 0, photosRemoved: 0, photosKept: 0 };
   const entries = readPending(now, logger);
   const due = entries.filter((e) => now - e.deletedAt >= ADMIN_DELETION_RETENTION_MS);
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - with nothing due the loop and the writes below do nothing either
   if (due.length === 0) return summary;
 
   const dirsToTidy = new Set<string>();
@@ -247,7 +260,9 @@ export function purgePendingDeletions(now: number = Date.now(), logger: Logger =
       }
       dirsToTidy.add(entry.dir);
       if (entry.photos.length > 0) {
+        // Stryker disable next-line ConditionalExpression: equivalent mutant - the scan of the live collections gives the same set every time, so scanning again per entry only costs time
         if (refs === undefined) refs = referencedByAnyAccount();
+        // Stryker disable next-line StringLiteral: equivalent mutant for the message - only the code is ever logged; the code string is pinned by a test
         if (refs === null) throw Object.assign(new Error('collections unreadable'), { code: 'EUNREADABLE' });
         for (const name of entry.photos) {
           if (name === '' || name !== path.basename(name)) { logger.warn(`[retention] entry ${entry.id}: unexpected photo name skipped.`); continue; }
@@ -320,6 +335,7 @@ export function purgeStoredTombstones(now: number = Date.now(), logger: Logger =
     const file = path.join(USER_DATA_DIR, dir, 'data.json');
     try {
       if (!fs.existsSync(file)) continue;
+      // Stryker disable next-line StringLiteral: equivalent mutant - without an encoding readFileSync returns a Buffer, which JSON.parse() stringifies to the same text
       const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf-8'));
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { unreadable++; continue; }
       const purged = purgeExpiredTombstones(raw as Partial<AppData>, now);
@@ -419,6 +435,7 @@ export function sweepOrphanPhotos(now: number = Date.now(), logger: Logger = con
   for (const name of names) {
     try {
       const st = fs.lstatSync(path.join(PHOTOS_DIR, name));
+      // Stryker disable next-line ConditionalExpression: equivalent mutant - the listing above already kept regular files only; this guards the moment between listing and lstat
       if (!st.isFile()) continue;
       if (now - st.mtimeMs < ORPHAN_PHOTO_GRACE_MS) { summary.withinGrace++; continue; }
       if (scan.refs.has(name) || pendingPhotos.has(name)) { summary.referenced++; continue; }
@@ -459,8 +476,11 @@ export interface RecipientPurgeSummary {
  * has been unconfirmed for far longer than the TTL.
  */
 function pendingSince(cfg: ScheduleConfig): number | null {
+  // Stryker disable ArrayDeclaration,ConditionalExpression: equivalent mutants - a stand-in entry that is not a number is filtered out like a missing list, and Number.isFinite() does not coerce, so the typeof check in the filter changes nothing
   const stamps = [cfg.confirmSentAt, ...(cfg.confirmMailsAt ?? []), ...(cfg.recipientChangesAt ?? [])]
     .filter((t): t is number => typeof t === 'number' && Number.isFinite(t));
+  // Stryker restore ArrayDeclaration,ConditionalExpression
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutants - with no timestamps Math.max() is -Infinity, which reads as long ago exactly like null
   return stamps.length > 0 ? Math.max(...stamps) : null;
 }
 
@@ -509,9 +529,11 @@ export function purgeUnconfirmedRecipients(now: number = Date.now(), logger: Log
     if (recipientStatus(cfg, user).status !== 'pending') continue;
     // A verified own address is confirmed already (recipientStatus); an unverified one is judged
     // like any other pending recipient (#483).
+    // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutants - recipientStatus() above already answers confirmed for a verified own address, so this line is never reached for one
     if (user?.email && user.email_verified && normalizeEmail(user.email) === to) continue;
     if (isAddressBlocked(cfg, user, cfg.toEmail)) continue;
     const since = pendingSince(cfg);
+    // Stryker disable next-line ConditionalExpression: equivalent mutant - for a null `since` the subtraction gives the current time, which is never inside the TTL
     if (since !== null && now - since < UNCONFIRMED_RECIPIENT_TTL_MS) { summary.waiting++; continue; }
     store.set(key, {
       ...cfg,

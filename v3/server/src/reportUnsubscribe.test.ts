@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createHmac } from 'node:crypto';
 import * as nodemailer from 'nodemailer';
 import {
-  applyUnsubscribe, isAddressBlocked, MAX_UNSUBSCRIBED_ADDRESSES, signUnsubscribeToken, unsubscribeLinks, verifyUnsubscribeToken,
+  applyUnsubscribe, BLOCKED_MESSAGE, isAddressBlocked, MAX_UNSUBSCRIBED_ADDRESSES, signUnsubscribeToken, unsubscribeLinks, verifyUnsubscribeToken,
 } from './reportUnsubscribe';
 import { signRecipientToken } from './reportRecipient';
 import type { ScheduleConfig } from './db';
@@ -155,5 +156,109 @@ describe('unsubscribeLinks and the RFC 8058 headers', () => {
     const raw = (info as unknown as { message: Buffer }).message.toString('utf-8').replace(/\r?\n[ \t]+/g, ' ');
     expect(raw).toContain(`List-Unsubscribe: <${l.postUrl}>`);
     expect(raw).toContain('List-Unsubscribe-Post: List-Unsubscribe=One-Click');
+  });
+});
+
+describe('unsubscribe token, refusals under a valid signature (#498)', () => {
+  // The documented key derivation, written out so a forged payload can be signed correctly.
+  const forge = (rawJson: string, secret = SECRET): string => {
+    const key = createHmac('sha256', secret).update('nagellacke:report-unsubscribe:v1').digest();
+    const body = Buffer.from(rawJson, 'utf-8').toString('base64url');
+    return `${body}.${createHmac('sha256', key).update(body).digest('base64url')}`;
+  };
+  const good = { p: 'unsub', u: 'anna', e: FRIEND };
+
+  it('accepts a well-formed forged payload, so every refusal below is down to its one change', () => {
+    expect(verifyUnsubscribeToken(forge(JSON.stringify(good)), SECRET)).toEqual({ u: 'anna', e: FRIEND });
+  });
+
+  it('signs under the documented context and purpose', () => {
+    const mine = signUnsubscribeToken({ u: 'anna', e: 'Friend@Example.org' }, SECRET);
+    expect(mine).toBe(forge('{"p":"unsub","u":"anna","e":"friend@example.org"}'));
+  });
+
+  it.each<[string, string]>([
+    ['not JSON', 'not json'],
+    ['null', 'null'],
+    ['a number', '123'],
+    ['a string', '"text"'],
+    ['another purpose', JSON.stringify({ ...good, p: 'confirm' })],
+    ['no purpose', JSON.stringify({ u: 'anna', e: FRIEND })],
+    ['a numeric user', JSON.stringify({ ...good, u: 5 })],
+    ['a missing user', JSON.stringify({ p: 'unsub', e: FRIEND })],
+    ['an empty user', JSON.stringify({ ...good, u: '' })],
+    ['a numeric address', JSON.stringify({ ...good, e: 5 })],
+    ['a missing address', JSON.stringify({ p: 'unsub', u: 'anna' })],
+    ['an empty address', JSON.stringify({ ...good, e: '' })],
+  ])('refuses a validly signed payload with %s', (_name, raw) => {
+    expect(verifyUnsubscribeToken(forge(raw), SECRET)).toBeNull();
+  });
+
+  it('refuses a token that is not a string, without throwing', () => {
+    for (const t of [undefined, null, 42, {}, ['a.b']]) expect(verifyUnsubscribeToken(t, SECRET)).toBeNull();
+  });
+
+  it('accepts a token of exactly 2048 characters and refuses 2049', () => {
+    const build = (len: number): string => signUnsubscribeToken({ u: 'u'.repeat(len), e: FRIEND }, SECRET);
+    let len = 1200;
+    while (build(len).length < 2048) len++;
+    expect(build(len).length).toBe(2048);
+    expect(verifyUnsubscribeToken(build(len), SECRET)).not.toBeNull();
+    expect(build(len + 1).length).toBeGreaterThan(2048);
+    expect(verifyUnsubscribeToken(build(len + 1), SECRET)).toBeNull();
+  });
+
+  it('refuses anything without a body and a signature around one dot', () => {
+    const [body, sig] = signUnsubscribeToken({ u: 'anna', e: FRIEND }, SECRET).split('.');
+    for (const t of ['', 'nodot', `.${sig}`, `${body}.`, '.']) expect(verifyUnsubscribeToken(t, SECRET)).toBeNull();
+  });
+
+  it('answers a signature of the wrong length with null, not an exception', () => {
+    const [body, sig] = signUnsubscribeToken({ u: 'anna', e: FRIEND }, SECRET).split('.');
+    expect(verifyUnsubscribeToken(`${body}.${sig.slice(1)}`, SECRET)).toBeNull();
+    expect(verifyUnsubscribeToken(`${body}.${sig}A`, SECRET)).toBeNull();
+  });
+});
+
+describe('opt-out state, edge cases (#498)', () => {
+  const user = { email: OWN, email_verified: true };
+  const cfg = (extra: Partial<ScheduleConfig> = {}): ScheduleConfig => ({
+    enabled: true, frequency: 'weekly', toEmail: FRIEND, confirmedEmail: FRIEND, confirmedAt: 1, confirmSeq: 3, confirmSentAt: 2, ...extra,
+  });
+
+  it('never treats a blank address as blocked, even if a blank one was stored', () => {
+    const odd = cfg({ unsubscribedEmails: [''] });
+    expect(isAddressBlocked(odd, user, ' ')).toBe(false);
+    expect(isAddressBlocked(odd, user, '')).toBe(false);
+    expect(isAddressBlocked(odd, user, '\t\n')).toBe(false);
+    expect(isAddressBlocked(null, user, FRIEND)).toBe(false);
+  });
+
+  it('blocks only addresses on the list, by normalised spelling', () => {
+    const c = cfg({ unsubscribedEmails: [FRIEND] });
+    expect(isAddressBlocked(c, user, `  ${FRIEND.toUpperCase()} `)).toBe(true);
+    expect(isAddressBlocked(c, user, 'other@example.org')).toBe(false);
+    expect(isAddressBlocked(cfg(), user, FRIEND)).toBe(false); // no list at all
+    expect(isAddressBlocked(cfg({ unsubscribedEmails: [OWN] }), user, OWN)).toBe(false); // own verified address
+    expect(isAddressBlocked(cfg({ unsubscribedEmails: [OWN] }), { email: OWN, email_verified: false }, OWN)).toBe(true);
+    expect(isAddressBlocked(cfg({ unsubscribedEmails: [OWN] }), null, OWN)).toBe(true);
+  });
+
+  it('for the own verified address leaves the confirmation counters alone', () => {
+    const r = applyUnsubscribe(cfg({ toEmail: OWN, confirmedEmail: OWN }), user, { u: 'anna', e: OWN }, 1000)!;
+    expect(r.cfg.confirmSeq).toBe(3);
+    expect(r.cfg.confirmSentAt).toBe(2);
+  });
+
+  it('for a third-party recipient bumps the sequence from zero when there was none', () => {
+    const r = applyUnsubscribe(cfg({ confirmSeq: undefined }), user, { u: 'anna', e: FRIEND }, 1000)!;
+    expect(r.cfg.confirmSeq).toBe(1);
+  });
+
+  it('words the refusal for a blocked address', () => {
+    expect(BLOCKED_MESSAGE).toBe(
+      'Diese Adresse hat die Berichte dieses Kontos abbestellt und bekommt keine weiteren Mails mehr, auch keine Bestätigungsmail. '
+      + 'Trage eine andere Adresse ein.',
+    );
   });
 });

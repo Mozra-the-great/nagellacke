@@ -9,6 +9,9 @@ import type { StoredPasskey } from './passkeys';
 import { BRANDING_PRESETS, DEFAULT_BRANDING_SETTINGS } from './branding';
 import type { BrandingPreset, BrandingSettings } from './branding';
 
+// Stryker disable all: mutation testing (#498, stryker.config.json) covers only the username
+// canonicalisation and the photo-ownership check in this file; the rest is out of scope.
+
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -27,6 +30,8 @@ fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 const EMPTY_DATA: AppData = { polishes: [], customCats: [], manicures: [], stickers: [] };
 
 export const USER_DATA_DIR = path.join(DATA_DIR, 'users');
+
+// Stryker restore all
 
 /**
  * The canonical form of a username (#445): Unicode NFKC, then lowercase. Every
@@ -47,6 +52,8 @@ export function canonicalUsername(username: string): string {
 export function sameUsername(a: string, b: string): boolean {
   return canonicalUsername(a) === canonicalUsername(b);
 }
+
+// Stryker disable all
 
 /**
  * Maps a username to a filesystem-safe directory name. Usernames are
@@ -108,6 +115,8 @@ export function setData(username: string, data: AppData): void {
   writeDataFile(userDataFile(username), data);
 }
 
+// Stryker restore all
+
 /**
  * Whether `filename` is referenced by one of the user's own records —
  * polishes, stickers, or a manicure photo/photo slot. Since #352 only the
@@ -150,9 +159,11 @@ let photoOwnersCache: Map<string, string> | null = null;
 function photoOwners(): Map<string, string> {
   if (photoOwnersCache) return photoOwnersCache;
   try {
+    // Stryker disable StringLiteral: equivalent mutant - without an encoding readFileSync returns a Buffer, which JSON.parse() stringifies to the same text
     const raw: unknown = fs.existsSync(PHOTO_OWNERS_FILE)
       ? JSON.parse(fs.readFileSync(PHOTO_OWNERS_FILE, 'utf-8'))
       : {};
+    // Stryker restore StringLiteral
     photoOwnersCache = new Map(
       Object.entries(raw && typeof raw === 'object' ? raw : {})
         .filter((e): e is [string, string] => typeof e[1] === 'string'),
@@ -206,6 +217,8 @@ export function canAccessPhoto(username: string, filename: string): boolean {
   if (owner !== undefined) return sameUsername(owner, username);
   return userOwnsPhoto(username, filename);
 }
+
+// Stryker disable all
 
 function referencedPhotos(data: AppData): Set<string> {
   const files = new Set<string>();

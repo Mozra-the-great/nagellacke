@@ -46,6 +46,7 @@ export class OutboundBlockedError extends Error {
 type V4Range = readonly [string, number];
 
 const BLOCKED_V4: readonly V4Range[] = [
+  // Stryker disable next-line StringLiteral: equivalent mutant - v4ToInt('') is null, which the arithmetic below reads as 0, the same as the real base address 0.0.0.0
   ['0.0.0.0', 8],        // "this network", includes 0.0.0.0 (reaches localhost on Linux)
   ['10.0.0.0', 8],       // RFC 1918
   ['100.64.0.0', 10],    // CGNAT / Tailscale
@@ -65,11 +66,14 @@ const BLOCKED_V4: readonly V4Range[] = [
 
 function v4ToInt(ip: string): number | null {
   const parts = ip.split('.');
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check; every caller has passed the input through net.isIP() / net.isIPv6(), which only accept well-formed literals, so this failure path cannot be reached (and it fails closed if it ever is)
   if (parts.length !== 4) return null;
   let n = 0;
   for (const p of parts) {
+    // Stryker disable next-line ConditionalExpression,Regex: equivalent mutants - defensive check, see above: net.isIP() has already refused every part that is not 1-3 digits
     if (!/^\d{1,3}$/.test(p)) return null;
     const v = Number(p);
+    // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check, see above: net.isIP() has already refused every octet above 255
     if (v > 255) return null;
     n = n * 256 + v;
   }
@@ -78,6 +82,7 @@ function v4ToInt(ip: string): number | null {
 
 function isBlockedV4(ip: string): boolean {
   const n = v4ToInt(ip);
+  // Stryker disable next-line ConditionalExpression,BooleanLiteral: equivalent mutants - defensive check, see above; the block list entries and every input literal parse
   if (n === null) return true; // unparsable: refuse rather than guess
   return BLOCKED_V4.some(([net_, bits]) => {
     const base = v4ToInt(net_) as number;
@@ -88,6 +93,7 @@ function isBlockedV4(ip: string): boolean {
 
 /** Parses an IPv6 literal (incl. `::` and a trailing dotted quad) to 128 bits. */
 function v6ToBigInt(ip: string): bigint | null {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check; isBlockedIp() and inV6() only pass literals that net.isIP() / the policy table already vouch for
   if (!net.isIPv6(ip)) return null;
   let text = ip;
   const zone = text.indexOf('%');
@@ -98,21 +104,28 @@ function v6ToBigInt(ip: string): bigint | null {
   const tail = text.slice(lastColon + 1);
   if (tail.includes('.')) {
     const v4 = v4ToInt(tail);
+    // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check; net.isIPv6() has already validated a trailing dotted quad
     if (v4 === null) return null;
     text = `${text.slice(0, lastColon + 1)}${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
   }
 
   const halves = text.split('::');
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check; net.isIPv6() accepts at most one ::
   if (halves.length > 2) return null;
   const head = halves[0] ? halves[0].split(':') : [];
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - for an address without :: halves[1] is undefined, so the second operand already gives the same empty list
   const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
   const missing = 8 - head.length - rest.length;
+  // Stryker disable next-line ConditionalExpression,EqualityOperator: equivalent mutants - defensive check; net.isIPv6() accepts a :: only where it stands for at least one group and a written-out address only with all eight, so the failure path cannot be reached
   if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - without :: the number of missing groups is 0, which is what the other branch yields
   const groups = [...head, ...Array<string>(halves.length === 2 ? missing : 0).fill('0'), ...rest];
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - defensive check; after the validation above there are always eight groups
   if (groups.length !== 8) return null;
 
   let value = 0n;
   for (const g of groups) {
+    // Stryker disable next-line ConditionalExpression,Regex: equivalent mutants - defensive check; net.isIPv6() has already refused every group that is not 1-4 hex digits
     if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
     value = (value << 16n) | BigInt(parseInt(g, 16));
   }
@@ -132,6 +145,7 @@ function bigToV4(low32: bigint): string {
 
 function isBlockedV6(ip: string): boolean {
   const v = v6ToBigInt(ip);
+  // Stryker disable next-line ConditionalExpression,BooleanLiteral: equivalent mutants - defensive check; isBlockedV6() is only reached for a literal that net.isIP() called IPv6
   if (v === null) return true;
 
   // Ranges that embed an IPv4 address: judged by the embedded address, so
@@ -163,6 +177,7 @@ function isBlockedV6(ip: string): boolean {
 export function isBlockedIp(ip: string): boolean {
   const family = net.isIP(ip);
   if (family === 4) return isBlockedV4(ip);
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - for a string that is not an IP literal (family 0) isBlockedV6() answers true as well, exactly like the final return
   if (family === 6) return isBlockedV6(ip);
   return true;
 }
@@ -171,6 +186,7 @@ export function isBlockedIp(ip: string): boolean {
 
 function bareHost(url: URL): string {
   const h = url.hostname.toLowerCase().replace(/\.$/, '');
+  // Stryker disable next-line LogicalOperator,StringLiteral: equivalent mutants - the URL parser brackets an IPv6 host on both sides or on neither, so no hostname has exactly one bracket
   return h.startsWith('[') && h.endsWith(']') ? h.slice(1, -1) : h;
 }
 

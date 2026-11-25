@@ -52,6 +52,7 @@ function secretFor(jwtSecret: string): Buffer {
 }
 
 export function signUnsubscribeToken(payload: UnsubscribeTokenPayload, jwtSecret: string): string {
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name makes Buffer.from() fall back to utf-8 anyway
   const body = Buffer.from(JSON.stringify({ p: PURPOSE, u: payload.u, e: normalizeEmail(payload.e) }), 'utf-8').toString('base64url');
   const sig = crypto.createHmac('sha256', secretFor(jwtSecret)).update(body).digest('base64url');
   return `${body}.${sig}`;
@@ -61,6 +62,7 @@ export function signUnsubscribeToken(payload: UnsubscribeTokenPayload, jwtSecret
 export function verifyUnsubscribeToken(token: unknown, jwtSecret: string): UnsubscribeTokenPayload | null {
   if (typeof token !== 'string' || token.length > 2048) return null;
   const dot = token.indexOf('.');
+  // Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,ArithmeticOperator: equivalent mutants - a fast path only; a token without a usable dot ends in an unparsable body, an empty signature or a length mismatch, all of which return null below
   if (dot <= 0 || dot === token.length - 1) return null;
   const body = token.slice(0, dot);
   const sig = token.slice(dot + 1);
@@ -69,11 +71,14 @@ export function verifyUnsubscribeToken(token: unknown, jwtSecret: string): Unsub
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
 
   let payload: unknown;
+  // Stryker disable BlockStatement: equivalent mutant - an empty catch leaves `payload` undefined, which the check after the try refuses
   try {
     payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
   } catch {
     return null;
   }
+  // Stryker restore BlockStatement
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - a primitive payload has no `p`, so the purpose check below refuses it with the same result
   if (!payload || typeof payload !== 'object') return null;
   const p = payload as { p?: unknown; u?: unknown; e?: unknown };
   if (p.p !== PURPOSE || typeof p.u !== 'string' || typeof p.e !== 'string' || !p.u || !p.e) return null;
@@ -96,6 +101,7 @@ function isOwnVerified(user: MailUser, address: string): boolean {
 export function isAddressBlocked(cfg: ScheduleConfig | null, user: MailUser, address: string): boolean {
   if (!cfg || !address.trim() || isOwnVerified(user, address)) return false;
   const wanted = normalizeEmail(address);
+  // Stryker disable next-line ArrayDeclaration: equivalent mutant - the fallback list only matters when it is empty, and `wanted` is lower-cased so it can never equal the capitalised stand-in entry of the mutant
   return (cfg.unsubscribedEmails ?? []).includes(wanted);
 }
 
@@ -114,6 +120,7 @@ export function applyUnsubscribe(
   const address = normalizeEmail(payload.e);
   const own = isOwnVerified(user, address);
   const isRecipient = !!cfg.toEmail && normalizeEmail(cfg.toEmail) === address;
+  // Stryker disable next-line ArrayDeclaration: equivalent mutant - the fallback list only matters when it is empty, and `address` is normalised (lower-cased) so it can never equal the capitalised stand-in entry of the mutant
   const blocked = (cfg.unsubscribedEmails ?? []).includes(address);
 
   const next: ScheduleConfig = { ...cfg };

@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { SoftAuthenticator } from './softAuthenticator';
-import { resolveRelyingParty, isValidRpId, ChallengeStore } from './passkeys';
+import { resolveRelyingParty, isValidRpId, ChallengeStore, relyingPartyProblemText, CHALLENGE_TTL_MS } from './passkeys';
 
 /**
  * #228: passkeys as an opt-in third way to sign in. The routes are driven by a software
@@ -219,5 +219,157 @@ describe('passkey routes (#228)', () => {
     const device = new SoftAuthenticator({ rpId: 'example.de', origin: APP_URL });
     expect((await addPasskey(app, admin, device)).res.statusCode).toBe(200);
     expect((await loginWith(app, device.authenticate(await loginOptions(app)))).statusCode).toBe(200);
+  });
+});
+
+describe('relying party and challenge store, in detail (#498)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  describe('isValidRpId', () => {
+    const label = (n: number): string => 'a'.repeat(n);
+    const hostOfLength = (total: number): string => {
+      // labels of 63 characters, the last one shorter, joined by dots
+      const parts: string[] = [];
+      let left = total;
+      while (left > 63 + 1) { parts.push(label(63)); left -= 64; }
+      parts.push(label(left));
+      return parts.join('.');
+    };
+
+    it.each(['a', 'example.de', 'app.example.de', 'a.b', 'a-b.c-d.de', 'xn--bcher-kva.example', 'a1.b2', '1.2', 'localhost', `${label(63)}.de`])(
+      'accepts %s', (value) => { expect(isValidRpId(value)).toBe(true); },
+    );
+
+    it.each([
+      '', ' ', 'UPPER.de', 'a_b.de', 'a b.de', '-a.de', 'a-.de', 'a.-b', 'a.b-', 'a..de', '.de', 'de.', 'a.de/', 'a.de:443',
+      'https://example.de', `${label(64)}.de`, 'a.ä.de',
+    ])('refuses %j', (value) => { expect(isValidRpId(value)).toBe(false); });
+
+    it('accepts a name of 253 characters and refuses one of 254', () => {
+      expect(hostOfLength(253)).toHaveLength(253);
+      expect(isValidRpId(hostOfLength(253))).toBe(true);
+      expect(hostOfLength(254)).toHaveLength(254);
+      expect(isValidRpId(hostOfLength(254))).toBe(false);
+      expect(isValidRpId(hostOfLength(252))).toBe(true);
+    });
+
+    it('allows a hyphen or digit inside a later label, and refuses a later label that starts or ends with one', () => {
+      expect(isValidRpId('a.b-c.d')).toBe(true);
+      expect(isValidRpId('a.bc9.d')).toBe(true);
+      expect(isValidRpId('a.-bc.d')).toBe(false);
+      expect(isValidRpId('a.bc-.d')).toBe(false);
+      expect(isValidRpId(`a.${label(63)}.d`)).toBe(true);
+      expect(isValidRpId(`a.${label(64)}.d`)).toBe(false);
+    });
+  });
+
+  describe('resolveRelyingParty', () => {
+    it('answers an App-URL that cannot be parsed like a missing one', () => {
+      expect(resolveRelyingParty('not a url')).toBe('no-app-url');
+      expect(resolveRelyingParty('example.de')).toBe('no-app-url');
+    });
+
+    it('lower-cases host and override, and keeps the port out of the RP ID but in the origin', () => {
+      expect(resolveRelyingParty('https://App.Example.DE:8443', 'Example.DE'))
+        .toEqual({ rpId: 'example.de', origin: 'https://app.example.de:8443' });
+    });
+
+    it('treats an empty override as none', () => {
+      expect(resolveRelyingParty('https://app.example.de', '')).toEqual({ rpId: 'app.example.de', origin: 'https://app.example.de' });
+    });
+
+    it('accepts the host itself as override and refuses a longer or unrelated one', () => {
+      expect(resolveRelyingParty('https://app.example.de', 'app.example.de')).toMatchObject({ rpId: 'app.example.de' });
+      expect(resolveRelyingParty('https://example.de', 'app.example.de')).toBe('rp-id-mismatch');
+      expect(resolveRelyingParty('https://app.example.de', 'p.example.de')).toBe('rp-id-mismatch');
+    });
+
+    it('refuses http for anything but localhost, whatever the override', () => {
+      expect(resolveRelyingParty('http://app.example.de')).toBe('insecure');
+      expect(resolveRelyingParty('http://app.example.de', 'example.de')).toBe('insecure');
+      expect(resolveRelyingParty('http://LOCALHOST:3001')).toMatchObject({ rpId: 'localhost' });
+    });
+
+    it('describes each problem in words', () => {
+      expect(relyingPartyProblemText('no-app-url')).toBe('Auf diesem Server ist keine App-URL eingetragen.');
+      expect(relyingPartyProblemText('insecure')).toBe('Passkeys funktionieren nur über HTTPS. Dieser Server ist per http:// erreichbar.');
+      expect(relyingPartyProblemText('rp-id-mismatch')).toBe('Die eingestellte Passkey-Domain passt nicht zur App-URL.');
+    });
+  });
+
+  describe('ChallengeStore', () => {
+    const NOW = 1_800_000_000_000;
+    const size = (s: ChallengeStore): number => (s as unknown as { pending: Map<string, unknown> }).pending.size;
+
+    it('lives five minutes', () => {
+      expect(CHALLENGE_TTL_MS).toBe(300_000);
+    });
+
+    it('accepts a fresh challenge once, up to the last millisecond before it expires', () => {
+      const store = new ChallengeStore();
+      store.put('c', { kind: 'login', expires: NOW + 1000 });
+      expect(store.take('c', 'login', undefined, NOW + 999)).toBe(true);
+      expect(store.take('c', 'login', undefined, NOW + 999)).toBe(false); // single use
+    });
+
+    it('refuses a challenge at its expiry and after, and spends it either way', () => {
+      const store = new ChallengeStore();
+      store.put('c1', { kind: 'login', expires: NOW + 1000 });
+      expect(store.take('c1', 'login', undefined, NOW + 1000)).toBe(false);
+      store.put('c1', { kind: 'login', expires: NOW + 1000 });
+      expect(store.take('c1', 'login', undefined, NOW + 5000)).toBe(false);
+      expect(store.take('c1', 'login', undefined, NOW)).toBe(false); // gone, although it would be fresh again
+    });
+
+    it('refuses an unknown challenge', () => {
+      expect(new ChallengeStore().take('nope', 'login', undefined, NOW)).toBe(false);
+    });
+
+    it('binds a registration challenge to the account that asked, and lets a login challenge ignore the name', () => {
+      const store = new ChallengeStore();
+      store.put('r', { kind: 'register', username: 'anna', expires: NOW + 1000 });
+      expect(store.take('r', 'register', 'anna', NOW)).toBe(true);
+      store.put('r2', { kind: 'register', username: 'anna', expires: NOW + 1000 });
+      expect(store.take('r2', 'register', undefined, NOW)).toBe(false);
+      store.put('r3', { kind: 'register', expires: NOW + 1000 });
+      expect(store.take('r3', 'register', 'anna', NOW)).toBe(false);
+      store.put('l', { kind: 'login', username: 'anna', expires: NOW + 1000 });
+      expect(store.take('l', 'login', 'ben', NOW)).toBe(true);
+    });
+
+    it('refuses a challenge of the other kind, in both directions', () => {
+      const store = new ChallengeStore();
+      store.put('a', { kind: 'register', username: 'anna', expires: NOW + 1000 });
+      expect(store.take('a', 'login', 'anna', NOW)).toBe(false);
+      store.put('b', { kind: 'login', expires: NOW + 1000 });
+      expect(store.take('b', 'register', undefined, NOW)).toBe(false);
+    });
+
+    it('reads the clock when no time is given', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const store = new ChallengeStore();
+      store.put('c', { kind: 'login', expires: NOW + 1000 });
+      vi.setSystemTime(NOW + 999);
+      expect(store.take('c', 'login')).toBe(true);
+      store.put('d', { kind: 'login', expires: NOW + 1000 });
+      vi.setSystemTime(NOW + 1000);
+      expect(store.take('d', 'login')).toBe(false);
+    });
+
+    it('drops expired challenges when a new one is stored, and only those', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      const store = new ChallengeStore();
+      store.put('dead', { kind: 'login', expires: NOW });       // expires exactly now
+      store.put('alive', { kind: 'login', expires: NOW + 1 });  // put() prunes at NOW: "dead" goes
+      expect(size(store)).toBe(1);
+      store.put('later', { kind: 'login', expires: NOW + 10 });
+      expect(size(store)).toBe(2);
+      vi.setSystemTime(NOW + 1);
+      store.put('x', { kind: 'login', expires: NOW + 100 });    // "alive" expires exactly now
+      expect(size(store)).toBe(2); // later, x
+      expect(store.take('later', 'login')).toBe(true);
+    });
   });
 });

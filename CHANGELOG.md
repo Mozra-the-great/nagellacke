@@ -7,6 +7,10 @@ Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.0.0
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- Mutationstests mit StrykerJS (#498) für die Module, bei denen ein unbemerkter Fehler Zugriff öffnen oder Daten verlieren würde: `mergeData()` und die Löschmarker-Bereinigung in `@nagellacke/core`, im Server Foto-Token und -Zugriff (`photoToken`, `canAccessPhoto()`, `canonicalUsername()`), Re-Auth, Registrierungs-Proof-of-Work, Passkeys, Konto-Mails, Berichtsempfänger und Abbestellung, SSRF-Filter, Bild-Metadaten, Log-Maskierung und Aufbewahrung. Mutanten, die kein Test bemerkt, wurden mit Tests erschlagen (rund 650 Überlebende am Anfang, jetzt 0, 100 % in jedem Modul); wirklich gleichwertige sind mit Begründung im Code ausgenommen. `npm run test:mutation` in `v3/`; in der CI läuft auf Pull Requests ein Job `mutation` (nur die geänderten Dateien des Umfangs, kein Pflicht-Check) und wöchentlich `mutation.yml` über den ganzen Umfang.
+
 ### Geändert
 
 - CI: `claude-review` ist jetzt ein gestaffelter Claude-Review. Agenten mit festem

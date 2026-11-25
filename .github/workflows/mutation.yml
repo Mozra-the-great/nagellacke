@@ -1,0 +1,83 @@
+name: Mutation testing
+
+# Weekly full run of the StrykerJS scope (#498): mutates every file listed in
+# v3/packages/core/stryker.config.json and v3/server/stryker.config.json and fails when a
+# mutant survives (`thresholds.break` = 100), i.e. when a test no longer notices a wrong
+# line in the code that decides who may see what or which side of a sync wins. The
+# pull-request side is the `mutation` job in ci.yml, which only mutates the scoped files a
+# PR changes; this run is the backstop that also catches a test that was weakened without
+# the code under it being touched.
+#
+# One job per file, planned from the configs (v3/scripts/mutation-matrix.mjs), so the scope
+# lives in one place and each job stays well inside the six hour limit: the run mutates
+# module-level code too (constants, regexes: Stryker calls them static mutants), and each of
+# those re-runs the whole suite. Every job uploads its HTML report as an artifact.
+
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Plan one job per scoped file
+        id: matrix
+        working-directory: v3
+        run: echo "matrix=$(node scripts/mutation-matrix.mjs)" >> "$GITHUB_OUTPUT"
+
+  mutation:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      # A survivor in one file must not hide the result of the others.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: v3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build core
+        # The server tests import @nagellacke/core through its built dist/.
+        run: npm run build:core
+
+      - name: Mutate ${{ matrix.name }}
+        working-directory: v3/${{ matrix.workspace }}
+        env:
+          MUTATE_FILE: ${{ matrix.file }}
+        run: npx stryker run --mutate "$MUTATE_FILE"
+
+      - name: Upload mutation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-report-${{ matrix.name }}
+          path: v3/${{ matrix.workspace }}/reports/mutation/
+          if-no-files-found: ignore

@@ -21,10 +21,12 @@ export type RelyingPartyProblem = 'no-app-url' | 'insecure' | 'rp-id-mismatch';
 
 /** Hostname syntax only; whether it is a suffix of the App-URL host is checked separately. */
 export function isValidRpId(value: string): boolean {
+  // Stryker disable next-line ConditionalExpression,Regex: equivalent mutants - the length is limited twice, by the check before the pattern and by the lookahead at its start, so dropping either one changes nothing
   return value.length <= 253 && /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(value);
 }
 
 export function resolveRelyingParty(appUrl: string, rpIdOverride?: string): RelyingParty | RelyingPartyProblem {
+  // Stryker disable next-line ConditionalExpression: equivalent mutant - an empty App-URL does not parse either, and the catch below gives the same answer
   if (!appUrl) return 'no-app-url';
   let url: URL;
   try { url = new URL(appUrl); } catch { return 'no-app-url'; }

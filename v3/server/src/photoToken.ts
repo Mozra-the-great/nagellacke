@@ -76,6 +76,7 @@ export function signPhotoToken(payload: PhotoTokenPayload, jwtSecret: string, ap
   if (payload.k && apiKey === undefined) {
     throw new Error('signPhotoToken: an API-key token needs the API key to sign with');
   }
+  // Stryker disable next-line StringLiteral: equivalent mutant - an empty encoding name makes Buffer.from() fall back to utf-8 anyway
   const body = b64url(Buffer.from(JSON.stringify(payload), 'utf-8'));
   const secret = photoSecret(jwtSecret, payload.k ? apiKey : undefined);
   const sig = b64url(crypto.createHmac('sha256', secret).update(body).digest());
@@ -99,6 +100,7 @@ export function verifyPhotoToken(
   const now = options.now ?? Date.now();
   if (typeof token !== 'string' || token.length > 4096) return null;
   const dot = token.indexOf('.');
+  // Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,ArithmeticOperator: equivalent mutants - this is a fast path only; a token without a usable dot ends in an unparsable body, an empty signature or a length mismatch, all of which return null below
   if (dot <= 0 || dot === token.length - 1) return null;
   const body = token.slice(0, dot);
   const sig = token.slice(dot + 1);
@@ -108,11 +110,14 @@ export function verifyPhotoToken(
   // it is trusted or returned unless the signature that follows validates, and a
   // forged `k` only picks a secret the forger cannot produce a signature for.
   let payload: PhotoTokenPayload;
+  // Stryker disable BlockStatement: equivalent mutant - an empty catch leaves `payload` undefined, which the check after the try refuses
   try {
     payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8')) as PhotoTokenPayload;
   } catch {
     return null;
   }
+  // Stryker restore BlockStatement
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - a primitive payload has no `exp`, so the exp check below refuses it with the same result
   if (!payload || typeof payload !== 'object') return null;
   if (payload.k !== undefined && payload.k !== true) return null;
   if (payload.k && options.apiKey === undefined) return null;
@@ -124,6 +129,7 @@ export function verifyPhotoToken(
   if (sig.length !== expected.length) return null;
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
 
+  // Stryker disable next-line ConditionalExpression: equivalent mutant (typeof check) - Number.isFinite() does not coerce, so it already refuses every non-number
   if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null;
   if (payload.exp * 1000 <= now) return null;
   if (typeof payload.u !== 'string') return null;

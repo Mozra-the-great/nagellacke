@@ -12,3 +12,8 @@ ToFixFehler.md
 
 # Python bytecode from scripts/ci
 __pycache__/
+
+# StrykerJS (#498): sandbox copies, incremental cache and reports
+.stryker-tmp/
+v3/packages/*/reports/
+v3/server/reports/

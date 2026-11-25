@@ -45,6 +45,7 @@ const QUERY_PAIR = /([?&;])([^=&#\s"'<>]+)=([^&#\s"'<>]*)/g;
 
 /** Masks the value of every credential-like query parameter in `text` (a URL or a log message). */
 export function redactText(text: string): string {
+  // Stryker disable next-line ConditionalExpression,StringLiteral: equivalent mutants - a fast path only; text without an equals sign has no pair for the replace below to find
   if (!text.includes('=')) return text;
   return text.replace(QUERY_PAIR, (match, sep: string, name: string) =>
     isSensitiveName(name) ? `${sep}${name}=${REDACTED}` : match);
@@ -56,9 +57,11 @@ export function redactText(text: string): string {
  * was about without holding the address (#481). SMTP rejections (550, EENVELOPE) quote the
  * recipient, and logs are readable by admins via GET /api/logs.
  */
+// Stryker disable next-line Regex: equivalent mutants in the domain part - it is copied through as $2 and what follows it is left in place, so how far the match reaches past the first dot-label does not change the output; a missing label or a bad local part does, and the tests above pin those
 const EMAIL = /([A-Za-z0-9!#$%&'*+/=?^_`{|}~-])[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]*@([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+)/g;
 
 export function maskEmails(text: string): string {
+  // Stryker disable next-line ConditionalExpression,StringLiteral: equivalent mutants - a fast path only; text without an @ has no address for the replace below to find
   return text.includes('@') ? text.replace(EMAIL, '$1***@$2') : text;
 }
 
