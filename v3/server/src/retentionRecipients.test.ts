@@ -121,6 +121,10 @@ describe('purgeUnconfirmedRecipients (#470)', () => {
     ret.purgeUnconfirmedRecipients(T0 + 49 * HOUR, silent);
     const file = path.join(dir, 'schedule.json');
     const first = fs.readFileSync(file, 'utf-8');
+    // Pin the mtime to an hour ago: on a file system with coarse timestamps (Linux CI) a rewrite within
+    // the same clock tick would leave it unchanged and the check below could not see the rewrite.
+    const past = new Date(Date.now() - HOUR);
+    fs.utimesSync(file, past, past);
     const mtime = fs.statSync(file).mtimeMs;
     expect(ret.purgeUnconfirmedRecipients(T0 + 50 * HOUR, silent)).toEqual({ removed: 0, waiting: 0, skipped: false });
     expect(fs.readFileSync(file, 'utf-8')).toBe(first);
