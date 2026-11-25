@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
-// Imported under another name on purpose: CodeQL reads the *name* of a called function, takes
-// the result of mintLink() for a password and then flags the HMAC inside verifyPhotoToken()
-// as "password hashed insecurely" (js/insufficient-password-hash) for every test that verifies what
-// it just signed. A signed link is not a password; the alias keeps the heuristic out of it.
-import { signPhotoToken as mintLink, verifyPhotoToken, type PhotoTokenPayload } from './photoToken';
+import { signPhotoToken, verifyPhotoToken, type PhotoTokenPayload } from './photoToken';
 
 // Unit tests for the photo token (#269). photos.test.ts drives the same code through
 // the routes; these pin the token format and every refusal path on their own, because
@@ -29,30 +25,40 @@ function forge(rawJson: string, secret: Buffer = baseSecret()): string {
   return `${body}.${createHmac('sha256', secret).update(body).digest('base64url')}`;
 }
 
+/**
+ * A link for verifyPhotoToken() to chew on, built from the documented format and not by signPhotoToken():
+ * the test of the signing itself is the known-answer comparison below. (Verifying what the very same
+ * function just signed would also make CodeQL read the signed link as a password and flag the HMAC in
+ * verifyPhotoToken() as js/insufficient-password-hash.) `k` payloads are signed under the API key.
+ */
+function mint(payload: PhotoTokenPayload): string {
+  return forge(JSON.stringify(payload), payload.k ? apiKeySecret() : baseSecret());
+}
+
 describe('signPhotoToken / verifyPhotoToken', () => {
   afterEach(() => vi.useRealTimers());
 
   it('round-trips a session token and returns the payload unchanged', () => {
     const payload: PhotoTokenPayload = { exp: EXP, u: 'alice', tv: 3 };
-    const token = mintLink(payload, SECRET);
+    const token = mint(payload);
     expect(verifyPhotoToken(token, SECRET, { now: NOW })).toEqual(payload);
   });
 
   it('round-trips a file token bound to a filename', () => {
     const payload: PhotoTokenPayload = { exp: EXP, u: 'alice', tv: 0, f: 'a.jpg' };
-    expect(verifyPhotoToken(mintLink(payload, SECRET), SECRET, { now: NOW })).toEqual(payload);
+    expect(verifyPhotoToken(mint(payload), SECRET, { now: NOW })).toEqual(payload);
   });
 
   it('signs under the documented key derivation (pins both context strings)', () => {
     const user = JSON.stringify({ exp: EXP, u: 'alice', tv: 1 });
-    expect(mintLink({ exp: EXP, u: 'alice', tv: 1 }, SECRET)).toBe(forge(user));
+    expect(signPhotoToken({ exp: EXP, u: 'alice', tv: 1 }, SECRET)).toBe(forge(user));
 
     const keyed = JSON.stringify({ exp: EXP, u: '', k: true });
-    expect(mintLink({ exp: EXP, u: '', k: true }, SECRET, API_KEY)).toBe(forge(keyed, apiKeySecret()));
+    expect(signPhotoToken({ exp: EXP, u: '', k: true }, SECRET, API_KEY)).toBe(forge(keyed, apiKeySecret()));
   });
 
   it('refuses a token signed with another secret, and a tampered body or signature', () => {
-    const token = mintLink({ exp: EXP, u: 'alice' }, SECRET);
+    const token = mint({ exp: EXP, u: 'alice' });
     expect(verifyPhotoToken(token, 'another-secret', { now: NOW })).toBeNull();
 
     const [body, sig] = token.split('.');
@@ -63,7 +69,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
   });
 
   it('answers a signature of the wrong length with null, not an exception', () => {
-    const token = mintLink({ exp: EXP, u: 'alice' }, SECRET);
+    const token = mint({ exp: EXP, u: 'alice' });
     const [body, sig] = token.split('.');
     expect(verifyPhotoToken(`${body}.${sig.slice(1)}`, SECRET, { now: NOW })).toBeNull();
     expect(verifyPhotoToken(`${body}.${sig}A`, SECRET, { now: NOW })).toBeNull();
@@ -71,7 +77,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
 
   describe('expiry', () => {
     it('is valid up to the last millisecond before exp and refused from exp on', () => {
-      const token = mintLink({ exp: EXP, u: 'alice' }, SECRET);
+      const token = mint({ exp: EXP, u: 'alice' });
       expect(verifyPhotoToken(token, SECRET, { now: EXP * 1000 - 1 })).not.toBeNull();
       expect(verifyPhotoToken(token, SECRET, { now: EXP * 1000 })).toBeNull();
       expect(verifyPhotoToken(token, SECRET, { now: EXP * 1000 + 1 })).toBeNull();
@@ -79,7 +85,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
 
     it('reads the clock when no `now` is given', () => {
       vi.useFakeTimers();
-      const token = mintLink({ exp: EXP, u: 'alice' }, SECRET);
+      const token = mint({ exp: EXP, u: 'alice' });
       vi.setSystemTime(EXP * 1000 - 1000);
       expect(verifyPhotoToken(token, SECRET)).not.toBeNull();
       vi.setSystemTime(EXP * 1000 + 1000);
@@ -103,7 +109,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
   });
 
   describe('shape of the token string', () => {
-    const good = (): string => mintLink({ exp: EXP, u: 'alice' }, SECRET);
+    const good = (): string => mint({ exp: EXP, u: 'alice' });
 
     it('refuses anything without a body and a signature around one dot', () => {
       const [body, sig] = good().split('.');
@@ -120,7 +126,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
 
     it('accepts a token of exactly 4096 characters and refuses 4097', () => {
       // Pad the filename until the whole token is exactly as long as the limit allows.
-      const build = (len: number): string => mintLink({ exp: EXP, u: 'alice', f: 'x'.repeat(len) }, SECRET);
+      const build = (len: number): string => mint({ exp: EXP, u: 'alice', f: 'x'.repeat(len) });
       let len = 2900;
       while (build(len).length < 4096) len++;
       expect(build(len).length).toBe(4096);
@@ -142,11 +148,11 @@ describe('signPhotoToken / verifyPhotoToken', () => {
     const keyed: PhotoTokenPayload = { exp: EXP, u: '', k: true };
 
     it('refuses to sign one without the API key', () => {
-      expect(() => mintLink(keyed, SECRET)).toThrow(/API key/);
+      expect(() => signPhotoToken(keyed, SECRET)).toThrow(/API key/);
     });
 
     it('verifies only with the API key it was minted under', () => {
-      const token = mintLink(keyed, SECRET, API_KEY);
+      const token = mint(keyed);
       expect(verifyPhotoToken(token, SECRET, { apiKey: API_KEY, now: NOW })).toEqual(keyed);
       expect(verifyPhotoToken(token, SECRET, { now: NOW })).toBeNull(); // no key in force
       expect(verifyPhotoToken(token, SECRET, { apiKey: 'rotated-key', now: NOW })).toBeNull();
@@ -155,8 +161,8 @@ describe('signPhotoToken / verifyPhotoToken', () => {
 
     it('does not sign an ordinary token under the API key, whatever key is passed', () => {
       const plain: PhotoTokenPayload = { exp: EXP, u: 'alice' };
-      expect(mintLink(plain, SECRET, API_KEY)).toBe(mintLink(plain, SECRET));
-      expect(verifyPhotoToken(mintLink(plain, SECRET, API_KEY), SECRET, { apiKey: API_KEY, now: NOW })).toEqual(plain);
+      expect(signPhotoToken(plain, SECRET, API_KEY)).toBe(signPhotoToken(plain, SECRET));
+      expect(verifyPhotoToken(mint(plain), SECRET, { apiKey: API_KEY, now: NOW })).toEqual(plain);
     });
 
     it('cannot be downgraded: stripping k, or signing with the user secret, does not verify as an API-key token', () => {
@@ -166,7 +172,7 @@ describe('signPhotoToken / verifyPhotoToken', () => {
       // with no API key in force a `k` token must not fall back to the user secret either
       expect(verifyPhotoToken(forged, SECRET, { now: NOW })).toBeNull();
       // and a genuine API-key token with k removed fails against the user secret
-      const [, sig] = mintLink(keyed, SECRET, API_KEY).split('.');
+      const [, sig] = mint(keyed).split('.');
       const stripped = `${b64(JSON.stringify({ exp: EXP, u: '' }))}.${sig}`;
       expect(verifyPhotoToken(stripped, SECRET, { apiKey: API_KEY, now: NOW })).toBeNull();
     });
