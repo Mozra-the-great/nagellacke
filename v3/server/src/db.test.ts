@@ -547,6 +547,8 @@ describe('photo access, record by record (#352, #498)', () => {
       db.forgetPhotoOwner('nobody.png');
       expect(fs.existsSync(ownersFile(dir))).toBe(false);
       db.recordPhotoOwner('a.png', 'alice');
+      const past = new Date(Date.now() - 3_600_000); // coarse file system timestamps would hide a rewrite within the same tick
+      fs.utimesSync(ownersFile(dir), past, past);
       const before = fs.statSync(ownersFile(dir)).mtimeMs;
       db.forgetPhotoOwner('nobody.png');
       expect(fs.statSync(ownersFile(dir)).mtimeMs).toBe(before);
